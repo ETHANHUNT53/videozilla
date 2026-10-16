@@ -20,9 +20,14 @@ AI educational explainer reels: topic → script & storyboard → voiceover → 
 ```bash
 npm install          # once, from this folder (npm workspaces)
 npm run typecheck    # type-check every workspace
+npm test             # unit tests for the shared packages (Vitest; `npm run test:watch` while editing)
 npm run db           # local MongoDB for the web app
 npm run dev          # web app on http://localhost:3000
 ```
+
+Unit tests sit next to the code (`packages/*/src/*.test.ts`) and never call real APIs (Gemini, ElevenLabs are mocked).
+
+If adding a package fails with `Cannot read properties of null (reading 'edgesOut')` (an npm 10 bug with some peer dependencies), run the same command with npm 11: `npx npm@11 install <package>`.
 
 See [apps/web/README.md](apps/web/README.md) and [m0/README.md](m0/README.md) for details.
 

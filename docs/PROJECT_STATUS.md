@@ -9,8 +9,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-10-16 |
-| **Current phase** | Feature build — finishing F1.1–F1.4 (sign-in + email) |
-| **Next feature** | **F0.2 — Unit tests** for the shared packages (F1.4 Google sign-in still waiting on your Google keys) |
+| **Current phase** | Feature build — F0 foundation (F1.4 Google sign-in waits for your Google keys) |
+| **Next feature** | **F0.3 — `packages/db`**: MongoDB client, migrations, validators + indexes (DB Design §8) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -62,7 +62,7 @@
 | ID | Feature | Status | Notes |
 |---|---|---|---|
 | F0.1 | Monorepo restructure: npm workspaces; move M0 into `packages/schema`, `pipeline`, `ai`, `voice`, `video` (no behaviour change) | ✅ | Done 2026-10-16. Verified: all 7 workspaces type-check; rebuilt EN + HI timelines/storyboards byte-identical to before; rendered frames pixel-identical; web production build OK; one React/zod version repo-wide. Azure adapter removed (approved-voices rule). |
-| F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ⬜ | System Design §19 |
+| F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ✅ | Done 2026-10-16. `npm test`: 97 tests over schema, pipeline (text, validator, cue sync, beats, captions, duration fitting), voice (approved voices only, no fallback, timings, mock) and ai (busy retry, fallback model, JSON/shape/length fixes). Checked that breaking a rule makes tests fail. Video rendering is covered later by visual-regression tests |
 | F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ⬜ | Replaces start-up index creation in the M1 draft |
 | F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ⬜ | API Design §2–§7 |
 | F0.5 | Commit history + CI (typecheck, lint, tests on every push) | 🔵 | Repo on GitHub with full history (2026-10-16); CI still to add |
@@ -123,13 +123,13 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | F4.3 | Illustration library: 23 animated glowing objects + flows | 🟡 | M0 |
 | F4.4 | Remaining 7 scene types (Cycle, Timeline, SimpleChart, Definition, Equation, IconGrid, Analogy) | ⬜ | PRD §14.2 |
 | F4.5 | Render performance: glow/blur ≤ 2× real time | ⬜ | Currently ~2.1–2.9× |
-| F5.1 | ElevenLabs voice with timings, approved voices only, no fallback | 🟡 | M0 |
-| F5.2 | Forced-alignment fallback | 🟡 | M0 |
+| F5.1 | ElevenLabs voice with timings, approved voices only, no fallback | ✅ | Unit-tested (F0.2); real calls with your voices are F5.3 |
+| F5.2 | Forced-alignment fallback | ✅ | Unit-tested (F0.2) |
 | F5.3 | **Your own two voices working through the API** | ⛔ | Needs a paid ElevenLabs plan (Creator or $5 of credits) |
 | F5.4 | Text normalisation + pronunciation dictionary | ⬜ | PRD §15.1 |
-| F6.1 | Cue sync to spoken words (exact / fuzzy / fallback) | 🟡 | M0, 95–100% exact |
-| F6.2 | Duration fitting (learned speed per voice + one re-record) | 🟡 | M0 |
-| F6.3 | Gemini length correction | 🟡 | M0 |
+| F6.1 | Cue sync to spoken words (exact / fuzzy / fallback) | ✅ | M0, 95–100% exact; unit-tested (F0.2) |
+| F6.2 | Duration fitting (learned speed per voice + one re-record) | ✅ | Unit-tested (F0.2) |
+| F6.3 | Gemini length correction | ✅ | Unit-tested (F0.2) |
 | F6.4 | Optional captions toggle (off by default) | ⬜ | DB assumption A3 |
 | F6.5 | Video safe-zone check on Instagram overlay | ⬜ | |
 
@@ -213,3 +213,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-16 | Fixed sign-up 500 ("Couldn't create your account"). Causes: the database wasn't running and the dev server kept a dead connection; Resend's testing sender also rejected non-owner addresses, so Better Auth rolled the sign-up back. In dev, rejected emails now print in the terminal, and server errors show a clearer message. Sign-up → verify → Library checked in the browser. |
 | 2026-10-16 | **F1.1–F1.3 done** (checked in the browser). Fixed: revoked sessions stayed valid for up to 5 min (cookie cache) — the data access layer now checks the database; the proxy no longer redirects auth pages on a cookie alone, which could loop after a revoked session. F1.4 waits for Google keys. |
 | 2026-10-16 | Code-review fixes (auth/email): in dev, an email that fails to send because of a network error now prints in the terminal too (it used to fail sign-up); in production a missing `RESEND_API_KEY` is an error instead of printing links to the logs; the session cookie cache is now off in the auth config itself, so revoked sessions stop at once everywhere, not just in the data access layer. |
+| 2026-10-16 | **F0.2 done** — Vitest 4.1.11 at the root (`npm test`), 97 unit tests for the shared packages; F5.1, F5.2, F6.1–F6.3 now ✅. Vitest 5 / vite 8 hit an npm 10 install bug ("edgesOut"), so Vitest 4.1 was installed with npm 11 via npx; plain `npm install` still works with npm 10. |
