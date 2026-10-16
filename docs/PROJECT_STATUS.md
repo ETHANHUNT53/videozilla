@@ -1,6 +1,8 @@
 # Videozilla — Project Status
 
-> **Repository:** https://github.com/ETHANHUNT53/videozilla — every finished feature or step is committed **and pushed** together with an update to this document.
+> **Repository:** https://github.com/ETHANHUNT53/videozilla
+> - **`dev`** — all ongoing work; every finished feature or step is committed **and pushed** here together with an update to this document.
+> - **`main`** — stable; `dev` is merged into `main` only when you approve a finished milestone.
 >
 > **How this document works.** The app is built **one small feature at a time**. Every feature has an ID below. When a feature is started, finished, blocked or changed, its row is updated **and** a line is added to the [Change log](#change-log). This document is the single place to see where the project stands.
 
@@ -206,3 +208,4 @@ Proven in M0 (`m0/`); becomes 🟡→✅ once moved into packages with tests (F0
 | 2026-10-16 | F1.1–F1.4 started: found emails only print to the terminal (no RESEND_API_KEY); wrote [setup guide](setup/AUTH_EMAIL_SETUP.md) and added `npm run email:test`. Waiting for Resend + Google keys. |
 | 2026-10-16 | Resend verified: test email delivered (key is on the jaicte37@gmail.com Resend account; test sender only emails that address). Google keys not loaded yet. |
 | 2026-10-16 | Code pushed to GitHub (ETHANHUNT53/videozilla): docs, m0 engine, apps/web draft. Rule: commit + push after every feature/step. Local test password moved out of .env.example. |
+| 2026-10-16 | Created `dev` branch for ongoing work; `main` is updated only on approved merges. |
