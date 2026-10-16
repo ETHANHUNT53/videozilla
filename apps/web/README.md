@@ -4,13 +4,16 @@ Next.js 16 (App Router, Cache Components) · Better Auth · MongoDB · Inngest �
 
 ## Run locally
 
+From the **repository root**:
+
 ```bash
-npm install
-cp .env.example .env.local     # then set BETTER_AUTH_SECRET (command in the file)
-npm run db                     # terminal 1: local MongoDB (replica set, data kept in .cache/mongo)
-npm run dev                    # terminal 2: http://localhost:3000
-npm run jobs                   # optional, terminal 3: Inngest dev server for background jobs
+npm install                                  # one install for the whole monorepo
+cp apps/web/.env.example apps/web/.env.local # then set BETTER_AUTH_SECRET (command in the file)
+npm run db                                   # terminal 1: local MongoDB (replica set, data in apps/web/.cache/mongo)
+npm run dev                                  # terminal 2: http://localhost:3000
 ```
+
+Optional, from `apps/web`: `npm run jobs` (Inngest dev server), `npm run email:test -- you@example.com`.
 
 Without `RESEND_API_KEY`, verification and password-reset emails are printed in the `npm run dev` terminal, so you can click the link from there. The Google button appears once `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set.
 

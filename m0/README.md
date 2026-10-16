@@ -8,18 +8,18 @@ topic → Gemini storyboard (JSON) → validator → voiceover with word timings
 
 ## Setup (once)
 
-1. Install packages:
+1. Install packages **from the repository root** (one install for the whole monorepo):
    ```bash
    npm install
    ```
+   Then run the commands below from the `m0` folder.
 2. Open `.env` (already created from `.env.example`) and paste your own keys. Never share or commit `.env`.
    - `GEMINI_API_KEY`: free from Google AI Studio.
    - `ELEVENLABS_API_KEY`: the default voice provider (model `eleven_multilingual_v2`, speaks English and Hindi).
-   - Optional: `ELEVENLABS_VOICE_EN` / `ELEVENLABS_VOICE_HI` voice IDs. To see the voices on your account:
+   - `ELEVENLABS_VOICE_FEMALE` / `ELEVENLABS_VOICE_MALE`: your two approved voices (the only voices used). To see the voices on your account:
      ```bash
      npm run make -- --list-voices
      ```
-   - Optional: Azure keys, only if you want to compare with `--tts azure`.
 
 **ElevenLabs credits:** `eleven_multilingual_v2` uses about 1 credit per character, so a 60-second video costs about 700–900 credits. The free plan (10,000 credits/month) covers roughly 10 test videos, but it doesn't include a commercial license.
 
@@ -50,7 +50,7 @@ Quick look at a few still frames per scene instead of the full video:
 npm run make -- --storyboard fixtures/photosynthesis-illustrated.hi.json --tts mock --lang hi --stills
 ```
 
-Useful options: `--gender male|female` (picks one of your two voices — the only voices used), `--length 90`, `--style bold-dark`, `--tts azure`, `--voice <voice id>`, `--audience "class 10 CBSE students"`, `--no-render`.
+Useful options: `--gender male|female` (picks one of your two voices — the only voices used), `--length 90`, `--style bold-dark`, `--voice <voice id>`, `--audience "class 10 CBSE students"`, `--no-render`.
 
 Each run writes to `out/<run-id>/`:
 
@@ -73,12 +73,19 @@ Opens a browser editor with a small sample timeline.
 
 | Path | Purpose |
 |---|---|
-| `src/llm/` | Gemini prompt and call (retries with validation errors) |
-| `src/validate.ts` | Repairs or replaces invalid scenes, checks cues and word budget |
-| `src/tts/` | Azure, ElevenLabs (+ forced alignment) and mock voice adapters |
-| `src/timeline.ts` | Scene timing, cue → frame matching (exact/fuzzy/fallback), caption phrases |
-| `src/video/` | Remotion composition, 7 scene types, 2 styles, captions |
+| `src/cli.ts` | The `make` command: storyboard → voice → sync → render |
+| `src/render-run.ts` | Re-render an existing run |
 | `fixtures/` | Hand-written English and Hindi storyboards |
+
+The engine itself lives in the shared packages (since F0.1):
+
+| Package | Purpose |
+|---|---|
+| [`packages/schema`](../packages/schema) | Storyboard / timeline types and Zod schemas, shared constants |
+| [`packages/pipeline`](../packages/pipeline) | Validation and repair, timeline + cue sync, captions, duration fitting (`/fit`) |
+| [`packages/ai`](../packages/ai) | Gemini prompt and call (busy retry, fallback model, length fix) |
+| [`packages/voice`](../packages/voice) | ElevenLabs (approved voices only) + forced alignment, mock voice |
+| [`packages/video`](../packages/video) | Remotion composition, scene types, illustration library, styles |
 
 ## Look
 

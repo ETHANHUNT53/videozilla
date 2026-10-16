@@ -3,25 +3,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import dotenv from "dotenv";
-import { RawStoryboard, type Language } from "./schema.js";
-import { generateStoryboard } from "./llm/gemini.js";
-import { validateStoryboard } from "./validate.js";
-import { buildTimeline, type SceneAudio } from "./timeline.js";
-import { prepareForSpeech } from "./text.js";
-import { correctedSpeed, plannedSpeed, SCENE_PADDING_SEC, VoiceStats } from "./fit.js";
-
-import { createElevenLabsTTS, forcedAlign, listVoices } from "./tts/elevenlabs.js";
-import { createMockTTS } from "./tts/mock.js";
-import type { SynthResult, TTSProvider } from "./tts/types.js";
+import { generateStoryboard } from "@videozilla/ai";
+import { buildTimeline, prepareForSpeech, validateStoryboard, type SceneAudio } from "@videozilla/pipeline";
+import { correctedSpeed, plannedSpeed, SCENE_PADDING_SEC, VoiceStats } from "@videozilla/pipeline/fit";
+import { RawStoryboard, type Language } from "@videozilla/schema";
+import { createElevenLabsTTS, createMockTTS, forcedAlign, listVoices, type SynthResult, type TTSProvider } from "@videozilla/voice";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Remotion entry point of the shared video package. */
+const VIDEO_ENTRY = fileURLToPath(import.meta.resolve("@videozilla/video/entry"));
 dotenv.config({ path: path.join(ROOT, ".env"), quiet: true });
 
 const HELP = `
 Videozilla M0 — topic to synced explainer MP4
 
   npm run make -- --topic "Why is the sky blue?" --lang en
-  npm run make -- --topic "प्रकाश संश्लेषण" --lang hi --tts azure
+  npm run make -- --topic "प्रकाश संश्लेषण" --lang hi --gender male
   npm run make -- --storyboard fixtures/sky-blue.en.json --tts mock
 
 Options
@@ -76,10 +73,10 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): 
 }
 
 function pickTTS(name: string): TTSProvider {
-  if (name === "azure") throw new Error("Azure voices are disabled: only your approved ElevenLabs voices are used (use --tts mock for a silent test).");
+  if (name === "azure") throw new Error("Azure voices were removed: only your approved ElevenLabs voices are used (use --tts mock for a silent test).");
   if (name === "elevenlabs") return createElevenLabsTTS();
   if (name === "mock") return createMockTTS();
-  throw new Error(`Unknown --tts "${name}" (use azure, elevenlabs or mock)`);
+  throw new Error(`Unknown --tts "${name}" (use elevenlabs or mock)`);
 }
 
 async function main() {
@@ -231,7 +228,7 @@ async function main() {
     console.log(`4/4 Rendering preview stills…`);
     const { bundle } = await import("@remotion/bundler");
     const { renderStill, selectComposition } = await import("@remotion/renderer");
-    const serveUrl = await bundle({ entryPoint: path.join(ROOT, "src", "video", "index.ts"), publicDir: path.join(ROOT, "public") });
+    const serveUrl = await bundle({ entryPoint: VIDEO_ENTRY, publicDir: path.join(ROOT, "public") });
     const inputProps = timeline as unknown as Record<string, unknown>;
     const composition = await selectComposition({ serveUrl, id: "Explainer", inputProps });
     const only = values.scenes ? new Set(values.scenes.split(",")) : null;
@@ -254,7 +251,7 @@ async function main() {
     const t4 = Date.now();
     const { bundle } = await import("@remotion/bundler");
     const { renderMedia, renderStill, selectComposition } = await import("@remotion/renderer");
-    const serveUrl = await bundle({ entryPoint: path.join(ROOT, "src", "video", "index.ts"), publicDir: path.join(ROOT, "public") });
+    const serveUrl = await bundle({ entryPoint: VIDEO_ENTRY, publicDir: path.join(ROOT, "public") });
     const inputProps = timeline as unknown as Record<string, unknown>;
     const composition = await selectComposition({ serveUrl, id: "Explainer", inputProps });
     const file = path.join(outDir, "video.mp4");

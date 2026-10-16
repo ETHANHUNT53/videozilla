@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Timeline } from "./schema.js";
+import type { Timeline } from "@videozilla/schema";
 
 /**
  * Re-renders an existing run (out/<run-id>) from its timeline.json, without calling Gemini or the voice API again.
@@ -20,7 +20,7 @@ async function main() {
   const { bundle } = await import("@remotion/bundler");
   const { renderMedia, renderStill, selectComposition } = await import("@remotion/renderer");
   const started = Date.now();
-  const serveUrl = await bundle({ entryPoint: path.join(ROOT, "src", "video", "index.ts"), publicDir: path.join(ROOT, "public") });
+  const serveUrl = await bundle({ entryPoint: fileURLToPath(import.meta.resolve("@videozilla/video/entry")), publicDir: path.join(ROOT, "public") });
   const inputProps = timeline as unknown as Record<string, unknown>;
   const composition = await selectComposition({ serveUrl, id: "Explainer", inputProps });
   const suffix = styleIdx >= 0 ? `-${timeline.styleId}` : "";

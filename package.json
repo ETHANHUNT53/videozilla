@@ -1,0 +1,22 @@
+{
+  "name": "videozilla",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Videozilla — AI educational explainer reels. Monorepo: apps/web (Next.js), packages/* (shared engine), m0 (CLI).",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "m0"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev -w @videozilla/web",
+    "db": "npm run db -w @videozilla/web"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

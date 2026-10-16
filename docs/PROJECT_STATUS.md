@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-16 |
 | **Current phase** | Feature build — finishing F1.1–F1.4 (sign-in + email) |
-| **Next feature** | F1.1–F1.4 sign-in & email setup (in progress, waiting on your Resend/Google keys) → then F0.1 |
+| **Next feature** | **F0.2 — Unit tests** for the shared packages (F1.1–F1.4 still waiting on your sign-up test + Google keys) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -28,7 +28,7 @@
 | Area | Done | Draft | Not started | Blocked |
 |---|---|---|---|---|
 | Planning & design | 8 | 0 | 0 | 0 |
-| F0 Foundation | 0 | 0 | 5 | 0 |
+| F0 Foundation | 1 | 0 | 3 (+1 in progress) | 0 |
 | F1 Accounts & library | 0 | 7 (+3 in progress) | 4 | 0 |
 | F2 Idea Studio | 0 | 0 | 7 | 0 |
 | F3 Storyboard | 0 | 0 | 7 | 0 |
@@ -61,7 +61,7 @@
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
-| F0.1 | Monorepo restructure: npm workspaces; move M0 into `packages/schema`, `pipeline`, `ai`, `voice`, `video` (no behaviour change) | ⬜ | System Design §5 |
+| F0.1 | Monorepo restructure: npm workspaces; move M0 into `packages/schema`, `pipeline`, `ai`, `voice`, `video` (no behaviour change) | ✅ | Done 2026-10-16. Verified: all 7 workspaces type-check; rebuilt EN + HI timelines/storyboards byte-identical to before; rendered frames pixel-identical; web production build OK; one React/zod version repo-wide. Azure adapter removed (approved-voices rule). |
 | F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ⬜ | System Design §19 |
 | F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ⬜ | Replaces start-up index creation in the M1 draft |
 | F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ⬜ | API Design §2–§7 |
@@ -114,7 +114,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 
 ### F4–F6 — Video engine (motion graphics, voice, sync)
 
-Proven in M0 (`m0/`); becomes 🟡→✅ once moved into packages with tests (F0.1, F0.2).
+Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once covered by tests (F0.2).
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
@@ -209,3 +209,4 @@ Proven in M0 (`m0/`); becomes 🟡→✅ once moved into packages with tests (F0
 | 2026-10-16 | Resend verified: test email delivered (key is on the jaicte37@gmail.com Resend account; test sender only emails that address). Google keys not loaded yet. |
 | 2026-10-16 | Code pushed to GitHub (ETHANHUNT53/videozilla): docs, m0 engine, apps/web draft. Rule: commit + push after every feature/step. Local test password moved out of .env.example. |
 | 2026-10-16 | Created `dev` branch for ongoing work; `main` is updated only on approved merges. |
+| 2026-10-16 | **F0.1 done** — monorepo with npm workspaces: `packages/schema`, `pipeline`, `ai`, `voice`, `video` + `apps/web` + `m0`. Outputs verified identical to before. Root README added. |
