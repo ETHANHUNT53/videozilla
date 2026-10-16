@@ -1,0 +1,110 @@
+{
+  "title": "पौधे खाना कैसे बनाते हैं?",
+  "hook": "क्या आप जानते हैं, पेड़-पौधे अपना खाना खुद बनाते हैं?",
+  "social": {
+    "caption": "पौधे अपना खाना खुद कैसे बनाते हैं? 🌱\n60 सेकंड में समझिए प्रकाश संश्लेषण!",
+    "hashtags": ["#science", "#biology", "#photosynthesis", "#cbse", "#class7science", "#hindi", "#studywithme"],
+    "coverText": "पौधों का किचन!"
+  },
+  "scenes": [
+    {
+      "role": "hook",
+      "narration": "क्या आप जानते हैं, पेड़-पौधे अपना खाना खुद बनाते हैं? वो भी सिर्फ़ धूप, पानी और हवा से!",
+      "type": "TitleHook",
+      "props": { "headline": "पौधे खाना कैसे बनाते हैं?", "subline": "सिर्फ़ धूप, पानी और हवा से!", "icon": "leaf" },
+      "cues": [
+        { "target": "icon", "anchor": "क्या" },
+        { "target": "headline", "anchor": "खाना" },
+        { "target": "subline", "anchor": "धूप" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "इस कमाल की प्रक्रिया को कहते हैं प्रकाश संश्लेषण, यानी Photosynthesis.",
+      "type": "KeywordReveal",
+      "props": { "keywords": [{ "id": "k1", "text": "प्रकाश संश्लेषण" }, { "id": "k2", "text": "Photosynthesis" }] },
+      "cues": [
+        { "target": "k1", "anchor": "प्रकाश संश्लेषण" },
+        { "target": "k2", "anchor": "Photosynthesis" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "इसके लिए पौधे को तीन चीज़ें चाहिए। जड़ों से पानी, पत्तियों से कार्बन डाइऑक्साइड, और सूरज की रोशनी।",
+      "type": "BulletSteps",
+      "props": {
+        "title": "तीन ज़रूरी चीज़ें",
+        "items": [
+          { "id": "i1", "text": "पानी", "icon": "droplet" },
+          { "id": "i2", "text": "कार्बन डाइऑक्साइड", "icon": "wind" },
+          { "id": "i3", "text": "सूरज की रोशनी", "icon": "sun" }
+        ]
+      },
+      "cues": [
+        { "target": "title", "anchor": "तीन चीज़ें" },
+        { "target": "i1", "anchor": "पानी" },
+        { "target": "i2", "anchor": "कार्बन" },
+        { "target": "i3", "anchor": "सूरज" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "पत्तियों में एक हरा पदार्थ होता है, क्लोरोफिल। यह धूप की ऊर्जा को पकड़ता है, और पानी और कार्बन डाइऑक्साइड से ग्लूकोज़ बनाता है।",
+      "type": "Flowchart",
+      "props": {
+        "nodes": [
+          { "id": "n1", "label": "क्लोरोफिल", "icon": "leaf" },
+          { "id": "n2", "label": "धूप की ऊर्जा", "icon": "zap" },
+          { "id": "n3", "label": "ग्लूकोज़ बनता है", "icon": "apple" }
+        ]
+      },
+      "cues": [
+        { "target": "n1", "anchor": "क्लोरोफिल" },
+        { "target": "n2", "anchor": "ऊर्जा" },
+        { "target": "n3", "anchor": "ग्लूकोज़" }
+      ]
+    },
+    {
+      "role": "example",
+      "narration": "इस प्रक्रिया में पौधे कार्बन डाइऑक्साइड लेते हैं, और बदले में हमें ऑक्सीजन देते हैं।",
+      "type": "Comparison",
+      "props": {
+        "left": { "title": "पौधे लेते हैं", "points": ["कार्बन डाइऑक्साइड", "पानी"], "icon": "arrow-down" },
+        "right": { "title": "पौधे देते हैं", "points": ["ऑक्सीजन", "ग्लूकोज़ (खाना)"], "icon": "arrow-up" }
+      },
+      "cues": [
+        { "target": "left", "anchor": "लेते हैं" },
+        { "target": "right", "anchor": "ऑक्सीजन" }
+      ]
+    },
+    {
+      "role": "example",
+      "narration": "यानी जब भी आप साँस लेते हैं, तो उस ऑक्सीजन के लिए किसी पौधे को धन्यवाद कहिए!",
+      "type": "KeywordReveal",
+      "props": { "keywords": [{ "id": "k1", "text": "हर साँस के लिए" }, { "id": "k2", "text": "धन्यवाद, पौधों!" }] },
+      "cues": [
+        { "target": "k1", "anchor": "साँस" },
+        { "target": "k2", "anchor": "धन्यवाद" }
+      ]
+    },
+    {
+      "role": "recap",
+      "narration": "तो याद रखिए, पौधे धूप, पानी और कार्बन डाइऑक्साइड से खाना बनाते हैं, और हमें ऑक्सीजन देते हैं। ऐसी ही और जानकारी के लिए फ़ॉलो करें!",
+      "type": "RecapOutro",
+      "props": {
+        "points": [
+          { "id": "p1", "text": "धूप + पानी + CO2" },
+          { "id": "p2", "text": "= खाना (ग्लूकोज़)" },
+          { "id": "p3", "text": "+ हमें ऑक्सीजन" }
+        ],
+        "cta": "और जानकारी के लिए फ़ॉलो करें!"
+      },
+      "cues": [
+        { "target": "p1", "anchor": "धूप" },
+        { "target": "p2", "anchor": "खाना" },
+        { "target": "p3", "anchor": "ऑक्सीजन" },
+        { "target": "cta", "anchor": "फ़ॉलो" }
+      ]
+    }
+  ]
+}

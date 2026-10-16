@@ -1,0 +1,130 @@
+{
+  "title": "Why Is the Sky Blue?",
+  "hook": "The sky isn't blue because of the ocean.",
+  "social": { "caption": "Why is the sky blue? The answer is hiding in sunlight. ☀️", "hashtags": ["#science", "#physics", "#cbse"], "coverText": "Why is the sky BLUE?" },
+  "scenes": [
+    {
+      "role": "hook",
+      "section": "physics · light",
+      "beats": [
+        { "headline": "Why is the sky *blue*?", "accent": "cyan" },
+        { "headline": "It's *not* the ocean", "anchor": "not reflecting", "accent": "orange" }
+      ],
+      "narration": "Why is the sky blue? It's not reflecting the ocean. The real reason is hidden inside sunlight itself.",
+      "type": "TitleHook",
+      "props": { "headline": "Why is the sky BLUE?", "subline": "hidden inside sunlight", "icon": "sun" },
+      "cues": [
+        { "target": "icon", "anchor": "Why" },
+        { "target": "subline", "anchor": "hidden inside" }
+      ]
+    },
+    {
+      "role": "explain",
+      "section": "the setup",
+      "beats": [
+        { "headline": "Sunlight hits the *air*", "accent": "cyan" },
+        { "headline": "Light *scatters*", "anchor": "scatter", "accent": "violet" }
+      ],
+      "narration": "Sunlight races towards the Earth and hits tiny gas molecules in the air. These molecules scatter the light in every direction.",
+      "type": "Illustration",
+      "props": {
+        "actors": [
+          { "id": "sun", "kind": "sun", "x": 18, "y": 18, "size": "m" },
+          { "id": "earth", "kind": "earth", "x": 62, "y": 62, "size": "l" },
+          { "id": "air", "kind": "molecule", "x": 82, "y": 22, "size": "s", "label": "N2" }
+        ],
+        "flows": [
+          { "id": "light", "from": "sun", "to": "earth", "style": "beam", "kind": "light", "label": "sunlight" },
+          { "id": "scatter", "from": "air", "to": "earth", "style": "particles", "kind": "oxygen", "label": "blue" }
+        ]
+      },
+      "cues": [
+        { "target": "sun", "anchor": "Sunlight" },
+        { "target": "light", "anchor": "races" },
+        { "target": "earth", "anchor": "Earth" },
+        { "target": "air", "anchor": "gas molecules" },
+        { "target": "scatter", "anchor": "scatter" }
+      ]
+    },
+    {
+      "role": "explain",
+      "section": "the numbers",
+      "beats": [
+        { "headline": "100 rays of *sunlight*", "accent": "cyan" },
+        { "headline": "Blue scatters *5×* more", "anchor": "five times", "accent": "orange" }
+      ],
+      "narration": "Imagine a hundred rays of sunlight. Blue light gets scattered about five times more than red, so most of what reaches your eyes from the sky is blue.",
+      "type": "UnitGrid",
+      "props": {
+        "total": 100,
+        "unit": "dot",
+        "label": "scattered",
+        "states": [
+          { "id": "all", "active": 100, "color": "cyan", "note": "all colours together" },
+          { "id": "blue", "active": 72, "color": "violet", "note": "mostly blue" }
+        ]
+      },
+      "cues": [
+        { "target": "all", "anchor": "hundred rays" },
+        { "target": "blue", "anchor": "five times" }
+      ]
+    },
+    {
+      "role": "explain",
+      "section": "short vs long waves",
+      "beats": [{ "headline": "*Short* waves vs *long* waves", "accent": "violet" }],
+      "narration": "Blue light has short waves and bounces around a lot. Red light has long waves and mostly passes straight through.",
+      "type": "Comparison",
+      "props": {
+        "left": { "title": "BLUE", "points": ["short waves", "scatters a lot"], "icon": "audio-waveform" },
+        "right": { "title": "RED", "points": ["long waves", "passes through"], "icon": "arrow-right" }
+      },
+      "cues": [
+        { "target": "left", "anchor": "Blue light" },
+        { "target": "right", "anchor": "Red light" }
+      ]
+    },
+    {
+      "role": "example",
+      "section": "sunsets",
+      "beats": [{ "headline": "Why sunsets turn *orange*", "accent": "orange" }],
+      "narration": "At sunset, light travels through much more air. The blue scatters away early, and only orange and red reach you.",
+      "type": "Flowchart",
+      "props": {
+        "nodes": [
+          { "id": "n1", "label": "Low sun", "icon": "sunset" },
+          { "id": "n2", "label": "More air", "icon": "wind" },
+          { "id": "n3", "label": "Blue lost", "icon": "x" },
+          { "id": "n4", "label": "Orange sky", "icon": "sun" }
+        ]
+      },
+      "cues": [
+        { "target": "n1", "anchor": "sunset" },
+        { "target": "n2", "anchor": "more air" },
+        { "target": "n3", "anchor": "blue scatters" },
+        { "target": "n4", "anchor": "orange and red" }
+      ]
+    },
+    {
+      "role": "recap",
+      "section": "recap",
+      "beats": [{ "headline": "Now you *know*", "accent": "cyan" }],
+      "narration": "So remember: sunlight has all colours, blue scatters the most, and that paints our sky blue. Follow for more science in sixty seconds!",
+      "type": "RecapOutro",
+      "props": {
+        "points": [
+          { "id": "p1", "text": "Sunlight = all colours" },
+          { "id": "p2", "text": "Blue scatters the most" },
+          { "id": "p3", "text": "So the sky looks blue" }
+        ],
+        "cta": "Follow for more"
+      },
+      "cues": [
+        { "target": "p1", "anchor": "all colours" },
+        { "target": "p2", "anchor": "blue scatters" },
+        { "target": "p3", "anchor": "sky blue" },
+        { "target": "cta", "anchor": "Follow" }
+      ]
+    }
+  ]
+}

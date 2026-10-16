@@ -1,0 +1,110 @@
+{
+  "title": "Why Is the Sky Blue?",
+  "hook": "Why is the sky blue? It's not reflecting the ocean.",
+  "social": {
+    "caption": "Ever wondered why the sky is blue but sunsets are orange? 🌅\nHere's the science in 60 seconds.",
+    "hashtags": ["#science", "#physics", "#sciencefacts", "#learnoninstagram", "#cbse", "#studywithme"],
+    "coverText": "Why is the sky BLUE?"
+  },
+  "scenes": [
+    {
+      "role": "hook",
+      "narration": "Why is the sky blue? It's not reflecting the ocean. The real reason is hidden inside sunlight itself.",
+      "type": "TitleHook",
+      "props": { "headline": "Why is the sky BLUE?", "subline": "It's not the ocean!", "icon": "sun" },
+      "cues": [
+        { "target": "icon", "anchor": "Why" },
+        { "target": "headline", "anchor": "sky blue" },
+        { "target": "subline", "anchor": "ocean" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "Sunlight looks white, but it is actually a mix of all colours, from red to violet.",
+      "type": "KeywordReveal",
+      "props": { "keywords": [{ "id": "k1", "text": "White light" }, { "id": "k2", "text": "= ALL colours" }] },
+      "cues": [
+        { "target": "k1", "anchor": "white" },
+        { "target": "k2", "anchor": "all colours" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "When sunlight enters our atmosphere, it hits tiny gas molecules. These molecules scatter the light in every direction.",
+      "type": "Flowchart",
+      "props": {
+        "nodes": [
+          { "id": "n1", "label": "Sunlight", "icon": "sun" },
+          { "id": "n2", "label": "Gas molecules", "icon": "atom" },
+          { "id": "n3", "label": "Light scatters", "icon": "sparkles" }
+        ]
+      },
+      "cues": [
+        { "target": "n1", "anchor": "sunlight" },
+        { "target": "n2", "anchor": "gas molecules" },
+        { "target": "n3", "anchor": "scatter" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "But not all colours scatter equally. Blue light has short waves and scatters a lot. Red light has long waves and mostly passes straight through.",
+      "type": "Comparison",
+      "props": {
+        "left": { "title": "Blue light", "points": ["Short waves", "Scatters a lot"], "icon": "waves" },
+        "right": { "title": "Red light", "points": ["Long waves", "Passes through"], "icon": "arrow-right" }
+      },
+      "cues": [
+        { "target": "left", "anchor": "Blue light" },
+        { "target": "right", "anchor": "Red light" }
+      ]
+    },
+    {
+      "role": "example",
+      "narration": "In fact, blue light is scattered about five times more than red light. So wherever you look, blue reaches your eyes.",
+      "type": "StatCounter",
+      "props": { "value": 5, "suffix": "x", "label": "more scattering for blue than red", "icon": "eye" },
+      "cues": [
+        { "target": "value", "anchor": "five times" },
+        { "target": "label", "anchor": "red light" }
+      ]
+    },
+    {
+      "role": "example",
+      "narration": "Then why are sunsets orange? In the evening, sunlight travels through much more air. Most of the blue gets scattered away, leaving orange and red.",
+      "type": "BulletSteps",
+      "props": {
+        "title": "Sunset colours",
+        "items": [
+          { "id": "i1", "text": "Light travels through more air", "icon": "sunset" },
+          { "id": "i2", "text": "Blue scatters away", "icon": "wind" },
+          { "id": "i3", "text": "Orange and red remain", "icon": "sun" }
+        ]
+      },
+      "cues": [
+        { "target": "title", "anchor": "sunsets orange" },
+        { "target": "i1", "anchor": "more air" },
+        { "target": "i2", "anchor": "blue gets scattered" },
+        { "target": "i3", "anchor": "orange and red" }
+      ]
+    },
+    {
+      "role": "recap",
+      "narration": "So remember: sunlight has all colours, blue scatters the most, and that paints our sky blue. Follow for more science in sixty seconds!",
+      "type": "RecapOutro",
+      "props": {
+        "points": [
+          { "id": "p1", "text": "Sunlight = all colours" },
+          { "id": "p2", "text": "Blue scatters the most" },
+          { "id": "p3", "text": "So the sky looks blue" }
+        ],
+        "cta": "Follow for more science!"
+      },
+      "cues": [
+        { "target": "p1", "anchor": "all colours" },
+        { "target": "p2", "anchor": "blue scatters" },
+        { "target": "p3", "anchor": "sky blue" },
+        { "target": "cta", "anchor": "Follow" }
+      ]
+    }
+  ]
+}

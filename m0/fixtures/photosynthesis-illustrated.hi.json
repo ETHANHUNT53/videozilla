@@ -1,0 +1,120 @@
+{
+  "title": "पौधे खाना कैसे बनाते हैं?",
+  "hook": "क्या आप जानते हैं, पेड़-पौधे अपना खाना खुद बनाते हैं?",
+  "social": {
+    "caption": "पौधे अपना खाना खुद कैसे बनाते हैं? 🌱\n60 सेकंड में समझिए प्रकाश संश्लेषण!",
+    "hashtags": ["#science", "#biology", "#photosynthesis", "#cbse", "#hindi", "#studywithme"],
+    "coverText": "पौधों का किचन!"
+  },
+  "scenes": [
+    {
+      "role": "hook",
+      "narration": "क्या आप जानते हैं, पेड़-पौधे अपना खाना खुद बनाते हैं? वो भी सिर्फ़ धूप, पानी और हवा से!",
+      "type": "TitleHook",
+      "props": { "headline": "पौधे खाना कैसे बनाते हैं?", "subline": "सिर्फ़ धूप, पानी और हवा से!", "icon": "leaf" },
+      "cues": [
+        { "target": "icon", "anchor": "क्या" },
+        { "target": "headline", "anchor": "खाना" },
+        { "target": "subline", "anchor": "धूप" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "इस कमाल की प्रक्रिया को कहते हैं प्रकाश संश्लेषण, यानी Photosynthesis.",
+      "type": "KeywordReveal",
+      "props": { "keywords": [{ "id": "k1", "text": "प्रकाश संश्लेषण" }, { "id": "k2", "text": "Photosynthesis" }] },
+      "cues": [
+        { "target": "k1", "anchor": "प्रकाश संश्लेषण" },
+        { "target": "k2", "anchor": "Photosynthesis" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "इसके लिए पौधे को तीन चीज़ें चाहिए। सूरज की रोशनी, हवा से कार्बन डाइऑक्साइड, और जड़ों से पानी।",
+      "type": "Illustration",
+      "props": {
+        "ground": true,
+        "actors": [
+          { "id": "plant", "kind": "plant", "x": 45, "y": 62, "size": "l" },
+          { "id": "sun", "kind": "sun", "x": 80, "y": 16, "size": "m" }
+        ],
+        "flows": [
+          { "id": "light", "from": "sun", "to": "plant.leaves", "style": "beam", "kind": "light", "label": "रोशनी" },
+          { "id": "co2", "from": "left", "to": "plant.leaves", "style": "particles", "kind": "co2", "label": "CO2" },
+          { "id": "water", "from": "plant.roots", "to": "plant.leaves", "style": "particles", "kind": "water", "label": "H2O" }
+        ]
+      },
+      "cues": [
+        { "target": "plant", "anchor": "पौधे" },
+        { "target": "sun", "anchor": "सूरज" },
+        { "target": "light", "anchor": "रोशनी" },
+        { "target": "co2", "anchor": "कार्बन" },
+        { "target": "water", "anchor": "पानी" }
+      ]
+    },
+    {
+      "role": "explain",
+      "narration": "पत्तियों में एक हरा पदार्थ होता है, क्लोरोफिल। यह धूप की ऊर्जा को पकड़कर ग्लूकोज़ बनाता है, यानी पौधे का खाना।",
+      "type": "Illustration",
+      "props": {
+        "actors": [
+          { "id": "leaf", "kind": "leaf", "x": 40, "y": 52, "size": "l", "label": "क्लोरोफिल" },
+          { "id": "sun", "kind": "sun", "x": 16, "y": 12, "size": "s" },
+          { "id": "food", "kind": "molecule", "x": 80, "y": 78, "size": "m", "label": "ग्लूकोज़" }
+        ],
+        "flows": [
+          { "id": "energy", "from": "sun", "to": "leaf", "style": "beam", "kind": "light" },
+          { "id": "make", "from": "leaf", "to": "food", "style": "particles", "kind": "food", "label": "खाना" }
+        ]
+      },
+      "cues": [
+        { "target": "leaf", "anchor": "पत्तियों" },
+        { "target": "sun", "anchor": "धूप" },
+        { "target": "energy", "anchor": "ऊर्जा" },
+        { "target": "food", "anchor": "ग्लूकोज़" },
+        { "target": "make", "anchor": "खाना" }
+      ]
+    },
+    {
+      "role": "example",
+      "narration": "इस प्रक्रिया में पौधे कार्बन डाइऑक्साइड लेते हैं, और बदले में हमें ऑक्सीजन देते हैं।",
+      "type": "Illustration",
+      "props": {
+        "ground": true,
+        "actors": [
+          { "id": "tree", "kind": "tree", "x": 32, "y": 58, "size": "l" },
+          { "id": "kid", "kind": "person", "x": 80, "y": 68, "size": "m", "label": "हम" }
+        ],
+        "flows": [
+          { "id": "in", "from": "left", "to": "tree.leaves", "style": "particles", "kind": "co2", "label": "CO2" },
+          { "id": "out", "from": "tree.leaves", "to": "kid.head", "style": "particles", "kind": "oxygen", "label": "O2" }
+        ]
+      },
+      "cues": [
+        { "target": "tree", "anchor": "पौधे" },
+        { "target": "in", "anchor": "कार्बन" },
+        { "target": "kid", "anchor": "हमें" },
+        { "target": "out", "anchor": "ऑक्सीजन" }
+      ]
+    },
+    {
+      "role": "recap",
+      "narration": "तो याद रखिए, पौधे धूप, पानी और कार्बन डाइऑक्साइड से खाना बनाते हैं, और हमें ऑक्सीजन देते हैं। ऐसी ही और जानकारी के लिए फ़ॉलो करें!",
+      "type": "RecapOutro",
+      "props": {
+        "points": [
+          { "id": "p1", "text": "धूप + पानी + CO2" },
+          { "id": "p2", "text": "= खाना (ग्लूकोज़)" },
+          { "id": "p3", "text": "+ हमें ऑक्सीजन" }
+        ],
+        "cta": "और जानकारी के लिए फ़ॉलो करें!"
+      },
+      "cues": [
+        { "target": "p1", "anchor": "धूप" },
+        { "target": "p2", "anchor": "खाना" },
+        { "target": "p3", "anchor": "ऑक्सीजन" },
+        { "target": "cta", "anchor": "फ़ॉलो" }
+      ]
+    }
+  ]
+}
