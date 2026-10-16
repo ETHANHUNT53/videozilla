@@ -2,11 +2,14 @@ import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Fast, cookie-only routing check (no database): send signed-out visitors to sign-in and signed-in users away from
- * the auth pages. Real authorisation happens in the data access layer on every page and action.
+ * Fast, cookie-only routing check (no database): send signed-out visitors to sign-in. Real authorisation happens in
+ * the data access layer on every page and action.
+ *
+ * Signed-in users are NOT sent away from the auth pages here: a cookie can outlive its session (revoked by a password
+ * reset or sign-out elsewhere), and redirecting on the cookie alone would loop /sign-in → /library → /sign-in.
+ * The auth pages do that check against the database instead (redirectIfSignedIn).
  */
 const APP_PATHS = ["/library", "/projects", "/settings"];
-const AUTH_PATHS = ["/sign-in", "/sign-up"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -15,9 +18,6 @@ export function proxy(request: NextRequest) {
     const url = new URL("/sign-in", request.nextUrl);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
-  }
-  if (hasSession && AUTH_PATHS.includes(pathname)) {
-    return NextResponse.redirect(new URL("/library", request.nextUrl));
   }
   return NextResponse.next();
 }

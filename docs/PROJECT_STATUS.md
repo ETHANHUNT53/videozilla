@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-16 |
 | **Current phase** | Feature build — finishing F1.1–F1.4 (sign-in + email) |
-| **Next feature** | **F0.2 — Unit tests** for the shared packages (F1.1–F1.4 still waiting on your sign-up test + Google keys) |
+| **Next feature** | **F0.2 — Unit tests** for the shared packages (F1.4 Google sign-in still waiting on your Google keys) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -73,9 +73,9 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
-| F1.1 | Sign up with email + password, verification email | 🔵 | Checked in the browser: sign up → link → verified → Library. Real email reaches only the Resend owner address (testing sender); in dev, rejected emails print in the terminal — see [setup guide](setup/AUTH_EMAIL_SETUP.md). Test: `npm run email:test` |
-| F1.2 | Sign in / sign out, session cookie, route protection | 🟡 | Works; uses `proxy.ts` + data access layer |
-| F1.3 | Forgot / reset password | 🔵 | Test with real email after Resend setup |
+| F1.1 | Sign up with email + password, verification email | ✅ | Checked in the browser: sign up → link → verified → Library. Real email reaches only the Resend owner address until a domain is verified; in dev, rejected emails print in the terminal — see [setup guide](setup/AUTH_EMAIL_SETUP.md) |
+| F1.2 | Sign in / sign out, session cookie, route protection | ✅ | Checked: sign out/in, wrong password, Library protected. Sessions are checked against the database on every page (revoked sessions stop at once); proxy only sends signed-out visitors to sign-in |
+| F1.3 | Forgot / reset password | ✅ | Checked: reset link → new password works, old password fails, other sessions revoked |
 | F1.4 | Google sign-in + account linking | 🔵 | Waiting for your Google OAuth client ([guide §C](setup/AUTH_EMAIL_SETUP.md)) |
 | F1.5 | Profile created automatically with India-first defaults | 🟡 | Missing `defaultAudience`, `role` (DB Design §4.2) |
 | F1.6 | Library list: filters, search, pagination, needs-attention section | 🟡 | Uses server actions; must move to `GET /api/v1/projects` with cursor `{u, i}` (API §13.2) |
@@ -211,3 +211,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-16 | Created `dev` branch for ongoing work; `main` is updated only on approved merges. |
 | 2026-10-16 | **F0.1 done** — monorepo with npm workspaces: `packages/schema`, `pipeline`, `ai`, `voice`, `video` + `apps/web` + `m0`. Outputs verified identical to before. Root README added. |
 | 2026-10-16 | Fixed sign-up 500 ("Couldn't create your account"). Causes: the database wasn't running and the dev server kept a dead connection; Resend's testing sender also rejected non-owner addresses, so Better Auth rolled the sign-up back. In dev, rejected emails now print in the terminal, and server errors show a clearer message. Sign-up → verify → Library checked in the browser. |
+| 2026-10-16 | **F1.1–F1.3 done** (checked in the browser). Fixed: revoked sessions stayed valid for up to 5 min (cookie cache) — the data access layer now checks the database; the proxy no longer redirects auth pages on a cookie alone, which could loop after a revoked session. F1.4 waits for Google keys. |
