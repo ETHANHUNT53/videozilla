@@ -11,6 +11,9 @@ function required(name: string): string {
 }
 
 export const env = {
+  get isProduction() {
+    return process.env.NODE_ENV === "production";
+  },
   get mongoUri() {
     return required("MONGODB_URI");
   },

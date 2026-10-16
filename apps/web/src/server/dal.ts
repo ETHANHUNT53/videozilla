@@ -6,10 +6,10 @@ import { auth } from "./auth";
 
 /**
  * Data access layer (Next.js auth guide): the only way pages and actions learn who the user is.
- * The proxy only does a fast cookie check; this validates the session against the database. The cookie cache is
- * skipped here so a revoked session (sign-out elsewhere, password reset, deleted account) stops working at once.
+ * The proxy only does a fast cookie check; this validates the session against the database (the cookie cache is off
+ * in auth.ts, so a revoked session stops working at once).
  */
-export const getSession = cache(async () => auth.api.getSession({ headers: await headers(), query: { disableCookieCache: true } }));
+export const getSession = cache(async () => auth.api.getSession({ headers: await headers() }));
 
 /** For the sign-in / sign-up pages: send users who are really signed in to the library. */
 export async function redirectIfSignedIn() {

@@ -46,7 +46,9 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 30,
     updateAge: 60 * 60 * 24,
-    cookieCache: { enabled: true, maxAge: 300 },
+    // No cookie cache: every session check reads the database, so a revoked session (sign-out elsewhere, password
+    // reset, deleted account) stops working at once, on the server and in /api/auth/get-session alike.
+    cookieCache: { enabled: false },
   },
   user: {
     deleteUser: {

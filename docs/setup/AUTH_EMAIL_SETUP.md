@@ -45,7 +45,7 @@ You need three things: (A) run the app locally, (B) real email via Resend, (C) o
 
 ### Important limit (testing sender)
 
-With `onboarding@resend.dev`, Resend only delivers to **your own Resend account email**. Any other address is rejected by Resend (`403`, or `422` for test domains like `example.com`). In local development the app then prints that email, with its link, in the `npm run dev` terminal instead, so sign-up still works. (In production a rejected email is an error.) To email anyone, add your domain:
+With `onboarding@resend.dev`, Resend only delivers to **your own Resend account email**. Any other address is rejected by Resend (`403`, or `422` for test domains like `example.com`). In local development the app then prints that email, with its link, in the `npm run dev` terminal instead, so sign-up still works. (In production a rejected email, or a missing `RESEND_API_KEY`, is an error — links are never printed there.) To email anyone, add your domain:
 
 1. Resend → **Domains** → **Add Domain** → enter e.g. `mail.videozilla.in` (once you've bought the domain).
 2. Resend shows 3–4 DNS records (TXT for SPF/DKIM, MX). Add them at your domain registrar's DNS page.
