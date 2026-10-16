@@ -1,5 +1,7 @@
 # Videozilla — Project Status
 
+> **Repository:** https://github.com/ETHANHUNT53/videozilla — every finished feature or step is committed **and pushed** together with an update to this document.
+>
 > **How this document works.** The app is built **one small feature at a time**. Every feature has an ID below. When a feature is started, finished, blocked or changed, its row is updated **and** a line is added to the [Change log](#change-log). This document is the single place to see where the project stands.
 
 | | |
@@ -61,7 +63,7 @@
 | F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ⬜ | System Design §19 |
 | F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ⬜ | Replaces start-up index creation in the M1 draft |
 | F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ⬜ | API Design §2–§7 |
-| F0.5 | Commit history + CI (typecheck, lint, tests on every push) | ⬜ | Nothing is committed yet |
+| F0.5 | Commit history + CI (typecheck, lint, tests on every push) | 🔵 | Repo on GitHub with full history (2026-10-16); CI still to add |
 
 ### F1 — Accounts & project library
 
@@ -202,3 +204,5 @@ Proven in M0 (`m0/`); becomes 🟡→✅ once moved into packages with tests (F0
 | 2026-10-16 | Videozilla UI recreated in Google Stitch + 10 new screens designed (18 total, all confirmed on the canvas). |
 | 2026-10-16 | Project status document created; from now on the app is built one feature at a time. |
 | 2026-10-16 | F1.1–F1.4 started: found emails only print to the terminal (no RESEND_API_KEY); wrote [setup guide](setup/AUTH_EMAIL_SETUP.md) and added `npm run email:test`. Waiting for Resend + Google keys. |
+| 2026-10-16 | Resend verified: test email delivered (key is on the jaicte37@gmail.com Resend account; test sender only emails that address). Google keys not loaded yet. |
+| 2026-10-16 | Code pushed to GitHub (ETHANHUNT53/videozilla): docs, m0 engine, apps/web draft. Rule: commit + push after every feature/step. Local test password moved out of .env.example. |
