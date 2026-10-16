@@ -125,7 +125,7 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
     const { error } = await authClient.signUp.email({ name: String(form.get("name")), email, password: String(form.get("password")), callbackURL: "/library" });
     setBusy(false);
     if (error) {
-      setError(error.message ?? "Couldn't create your account.");
+      setError(error.status >= 500 ? "Something went wrong on our side, so your account wasn't created. Please try again in a minute." : (error.message ?? "Couldn't create your account."));
       return;
     }
     router.push(`/verify-email?email=${encodeURIComponent(email)}`);

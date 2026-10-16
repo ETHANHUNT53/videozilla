@@ -45,7 +45,7 @@ You need three things: (A) run the app locally, (B) real email via Resend, (C) o
 
 ### Important limit (testing sender)
 
-With `onboarding@resend.dev`, Resend only delivers to **your own Resend account email**. Signing up with any other address gives a `403` (the sign-up page shows an error). To email anyone, add your domain:
+With `onboarding@resend.dev`, Resend only delivers to **your own Resend account email**. Any other address is rejected by Resend (`403`, or `422` for test domains like `example.com`). In local development the app then prints that email, with its link, in the `npm run dev` terminal instead, so sign-up still works. (In production a rejected email is an error.) To email anyone, add your domain:
 
 1. Resend → **Domains** → **Add Domain** → enter e.g. `mail.videozilla.in` (once you've bought the domain).
 2. Resend shows 3–4 DNS records (TXT for SPF/DKIM, MX). Add them at your domain registrar's DNS page.
@@ -99,3 +99,5 @@ Tell me when A–C are done (or which part fails, with the error text — not th
 | Google "access blocked / app not verified" | Add your Gmail as a **test user** on the consent screen |
 | Google button missing | Both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` must be set, then restart `npm run dev` |
 | `Missing environment variable MONGODB_URI` | Run from `apps/web`, and keep `npm run db` running |
+| "Couldn't create your account" / "Something went wrong on our side", and sign-in fails too | The database isn't running: start `npm run db`. If it was down while `npm run dev` was running, restart `npm run dev` too |
+| `[email:dev] Email send failed (403/422)` in the dev terminal | Expected with the Resend testing sender for addresses other than yours — use the printed link below it |

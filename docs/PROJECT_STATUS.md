@@ -73,7 +73,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
-| F1.1 | Sign up with email + password, verification email | 🔵 | Code works; emails print in the terminal until RESEND_API_KEY is set — see [setup guide](setup/AUTH_EMAIL_SETUP.md). Test: `npm run email:test` |
+| F1.1 | Sign up with email + password, verification email | 🔵 | Checked in the browser: sign up → link → verified → Library. Real email reaches only the Resend owner address (testing sender); in dev, rejected emails print in the terminal — see [setup guide](setup/AUTH_EMAIL_SETUP.md). Test: `npm run email:test` |
 | F1.2 | Sign in / sign out, session cookie, route protection | 🟡 | Works; uses `proxy.ts` + data access layer |
 | F1.3 | Forgot / reset password | 🔵 | Test with real email after Resend setup |
 | F1.4 | Google sign-in + account linking | 🔵 | Waiting for your Google OAuth client ([guide §C](setup/AUTH_EMAIL_SETUP.md)) |
@@ -210,3 +210,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-16 | Code pushed to GitHub (ETHANHUNT53/videozilla): docs, m0 engine, apps/web draft. Rule: commit + push after every feature/step. Local test password moved out of .env.example. |
 | 2026-10-16 | Created `dev` branch for ongoing work; `main` is updated only on approved merges. |
 | 2026-10-16 | **F0.1 done** — monorepo with npm workspaces: `packages/schema`, `pipeline`, `ai`, `voice`, `video` + `apps/web` + `m0`. Outputs verified identical to before. Root README added. |
+| 2026-10-16 | Fixed sign-up 500 ("Couldn't create your account"). Causes: the database wasn't running and the dev server kept a dead connection; Resend's testing sender also rejected non-owner addresses, so Better Auth rolled the sign-up back. In dev, rejected emails now print in the terminal, and server errors show a clearer message. Sign-up → verify → Library checked in the browser. |
