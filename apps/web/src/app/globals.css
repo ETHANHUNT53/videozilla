@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* Videozilla design tokens — the same dark "tech explainer" palette as the videos. */
+:root {
+  --bg: #030407;
+  --bg-raised: #0a0d14;
+  --surface: rgba(255, 255, 255, 0.035);
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #f3f5f9;
+  --muted: #8a92a3;
+  --dim: #5b6372;
+  --cyan: #38d9f5;
+  --orange: #ff8a3d;
+  --violet: #a78bfa;
+  --green: #4ade80;
+  --red: #f87171;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-dim: var(--dim);
+  --color-cyan: var(--cyan);
+  --color-orange: var(--orange);
+  --color-violet: var(--violet);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Soft glow used on primary actions and highlighted words. */
+.glow-cyan {
+  box-shadow: 0 0 22px rgba(56, 217, 245, 0.35);
+}
+.text-glow {
+  text-shadow: 0 0 24px currentColor;
+}
+
+/* Faint perspective dot field behind marketing and auth pages. */
+.dot-field {
+  background-image: radial-gradient(circle, rgba(138, 146, 163, 0.18) 1.4px, transparent 1.8px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 0%, transparent 75%);
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
