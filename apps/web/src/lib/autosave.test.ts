@@ -6,12 +6,12 @@ type Saved = { rev: number; text: string };
 
 /** A save whose promise each test settles by hand, recording what was sent. */
 function setup(rev = 0) {
-  const calls: { value: string; rev: number; resolve: (r: Saved) => void; reject: (e: unknown) => void }[] = [];
+  const calls: { value: string; rev: number; keepalive: boolean; resolve: (r: Saved) => void; reject: (e: unknown) => void }[] = [];
   const states: AutosaveState<Saved>[] = [];
   const saved: Saved[] = [];
   const queue = new AutosaveQueue<string, Saved>({
     rev,
-    save: (value, r) => new Promise((resolve, reject) => calls.push({ value, rev: r, resolve, reject })),
+    save: (value, r, o) => new Promise((resolve, reject) => calls.push({ value, rev: r, keepalive: o.keepalive, resolve, reject })),
     onState: (s) => states.push(s),
     onSaved: (s) => saved.push(s),
     retryDelaysMs: [1_000, 3_000],
@@ -171,6 +171,51 @@ describe("AutosaveQueue", () => {
     await settle();
     await vi.advanceTimersByTimeAsync(800);
     expect(calls.map((c) => c.value)).toEqual(["x", "y"]);
+  });
+
+  it("leaving while a save is in flight still sends what was typed after it (no lost update)", async () => {
+    const { queue, calls } = setup(0);
+    queue.change("photosynthesis");
+    await vi.advanceTimersByTimeAsync(800); // save 1 in flight
+    queue.change("photosynthesis for class 7");
+    // The component unmounts (e.g. "← library"): its flush can't send while save 1 is in flight.
+    queue.flush({ keepalive: true });
+    queue.dispose();
+    expect(calls).toHaveLength(1);
+    calls[0].resolve({ rev: 1, text: "photosynthesis" });
+    await settle();
+    expect(calls.map((c) => [c.value, c.rev, c.keepalive])).toEqual([
+      ["photosynthesis", 0, false],
+      ["photosynthesis for class 7", 1, true],
+    ]);
+    calls[1].resolve({ rev: 2, text: "photosynthesis for class 7" });
+    await settle();
+    expect(queue.hasUnsaved()).toBe(false);
+  });
+
+  it("marks saves that must outlive the page as keepalive, and only those", async () => {
+    const { queue, calls } = setup(0);
+    queue.change("a");
+    await vi.advanceTimersByTimeAsync(800);
+    calls[0].resolve({ rev: 1, text: "a" });
+    await settle();
+    queue.change("ab");
+    queue.flush({ keepalive: true }); // tab hidden
+    calls[1].resolve({ rev: 2, text: "ab" });
+    await settle();
+    queue.change("abc");
+    await vi.advanceTimersByTimeAsync(800);
+    expect(calls.map((c) => c.keepalive)).toEqual([false, true, false]);
+  });
+
+  it("412 without the other copy stops with a reload message instead of a dead-end conflict", async () => {
+    const { queue, calls, last } = setup(0);
+    queue.change("a");
+    await vi.advanceTimersByTimeAsync(800);
+    calls[0].reject(new ApiClientError(412, "PRECONDITION_FAILED", "changed", []));
+    await settle();
+    expect(last()).toMatchObject({ status: "error", stopped: true });
+    expect(last().error).toMatch(/Reload/);
   });
 
   it("does nothing after dispose", async () => {

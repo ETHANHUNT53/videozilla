@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
@@ -327,6 +327,7 @@ function ProjectCard({
           {project.language === "hi" ? "हिंदी" : "english"} · ~{project.lengthPreset}s
         </div>
         <p className="absolute inset-x-5 top-12 line-clamp-3 text-balance text-xl font-semibold leading-tight">{title}</p>
+        <OpeningHint />
       </Link>
       <div className="flex items-center justify-between gap-2 px-4 py-3">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -417,6 +418,20 @@ function ProjectCard({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Opening…" over a card while its project page loads. That page waits for its data before sending anything (so an
+ * unknown id gets a real 404), so without this a click would show nothing until it arrives.
+ */
+function OpeningHint() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <span role="status" className="absolute inset-0 flex items-end justify-center bg-bg/40 pb-5 font-mono text-xs text-cyan">
+      opening…
+    </span>
   );
 }
 

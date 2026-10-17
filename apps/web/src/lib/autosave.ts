@@ -27,7 +27,8 @@ export interface AutosaveState<R> {
 export interface AutosaveOptions<T, R extends { rev: number }> {
   /** The revision the page loaded. */
   rev: number;
-  save: (value: T, rev: number) => Promise<R>;
+  /** `keepalive` is set for saves that must outlive the page (tab hidden, page closing, component gone). */
+  save: (value: T, rev: number, opts: { keepalive: boolean }) => Promise<R>;
   onState: (state: AutosaveState<R>) => void;
   onSaved?: (saved: R) => void;
   delayMs?: number;
@@ -47,6 +48,8 @@ export class AutosaveQueue<T, R extends { rev: number }> {
   private failures = 0;
   private state: AutosaveState<R> = { status: "idle" };
   private disposed = false;
+  /** The next send must outlive the page (set by a keepalive flush, used once). */
+  private keepalive = false;
 
   private handlers: Pick<AutosaveOptions<T, R>, "save" | "onSaved">;
 
@@ -70,9 +73,13 @@ export class AutosaveQueue<T, R extends { rev: number }> {
     this.schedule(this.opts.delayMs ?? AUTOSAVE_DELAY_MS);
   }
 
-  /** Save now (e.g. when the tab is being hidden), if there is anything to save. */
-  flush(): void {
+  /**
+   * Save now, if there is anything to save. `keepalive` when the page may go away before the answer (tab hidden, page
+   * closing, component unmounting), so the browser still delivers the request.
+   */
+  flush(opts: { keepalive?: boolean } = {}): void {
     this.clearTimer();
+    if (opts.keepalive) this.keepalive = true;
     if (this.disposed || this.inFlight || this.state.stopped || this.state.status === "conflict") return;
     if (this.seq === this.savedSeq || this.latest === undefined) return;
     void this.send(this.latest);
@@ -120,16 +127,23 @@ export class AutosaveQueue<T, R extends { rev: number }> {
 
   private async send(value: T): Promise<void> {
     const sentSeq = this.seq;
+    const keepalive = this.keepalive || this.disposed;
+    this.keepalive = false;
     this.inFlight = true;
     this.set({ status: "saving" });
     try {
-      const saved = await this.handlers.save(value, this.rev);
+      const saved = await this.handlers.save(value, this.rev, { keepalive });
       this.rev = saved.rev;
       this.savedSeq = sentSeq;
       this.failures = 0;
       this.inFlight = false;
       this.handlers.onSaved?.(saved);
-      if (this.disposed) return;
+      if (this.disposed) {
+        // The component went away while this save was in flight (its unmount flush couldn't send then): whatever was
+        // typed after this save started is sent now, once, so leaving the page never drops it.
+        if (this.seq !== this.savedSeq && this.latest !== undefined) void this.send(this.latest);
+        return;
+      }
       if (this.seq !== this.savedSeq) {
         // Typed more while this save was in flight: send that next (its own debounce has usually passed already).
         this.set({ status: "pending" });
@@ -149,7 +163,10 @@ export class AutosaveQueue<T, R extends { rev: number }> {
     const message = err instanceof ApiClientError ? err.message : "Couldn't save. Trying again…";
     if (status === 412 && err instanceof ApiClientError && err.code === "PRECONDITION_FAILED") {
       this.clearTimer();
-      this.set({ status: "conflict", conflict: err.details[0]?.current as R | undefined });
+      const conflict = err.details[0]?.current as R | undefined;
+      // Without the other copy there is nothing to choose between: stop and ask for a reload instead of a dead end.
+      if (conflict) this.set({ status: "conflict", conflict });
+      else this.set({ status: "error", error: "This was changed somewhere else. Reload to see the latest.", stopped: true });
     } else if (status === 409 || status === 404 || status === 401) {
       this.clearTimer();
       this.set({ status: "error", error: message, stopped: true });

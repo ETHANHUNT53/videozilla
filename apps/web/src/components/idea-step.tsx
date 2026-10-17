@@ -1,10 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiCall } from "@/lib/api-client";
 import type { AutosaveState } from "@/lib/autosave";
-import { clampChars } from "@/lib/project-client";
+import { clampChars, stripControlChars } from "@/lib/project-client";
 import { useAutosave } from "@/lib/use-autosave";
 import type { IdeaSessionResource } from "@/server/api/resources";
 import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
@@ -30,13 +29,12 @@ const count = (s: string) => Array.from(s).length;
  * `PUT /api/v1/projects/{id}/idea`. The AI actions arrive in F2.2–F2.4; F2.7 restyles this as Stitch screen 09.
  */
 export function IdeaStep({ projectId, initial, editable }: { projectId: string; initial: Idea; editable: boolean }) {
-  const router = useRouter();
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
   const [clipped, setClipped] = useState<keyof typeof LIMITS | null>(null);
   const { state, queue } = useAutosave<Draft, Idea>({
     rev: initial.rev,
-    save: async (value, rev) =>
-      (await apiCall<Idea>(`/api/v1/projects/${projectId}/idea`, { method: "PUT", body: value, headers: { "If-Match": `"${rev}"` } })).data,
+    save: async (value, rev, { keepalive }) =>
+      (await apiCall<Idea>(`/api/v1/projects/${projectId}/idea`, { method: "PUT", body: value, headers: { "If-Match": `"${rev}"` }, keepalive })).data,
   });
 
   const update = (next: Draft) => {
@@ -45,8 +43,11 @@ export function IdeaStep({ projectId, initial, editable }: { projectId: string; 
   };
 
   const setText = (field: keyof typeof LIMITS, raw: string) => {
-    const value = clampChars(raw, LIMITS[field]);
-    setClipped(value.length < raw.length ? field : null);
+    // Pasted notes often carry invisible control characters (page breaks from PDFs), which the API rejects; drop them
+    // here so the text can always be saved.
+    const clean = stripControlChars(raw);
+    const value = clampChars(clean, LIMITS[field]);
+    setClipped(value.length < clean.length ? field : null);
     update({ ...draft, [field]: value });
   };
 
@@ -150,7 +151,8 @@ export function IdeaStep({ projectId, initial, editable }: { projectId: string; 
       {state.status === "error" && state.stopped ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red/40 bg-red/5 px-4 py-3">
           <span className="text-sm">{state.error}</span>
-          <Button type="button" variant="secondary" onClick={() => router.refresh()}>
+          {/* A full reload: this editor and its stopped autosave are local state that a refresh would keep. */}
+          <Button type="button" variant="secondary" onClick={() => window.location.reload()}>
             Reload
           </Button>
         </div>

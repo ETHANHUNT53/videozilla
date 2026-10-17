@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "./api-client";
-import { clampChars, conflictCopy, currentNote, patchProject } from "./project-client";
+import { clampChars, conflictCopy, currentNote, patchProject, stripControlChars } from "./project-client";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -54,5 +54,13 @@ describe("clampChars", () => {
     expect(clampChars("short")).toBe("short");
     expect(Array.from(clampChars("🎬".repeat(90)))).toHaveLength(80);
     expect(clampChars("🎬".repeat(90))).toBe("🎬".repeat(80));
+  });
+});
+
+describe("stripControlChars", () => {
+  it("drops the invisible characters the API rejects (e.g. PDF page breaks) and keeps tabs, new lines and Hindi", () => {
+    expect(stripControlChars("Chapter 1\fPhotosynthesis\u0000\u0007\u007F")).toBe("Chapter 1Photosynthesis");
+    expect(stripControlChars("a\tb\nc\r\nd")).toBe("a\tb\nc\r\nd");
+    expect(stripControlChars("प्रकाश संश्लेषण 🌱")).toBe("प्रकाश संश्लेषण 🌱");
   });
 });

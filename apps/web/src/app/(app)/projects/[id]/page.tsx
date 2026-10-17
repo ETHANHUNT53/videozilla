@@ -11,7 +11,9 @@ export const metadata: Metadata = { title: "Video" };
 /**
  * The page waits for its two small reads before sending anything (no Suspense boundary), so an unknown or someone
  * else's id gets a real HTTP 404 and a signed-out visitor a real redirect: once a page starts streaming its status is
- * fixed at 200. `instant = false` tells Next.js this route may block on navigation.
+ * fixed at 200. That makes navigation to it block until the data is there; the Library cards show "opening…" meanwhile
+ * (useLinkStatus). `instant = false` only opts this route out of Next.js's development-time instant-navigation check,
+ * which would otherwise flag the blocking reads; it doesn't change how the page renders.
  */
 export const instant = false;
 

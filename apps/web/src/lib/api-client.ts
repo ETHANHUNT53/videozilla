@@ -15,13 +15,23 @@ export class ApiClientError extends Error {
   }
 }
 
-export async function apiCall<T>(path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<{ data: T; headers: Headers }> {
+/** Browsers refuse `keepalive` requests with bodies over 64 KB; stay under it with room for the headers. */
+const KEEPALIVE_MAX_BODY_BYTES = 60 * 1024;
+
+export async function apiCall<T>(
+  path: string,
+  init: { method?: string; body?: unknown; headers?: Record<string, string>; keepalive?: boolean } = {},
+): Promise<{ data: T; headers: Headers }> {
   let res: Response;
+  const requestBody = init.body !== undefined ? JSON.stringify(init.body) : undefined;
   try {
     res = await fetch(path, {
       method: init.method ?? "GET",
       headers: { Accept: "application/json", ...(init.body !== undefined && { "Content-Type": "application/json" }), ...init.headers },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      body: requestBody,
+      // keepalive: the request still goes out if the page is closed or hidden meanwhile (autosave). Larger bodies
+      // can't use it; they are sent normally.
+      ...(init.keepalive && new TextEncoder().encode(requestBody ?? "").length <= KEEPALIVE_MAX_BODY_BYTES && { keepalive: true }),
     });
   } catch {
     throw new ApiClientError(0, "NETWORK", "Couldn't reach Videozilla. Check your connection and try again.");

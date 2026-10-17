@@ -48,6 +48,14 @@ export function currentNote<T>(note: RevNote<T> | null, project: { rev: number; 
   return note.rev === project.rev ? note.value : null;
 }
 
+// Control characters other than tab and new line (\r is kept: the API turns \r\n into \n). Same set the API rejects.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+/** Drops the invisible control characters the API rejects (page breaks and the like from pasted PDFs or Word). */
+export function stripControlChars(value: string): string {
+  return value.replace(CONTROL, "");
+}
+
 /**
  * Keeps at most `max` characters, counted like the API (an emoji is one character). Use it in a text input's
  * onChange instead of `maxLength`, which counts UTF-16 units and stops emoji titles at half the length.
