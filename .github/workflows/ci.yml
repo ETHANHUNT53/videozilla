@@ -18,22 +18,23 @@ concurrency:
 jobs:
   check:
     name: Typecheck, lint, test
-    runs-on: ubuntu-latest
+    # Pinned (not ubuntu-latest) so an OS upgrade can't break the in-memory MongoDB used by the tests without notice.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       # mongodb-memory-server downloads a MongoDB binary (~100 MB) for the database tests; keep it between runs.
       MONGOMS_DOWNLOAD_DIR: ${{ github.workspace }}/.cache/mongodb-binaries
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
       - name: Cache MongoDB binary
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache/mongodb-binaries
           key: mongodb-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -49,4 +50,15 @@ jobs:
         run: npm run lint
 
       - name: Unit tests
-        run: npm test
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=.cache/vitest.json
+
+      # Step logs need a GitHub sign-in; this puts the test counts on the public run page as well.
+      - name: Test summary
+        if: always() && hashFiles('.cache/vitest.json') != ''
+        run: |
+          node -e '
+            const r = require("./.cache/vitest.json");
+            const line = `${r.numPassedTests} passed, ${r.numFailedTests} failed, ${r.numPendingTests} skipped (${r.testResults.length} files)`;
+            console.log(`::notice title=Unit tests::${line}`);
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Unit tests\n${line}\n`);
+          '
