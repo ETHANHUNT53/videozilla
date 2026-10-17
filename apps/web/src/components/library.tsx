@@ -67,14 +67,16 @@ interface ProjectPage {
 }
 
 /**
- * A library list that starts with the server-rendered first page and loads older pages from `GET /api/v1/projects`
- * with the cursor it was given (API Design §6.1). Remount it (new `key`) when the filter or search changes.
+ * A library list: the server-rendered first page, then older pages loaded from `GET /api/v1/projects` with the cursor
+ * (API Design §6.1). The first page always comes from the latest server render, so when an action revalidates the
+ * Library the list shows the fresh data; pages loaded here are kept below it. Remount it (new `key`) when the filter
+ * or search changes.
  */
 export function LibraryFeed({
   initial,
   filter,
   q,
-  hideIds = [],
+  excludeAttention = false,
   renderedAt,
   timeZone,
   empty = false,
@@ -83,43 +85,58 @@ export function LibraryFeed({
   initial: ProjectPage;
   filter: string;
   q: string;
-  /** Projects already shown elsewhere on the page (the "needs attention" section). */
-  hideIds?: string[];
+  /** Leave out needs-attention projects (the page shows them in their own section); must match the first page. */
+  excludeAttention?: boolean;
   renderedAt: number;
   timeZone: string;
   empty?: boolean;
   searching?: boolean;
 }) {
-  const [items, setItems] = useState(initial.items);
-  const [cursor, setCursor] = useState(initial.nextCursor);
+  const router = useRouter();
+  // Older pages loaded in the browser, and the cursor after the last of them (null: nothing loaded yet).
+  const [older, setOlder] = useState<Project[]>([]);
+  const [olderCursor, setOlderCursor] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guards against a second click before React has re-rendered with `loading`.
+  const inFlight = useRef(false);
+
+  const cursor = olderCursor === undefined ? initial.nextCursor : olderCursor;
+  const firstIds = new Set(initial.items.map((p) => p.id));
+  const items = [...initial.items, ...older.filter((p) => !firstIds.has(p.id))];
 
   const loadMore = async () => {
-    if (!cursor || loading) return;
+    if (!cursor || inFlight.current) return;
+    inFlight.current = true;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ cursor });
       if (filter !== "all") params.set("filter", filter);
       if (q) params.set("q", q);
+      if (excludeAttention) params.set("exclude", "attention");
       const res = await fetch(`/api/v1/projects?${params}`, { headers: { Accept: "application/json" } });
+      if (res.status === 401) {
+        // Signed out meanwhile (e.g. a password reset elsewhere): sign in again and come back here.
+        router.push(`/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        return;
+      }
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error?.message ?? "Couldn't load more videos. Please try again.");
       const page = body as ProjectPage;
-      setItems((prev) => [...prev, ...page.items.filter((n) => !prev.some((p) => p.id === n.id))]);
-      setCursor(page.nextCursor);
+      setOlder((prev) => [...prev, ...page.items.filter((n) => !prev.some((p) => p.id === n.id))]);
+      setOlderCursor(page.nextCursor);
     } catch (err) {
       setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't load more videos. Check your connection and try again.");
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   };
 
-  const hidden = new Set(hideIds);
   return (
     <>
-      <LibraryGrid projects={items.filter((p) => !hidden.has(p.id))} renderedAt={renderedAt} timeZone={timeZone} empty={empty} searching={searching} />
+      <LibraryGrid projects={items} renderedAt={renderedAt} timeZone={timeZone} empty={empty} searching={searching} />
       {cursor ? (
         <button onClick={loadMore} disabled={loading} className="self-center font-mono text-sm text-cyan hover:underline disabled:opacity-60">
           {loading ? "Loading…" : "Load older videos →"}

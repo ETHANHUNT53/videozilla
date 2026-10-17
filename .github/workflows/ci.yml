@@ -61,7 +61,8 @@ jobs:
         run: npm run build -w @videozilla/web
         env:
           BETTER_AUTH_SECRET: ci-build-only-placeholder-not-a-real-secret-0123456789
-          MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=ci-build-placeholder
+          # Fails within a second if a build ever does query the database, instead of waiting 30 s to time out.
+          MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=ci-build-placeholder&serverSelectionTimeoutMS=1000
 
       # Step logs need a GitHub sign-in; this puts the test counts on the public run page as well.
       - name: Test summary

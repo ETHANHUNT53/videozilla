@@ -6,7 +6,7 @@ import { Eyebrow, Spinner } from "@/components/ui";
 import { requireUser } from "@/server/dal";
 import type { ProjectFilter } from "@/server/db/types";
 import { getOrCreateProfile } from "@/server/repos/profiles";
-import { listProjects } from "@/server/repos/projects";
+import { listProjects, normalizeSearch } from "@/server/repos/projects";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -40,13 +40,16 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
   const user = await requireUser();
   const params = await searchParams;
   const filter = typeof params.filter === "string" && FILTERS.has(params.filter) ? (params.filter as ProjectFilter) : "all";
-  const q = typeof params.q === "string" ? params.q.trim().slice(0, 80) : "";
+  // Cleaned exactly like the API cleans it, so the first page's cursor also works for "Load older videos".
+  const q = normalizeSearch(typeof params.q === "string" ? params.q : undefined) ?? "";
   const showAttention = filter === "all" && !q;
 
   // The first page is read here through the same service as GET /api/v1/projects; "Load older videos" fetches the
   // next pages from that endpoint with the returned cursor.
   const [page, attention, renderedAt, profile] = await Promise.all([
-    listProjects(user.id, { filter, q: q || undefined }),
+    // With the attention section shown, the main list leaves those projects out in the query itself, so they never
+    // appear twice and every page of the main list is a full page.
+    listProjects(user.id, { filter, q: q || undefined, excludeAttention: showAttention }),
     showAttention ? listProjects(user.id, { filter: "attention" }) : Promise.resolve(null),
     readTime(),
     getOrCreateProfile(user.id, user.name), // its time zone dates older cards the same on the server and in the browser
@@ -66,7 +69,7 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
         initial={page}
         filter={filter}
         q={q}
-        hideIds={attention?.items.map((a) => a.id)}
+        excludeAttention={showAttention}
         renderedAt={renderedAt}
         timeZone={profile.timezone}
         empty={showAttention && !attention?.items.length}

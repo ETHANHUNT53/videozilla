@@ -37,7 +37,7 @@ vi.mock("../api/session", () => ({ sessionUser }));
 
 import { DELETE, GET, POST } from "@/app/api/v1/projects/route";
 import { ApiError } from "../api/errors";
-import { createProject, duplicateProject, listProjects } from "./projects";
+import { createProject, duplicateProject, listProjects, normalizeSearch } from "./projects";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const CACHED_BINARY_DIR = path.join(ROOT, "apps/web/node_modules/.cache/mongodb-memory-server");
@@ -178,6 +178,34 @@ describe("listProjects", () => {
     await expect(listProjects(ME, { limit: 2, cursor: nextCursor!, q: "video" })).rejects.toMatchObject({ code: "INVALID_CURSOR" });
   });
 
+  it("can leave out the needs-attention projects, with full pages and its own cursors", async () => {
+    const docs = await seed([
+      ...Array.from({ length: 5 }, (_, n) => project(n, { status: "needs_attention" })),
+      ...Array.from({ length: 5 }, (_, n) => project(n + 5)),
+    ]);
+    const healthy = docs.filter((d) => d.status !== "needs_attention");
+    const first = await listProjects(ME, { limit: 3, excludeAttention: true });
+    expect(first.items).toHaveLength(3);
+    expect(await all({ limit: 3, excludeAttention: true })).toEqual(ordered(healthy));
+    // A cursor from the full list doesn't work for the reduced one, and the other way round.
+    await expect(listProjects(ME, { limit: 3, cursor: first.nextCursor! })).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+  });
+
+  it("cleans the search one way, so a cursor made from the page's raw search works for the API's cleaned one", async () => {
+    await seed([project(1, { title: "संश्लेषण 1" }), project(2, { title: "संश्लेषण 2" }), project(3, { title: "संश्लेषण 3" })]);
+    const decomposed = " संश्लेषण ".normalize("NFD");
+    const first = await listProjects(ME, { limit: 1, q: decomposed });
+    expect(first.items).toHaveLength(1);
+    const cleaned = normalizeSearch(decomposed)!;
+    expect(cleaned).toBe("संश्लेषण".normalize("NFC"));
+    expect((await listProjects(ME, { limit: 1, q: cleaned, cursor: first.nextCursor! })).items).toHaveLength(1);
+  });
+
+  it("cuts a long search to 80 characters without splitting an emoji", () => {
+    expect(Array.from(normalizeSearch(`${"a".repeat(79)}🎬🎬`)!)).toHaveLength(80);
+    expect(normalizeSearch("   ")).toBeUndefined();
+  });
+
   it("returns the ProjectSummary shape of API Design §12", async () => {
     await seed([project(1, { rev: 3 })]);
     const [item] = (await listProjects(ME)).items;
@@ -207,6 +235,18 @@ describe("GET /api/v1/projects", () => {
       expect(res.status, q).toBe(400);
       expect((await res.json()).error.code).toBe("VALIDATION_FAILED");
     }
+  });
+
+  it("counts the 80-character search limit in characters, so emoji searches the page allows are accepted", async () => {
+    const q = encodeURIComponent("🎬".repeat(80));
+    expect((await call(`?q=${q}`)).status).toBe(200);
+    expect((await call(`?q=${encodeURIComponent("🎬".repeat(81))}`)).status).toBe(400);
+  });
+
+  it("supports exclude=attention for the Library's main list", async () => {
+    await seed([project(1, { status: "publish_failed" }), project(2)]);
+    const body = await (await call("?exclude=attention")).json();
+    expect(body.items.map((p: { status: string }) => p.status)).toEqual(["idea_draft"]);
   });
 
   it("answers a cursor from another filter with 400 INVALID_CURSOR", async () => {

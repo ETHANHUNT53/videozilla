@@ -31,10 +31,29 @@ export function toSummary(p: ProjectDoc): ProjectSummary {
   };
 }
 
+/** Longest title search, in characters (code points, like the titles themselves). */
+export const SEARCH_MAX_CHARS = 80;
+
+// Control characters other than tab / new line; the API rejects them, so a search must never contain them.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+/**
+ * The one way a title search is cleaned: control characters dropped, NFC, trimmed, at most 80 characters. The
+ * Library page and the API both go through it, and the cursor is bound to its result, so a cursor from the
+ * page's first render always works for "Load older videos". Empty → no search.
+ */
+export function normalizeSearch(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const clean = truncateChars(raw.replace(CONTROL, "").replace(/\r\n?/g, "\n").normalize("NFC").trim(), SEARCH_MAX_CHARS).trim();
+  return clean || undefined;
+}
+
 export interface ListQuery {
   filter?: ProjectFilter;
-  /** Case-insensitive "title contains", 1–80 characters. */
+  /** Case-insensitive "title contains", up to 80 characters (cleaned with normalizeSearch). */
   q?: string;
+  /** With filter "all": leave out the needs-attention projects (the Library shows them in their own section). */
+  excludeAttention?: boolean;
   limit?: number;
   /** `nextCursor` from the previous page, made with the same filter and q. */
   cursor?: string;
@@ -48,12 +67,16 @@ export interface ListQuery {
 export async function listProjects(userId: string, query: ListQuery = {}): Promise<Page<ProjectSummary>> {
   await ensureMigrated();
   const filterName = query.filter ?? "all";
-  const q = query.q?.trim() || undefined;
+  const q = normalizeSearch(query.q);
+  const excludeAttention = filterName === "all" && Boolean(query.excludeAttention);
   const limit = query.limit ?? DEFAULT_LIMIT;
-  const scope = { filter: filterName, q: q ?? null };
+  const scope = { filter: filterName, q: q ?? null, excludeAttention };
 
   const filter: Filter<ProjectDoc> = { userId, deletedAt: null };
   if (filterName !== "all") filter.status = { $in: [...STATUS_GROUPS[filterName]] };
+  if (excludeAttention) filter.status = { $nin: [...STATUS_GROUPS.attention] };
+  // Unanchored, case-insensitive: can't use an index, so it scans this user's projects (fine at library sizes; the
+  // toolbar waits 300 ms after typing). A text / Atlas Search index replaces it if libraries grow large.
   if (q) filter.title = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
   if (query.cursor) Object.assign(filter, afterCursorDesc("updatedAt", decodeCursor(query.cursor, scope)));
 
