@@ -9,8 +9,21 @@ vi.mock("../storage/r2", () => ({ deletePrefix, userPrefix: (id: string) => `use
 
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { functions } from "../jobs/functions";
-import { requestAccountDataDeletion } from "../jobs/account-deletion";
-import { cancelUserActivity, deleteUserCollection, deleteUserData, findOrphanedUserIds, USER_DATA_COLLECTIONS, userExists } from "./account";
+import { accountDeletionSteps, purgeOrphanedUserData, requestAccountDataDeletion } from "../jobs/account-deletion";
+import { cancelUserActivity, deleteUserCollection, findOrphanedUserIds, ORPHAN_GRACE_MS, USER_DATA_COLLECTIONS, userExists } from "./account";
+
+/** Runs every deletion step in order, as the job does (inline). */
+const deleteUserData = async (userId: string) => {
+  const results: Record<string, unknown> = {};
+  for (const s of accountDeletionSteps(userId)) results[s.id] = await s.run();
+  return results;
+};
+const r2On = () => {
+  vi.stubEnv("R2_ACCOUNT_ID", "a");
+  vi.stubEnv("R2_ACCESS_KEY_ID", "b");
+  vi.stubEnv("R2_SECRET_ACCESS_KEY", "c");
+  vi.stubEnv("R2_BUCKET", "d");
+};
 
 const GONE = new ObjectId().toHexString(); // a user whose account was deleted
 const ACTIVE = new ObjectId().toHexString(); // a user who still exists
@@ -19,7 +32,7 @@ const now = new Date();
 beforeAll(startTestMongo, 120_000);
 afterAll(stopTestMongo);
 beforeEach(async () => {
-  await clearCollections([...USER_DATA_COLLECTIONS, "user"]);
+  await clearCollections([...USER_DATA_COLLECTIONS, "user", "verification"]);
   await testMongo.db.collection("user").insertOne({ _id: new ObjectId(ACTIVE), email: "active@example.com", name: "Active", emailVerified: true });
   send.mockReset();
   deletePrefix.mockClear();
@@ -53,9 +66,8 @@ describe("deleteUserData", () => {
   it("deletes every user-owned document of a deleted account, and nobody else's", async () => {
     await seedEverything(GONE);
     await seedEverything(ACTIVE);
-    const counts = await deleteUserData(GONE);
-    expect(Object.keys(counts)).toEqual([...USER_DATA_COLLECTIONS]);
-    expect(counts).toMatchObject({ projects: 2, profiles: 1, pipeline_runs: 2 });
+    const results = await deleteUserData(GONE);
+    expect(results).toMatchObject({ "delete-projects": 2, "delete-profiles": 1, "delete-pipeline_runs": 2 });
     expect(await countFor(GONE)).toBe(0);
     expect(await countFor(ACTIVE)).toBe(SEEDED);
   });
@@ -78,9 +90,34 @@ describe("deleteUserData", () => {
     );
     expect(USER_DATA_COLLECTIONS.at(-1)).toBe("profiles"); // the sweep finds leftovers through profiles, so it goes last
   });
+
+  it("cancels queued work first and deletes the files before the profile, so the sweep can still retry them", () => {
+    r2On();
+    const ids = accountDeletionSteps(GONE).map((s) => s.id);
+    expect(ids[0]).toBe("cancel-activity");
+    expect(ids.at(-1)).toBe("delete-profiles");
+    expect(ids.indexOf("delete-files")).toBeGreaterThan(ids.indexOf("delete-projects"));
+    expect(ids.indexOf("delete-files")).toBeLessThan(ids.indexOf("delete-profiles"));
+    expect(ids).toContain("delete-auth-tokens");
+  });
+
+  it("also deletes Better Auth's leftover reset / delete-account tokens of the user", async () => {
+    await testMongo.db.collection("verification").insertMany([
+      { identifier: "reset-password:abc", value: GONE, expiresAt: now },
+      { identifier: "delete-account-def", value: GONE, expiresAt: now },
+      { identifier: "reset-password:xyz", value: ACTIVE, expiresAt: now },
+    ]);
+    await deleteUserData(GONE);
+    expect(await testMongo.db.collection("verification").countDocuments({ value: GONE })).toBe(0);
+    expect(await testMongo.db.collection("verification").countDocuments({ value: ACTIVE })).toBe(1);
+  });
 });
 
 describe("cancelUserActivity", () => {
+  it("refuses while the account still exists (a failed account deletion must not cancel scheduled posts)", async () => {
+    await expect(cancelUserActivity(ACTIVE)).rejects.toThrow("the account still exists");
+  });
+
   it("cancels active runs, scheduled posts and queued renders, and leaves finished ones", async () => {
     const insert = (name: string, docs: object[]) => testMongo.db.collection(name).insertMany(docs, { bypassDocumentValidation: true });
     const k = () => ({ idempotencyKey: new ObjectId().toHexString(), renderId: new ObjectId(), projectId: new ObjectId() });
@@ -107,14 +144,32 @@ describe("cancelUserActivity", () => {
 });
 
 describe("findOrphanedUserIds", () => {
-  it("finds users with data but no account, through profiles and projects", async () => {
-    const onlyProjects = new ObjectId().toHexString();
+  const later = () => new Date(Date.now() + ORPHAN_GRACE_MS + 60_000);
+
+  it("finds users whose profile outlived their account by more than the grace period", async () => {
     await seedEverything(GONE, 1);
     await seedEverything(ACTIVE, 1);
-    await testMongo.db.collection("projects").insertOne({ userId: onlyProjects }, { bypassDocumentValidation: true });
-    expect((await findOrphanedUserIds()).sort()).toEqual([GONE, onlyProjects].sort());
+    expect(await findOrphanedUserIds(100, later())).toEqual([GONE]);
     expect(await userExists(ACTIVE)).toBe(true);
     expect(await userExists("not-an-id")).toBe(false);
+  });
+
+  it("never takes a brand-new profile for an orphan (its sign-up may not have committed yet)", async () => {
+    await seedEverything(GONE, 1); // profile created just now
+    expect(await findOrphanedUserIds()).toEqual([]);
+  });
+});
+
+describe("purgeOrphanedUserData", () => {
+  it("restarts the resumable deletion job for each orphan, with a new event id each day", async () => {
+    await testMongo.db.collection("profiles").insertOne({ userId: GONE, createdAt: new Date(Date.now() - 2 * ORPHAN_GRACE_MS) }, { bypassDocumentValidation: true });
+    const sendEvent = vi.fn();
+    const step = { run: (_id: string, fn: () => unknown) => fn(), sendEvent };
+    const job = purgeOrphanedUserData as unknown as { fn: (ctx: { step: typeof step }) => Promise<{ restarted: number }> };
+    expect(await job.fn({ step })).toEqual({ restarted: 1 });
+    const [, events] = sendEvent.mock.calls[0];
+    expect(events).toEqual([{ id: `account-deleted-${GONE}-${new Date().toISOString().slice(0, 10)}`, name: "account/deleted", data: { userId: GONE } }]);
+    expect(await testMongo.db.collection("profiles").countDocuments({ userId: GONE })).toBe(1); // the job deletes, not the sweep
   });
 });
 
@@ -123,18 +178,32 @@ describe("requestAccountDataDeletion", () => {
     await seedEverything(GONE);
     send.mockResolvedValue({ ids: ["e1"] });
     expect(await requestAccountDataDeletion(GONE)).toBe("queued");
-    expect(send).toHaveBeenCalledWith({ id: `account-deleted-${GONE}`, name: "account/deleted", data: { userId: GONE } });
+    expect(send).toHaveBeenCalledWith({ id: `account-deleted-${GONE}-request`, name: "account/deleted", data: { userId: GONE } });
     expect(await countFor(GONE)).toBe(SEEDED);
   });
 
-  it("deletes right away (data and files) when the job system can't be reached", async () => {
+  it("cancels the user's queued work right away, before queueing", async () => {
+    await testMongo.db.collection("pipeline_runs").insertOne({ userId: GONE, status: "running", active: true, idempotencyKey: "k1" }, { bypassDocumentValidation: true });
+    send.mockResolvedValue({ ids: ["e1"] });
+    await requestAccountDataDeletion(GONE);
+    expect(await testMongo.db.collection("pipeline_runs").countDocuments({ userId: GONE, active: true })).toBe(0);
+  });
+
+  it("in production, leaves the data to the daily sweep when the job system can't be reached (no big inline work)", async () => {
+    await seedEverything(GONE);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("NODE_ENV", "production");
+    send.mockRejectedValue(new Error("down"));
+    expect(await requestAccountDataDeletion(GONE)).toBe("deferred");
+    expect(await testMongo.db.collection("profiles").countDocuments({ userId: GONE })).toBe(1);
+  });
+
+  it("in development, deletes right away (data and files) when the job system can't be reached", async () => {
     await seedEverything(GONE);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     send.mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:8288"));
-    vi.stubEnv("R2_ACCOUNT_ID", "a");
-    vi.stubEnv("R2_ACCESS_KEY_ID", "b");
-    vi.stubEnv("R2_SECRET_ACCESS_KEY", "c");
-    vi.stubEnv("R2_BUCKET", "d");
+    r2On();
     expect(await requestAccountDataDeletion(GONE)).toBe("deleted");
     expect(await countFor(GONE)).toBe(0);
     expect(deletePrefix).toHaveBeenCalledWith(`users/${GONE}/`);

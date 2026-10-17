@@ -6,7 +6,6 @@ import { db, mongoClient } from "./db/mongo";
 import { actionEmail, sendEmail } from "./email";
 import { env } from "./env";
 import { requestAccountDataDeletion } from "./jobs/account-deletion";
-import { cancelUserActivity } from "./repos/account";
 import { getOrCreateProfile } from "./repos/profiles";
 
 /**
@@ -52,13 +51,10 @@ export const auth = betterAuth({
     cookieCache: { enabled: false },
   },
   user: {
-    // Account deletion (DB Design §6.12): stop the user's queued work first (if that fails, nothing is deleted and
-    // they can retry); once Better Auth has removed the sign-in records, a background job deletes all their data.
+    // Account deletion (DB Design §6.12): only once Better Auth has removed the sign-in records are the user's queued
+    // work cancelled and their data deleted (a background job), so a deletion that fails changes nothing.
     deleteUser: {
       enabled: true,
-      beforeDelete: async (user) => {
-        await cancelUserActivity(user.id);
-      },
       afterDelete: async (user) => {
         await requestAccountDataDeletion(user.id);
       },
