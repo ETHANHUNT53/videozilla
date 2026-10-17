@@ -26,7 +26,7 @@ Without `RESEND_API_KEY`, verification and password-reset emails are printed in 
 | REST API foundation (`/api/v1`): `apiRoute()` adds request ids, the Origin check, session / verified-email checks, Zod input validation and the standard error format to every endpoint; cursor pagination helpers. First endpoint: `GET /api/v1/me` | `src/server/api/*`, `src/app/api/v1/*` |
 | Data access layer: every page and action re-checks the session | `src/server/dal.ts`, `src/app/(app)/actions.ts` |
 | User-scoped repositories (every query filtered by `userId`) | `src/server/repos/*` |
-| Library: create, rename, duplicate, delete with 10 s undo, filters, search, pagination, "needs attention" | `src/app/(app)/library`, `src/components/library.tsx` |
+| Library: create, rename, duplicate, delete with 10 s undo, filters, search, "needs attention"; the list comes from `GET /api/v1/projects` (cursor pages, "Load older videos") | `src/app/(app)/library`, `src/components/library.tsx`, `src/app/api/v1/projects`, `src/server/repos/projects.ts` |
 | Project page with Idea → Storyboard → Video stepper (Idea Studio arrives in M2) | `src/app/(app)/projects/[id]` |
 | Settings: defaults (language, length, voice, time zone, notifications) | `src/app/(app)/settings`, `src/components/settings.tsx` |
 | Database: shared client, collections, validators and indexes come from [`packages/db`](../../packages/db) migrations (never created at request time) | `src/server/db/*` |

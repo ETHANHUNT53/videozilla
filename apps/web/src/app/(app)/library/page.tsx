@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { createProjectAction } from "../actions";
-import { LibraryGrid, LibraryToolbar } from "@/components/library";
+import { LibraryFeed, LibraryToolbar } from "@/components/library";
 import { Button, Eyebrow, Spinner } from "@/components/ui";
 import { requireUser } from "@/server/dal";
-import type { StatusGroup } from "@/server/db/types";
+import type { ProjectFilter } from "@/server/db/types";
 import { getOrCreateProfile } from "@/server/repos/profiles";
 import { listProjects } from "@/server/repos/projects";
 
 export const metadata: Metadata = { title: "Library" };
 
-const GROUPS = new Set(["all", "drafts", "ready", "scheduled", "posted"]);
+/** The filter tabs on the page ("attention" has its own section instead of a tab). */
+const FILTERS = new Set<string>(["all", "drafts", "ready", "scheduled", "posted"]);
 
 export default function LibraryPage({ searchParams }: PageProps<"/library">) {
   return (
@@ -42,32 +43,39 @@ async function readTime() {
 async function LibraryContent({ searchParams }: { searchParams: PageProps<"/library">["searchParams"] }) {
   const user = await requireUser();
   const params = await searchParams;
-  const group = typeof params.filter === "string" && GROUPS.has(params.filter) ? (params.filter as StatusGroup | "all") : "all";
-  const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
-  const before = typeof params.before === "string" ? params.before : undefined;
+  const filter = typeof params.filter === "string" && FILTERS.has(params.filter) ? (params.filter as ProjectFilter) : "all";
+  const q = typeof params.q === "string" ? params.q.trim().slice(0, 80) : "";
+  const showAttention = filter === "all" && !q;
 
-  const [{ items, nextCursor }, attention, renderedAt, profile] = await Promise.all([
-    listProjects(user.id, { group, q, before }),
-    group === "all" && !q && !before ? listProjects(user.id, { group: "attention" }) : Promise.resolve({ items: [], nextCursor: null }),
+  // The first page is read here through the same service as GET /api/v1/projects; "Load older videos" fetches the
+  // next pages from that endpoint with the returned cursor.
+  const [page, attention, renderedAt, profile] = await Promise.all([
+    listProjects(user.id, { filter, q: q || undefined }),
+    showAttention ? listProjects(user.id, { filter: "attention" }) : Promise.resolve(null),
     readTime(),
     getOrCreateProfile(user.id, user.name), // its time zone dates older cards the same on the server and in the browser
   ]);
 
   return (
     <div className="flex flex-col gap-6">
-      <LibraryToolbar filter={group} q={q} />
-      {attention.items.length ? (
+      <LibraryToolbar filter={filter} q={q} />
+      {attention?.items.length ? (
         <section className="flex flex-col gap-3">
           <Eyebrow accent="text-red">needs attention</Eyebrow>
-          <LibraryGrid projects={attention.items} renderedAt={renderedAt} timeZone={profile.timezone} />
+          <LibraryFeed key="attention" initial={attention} filter="attention" q="" renderedAt={renderedAt} timeZone={profile.timezone} />
         </section>
       ) : null}
-      <LibraryGrid renderedAt={renderedAt} timeZone={profile.timezone} projects={items.filter((p) => !attention.items.some((a) => a.id === p.id))} empty={!q && group === "all" && !before} searching={Boolean(q) || group !== "all"} />
-      {nextCursor ? (
-        <a href={`/library?${new URLSearchParams({ ...(group !== "all" ? { filter: group } : {}), ...(q ? { q } : {}), before: nextCursor })}`} className="self-center font-mono text-sm text-cyan hover:underline">
-          Load older videos →
-        </a>
-      ) : null}
+      <LibraryFeed
+        key={`${filter}|${q}`}
+        initial={page}
+        filter={filter}
+        q={q}
+        hideIds={attention?.items.map((a) => a.id)}
+        renderedAt={renderedAt}
+        timeZone={profile.timezone}
+        empty={showAttention && !attention?.items.length}
+        searching={!showAttention}
+      />
     </div>
   );
 }

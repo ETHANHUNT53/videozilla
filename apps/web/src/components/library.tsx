@@ -60,6 +60,80 @@ export function LibraryToolbar({ filter, q }: { filter: string; q: string }) {
   );
 }
 
+interface ProjectPage {
+  items: Project[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * A library list that starts with the server-rendered first page and loads older pages from `GET /api/v1/projects`
+ * with the cursor it was given (API Design §6.1). Remount it (new `key`) when the filter or search changes.
+ */
+export function LibraryFeed({
+  initial,
+  filter,
+  q,
+  hideIds = [],
+  renderedAt,
+  timeZone,
+  empty = false,
+  searching = false,
+}: {
+  initial: ProjectPage;
+  filter: string;
+  q: string;
+  /** Projects already shown elsewhere on the page (the "needs attention" section). */
+  hideIds?: string[];
+  renderedAt: number;
+  timeZone: string;
+  empty?: boolean;
+  searching?: boolean;
+}) {
+  const [items, setItems] = useState(initial.items);
+  const [cursor, setCursor] = useState(initial.nextCursor);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadMore = async () => {
+    if (!cursor || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ cursor });
+      if (filter !== "all") params.set("filter", filter);
+      if (q) params.set("q", q);
+      const res = await fetch(`/api/v1/projects?${params}`, { headers: { Accept: "application/json" } });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error?.message ?? "Couldn't load more videos. Please try again.");
+      const page = body as ProjectPage;
+      setItems((prev) => [...prev, ...page.items.filter((n) => !prev.some((p) => p.id === n.id))]);
+      setCursor(page.nextCursor);
+    } catch (err) {
+      setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't load more videos. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hidden = new Set(hideIds);
+  return (
+    <>
+      <LibraryGrid projects={items.filter((p) => !hidden.has(p.id))} renderedAt={renderedAt} timeZone={timeZone} empty={empty} searching={searching} />
+      {cursor ? (
+        <button onClick={loadMore} disabled={loading} className="self-center font-mono text-sm text-cyan hover:underline disabled:opacity-60">
+          {loading ? "Loading…" : "Load older videos →"}
+        </button>
+      ) : null}
+      {error ? (
+        <p role="alert" className="self-center text-sm text-red">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function LibraryGrid({
   projects,
   renderedAt,

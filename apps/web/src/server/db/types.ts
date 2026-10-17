@@ -29,6 +29,9 @@ export interface ProjectDoc {
   status: ProjectStatus;
   currentStoryboardVersion: number | null;
   failedStep: string | null;
+  /** DB Design §4.3; written by later features (export, publishing), so older drafts may not have them yet. */
+  exportOutdated?: boolean;
+  postedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -57,13 +60,22 @@ export interface ProfileDoc {
 }
 
 /** Public, serialisable shape handed to client components. */
+/** A library list item: the `ProjectSummary` resource of API Design §12. */
 export interface ProjectSummary {
   id: string;
   title: string;
   language: Language;
   lengthPreset: 60 | 90;
   status: ProjectStatus;
-  updatedAt: string;
+  /** Signed cover image URL once a video is exported (renders arrive in M4). */
+  coverUrl: string | null;
+  exportOutdated: boolean;
+  postedAt: string | null;
   createdAt: string;
-  deleted: boolean;
+  updatedAt: string;
+  rev: number;
 }
+
+/** `GET /api/v1/projects?filter=` values (API Design §13.2). */
+export const PROJECT_FILTERS = ["all", "drafts", "ready", "scheduled", "posted", "attention"] as const;
+export type ProjectFilter = (typeof PROJECT_FILTERS)[number];

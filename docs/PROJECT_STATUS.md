@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-17 |
 | **Current phase** | Feature build — F1 accounts & library: moving the M1 draft onto the API and DB designs (F1.4 Google sign-in waits for your Google keys) |
-| **Next feature** | **F1.6 — Library on the API**: `GET /api/v1/projects` with filters, search and cursor pagination (API §13.2) |
+| **Next feature** | **F1.7 — Create video on the API**: `POST /api/v1/projects`, creating the project and its idea session in one transaction (API §13.2, DB §6.1) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -78,7 +78,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F1.3 | Forgot / reset password | ✅ | Checked: reset link → new password works, old password fails, other sessions revoked |
 | F1.4 | Google sign-in + account linking | 🔵 | Waiting for your Google OAuth client ([guide §C](setup/AUTH_EMAIL_SETUP.md)) |
 | F1.5 | Profile created automatically with India-first defaults | ✅ | Now writes `defaultAudience` and `role` (DB Design §4.2), enforced by the database validator; existing profiles backfilled by migration 002 (F0.3) |
-| F1.6 | Library list: filters, search, pagination, needs-attention section | 🟡 | Uses server actions; must move to `GET /api/v1/projects` with cursor `{u, i}` (API §13.2) |
+| F1.6 | Library list: filters, search, pagination, needs-attention section | ✅ | Done 2026-10-17. `GET /api/v1/projects` (filter, q, limit, cursor) and the Library page share one list service; cursor pages sorted by last change then id (no gaps or repeats); "Load older videos" loads from the API. 14 integration tests on a throwaway MongoDB; checked in the browser with 28 videos |
 | F1.7 | Create video (new draft project) | 🟡 | Must also create the idea session in one transaction (DB §6.1) |
 | F1.8 | Rename / duplicate / delete with 10-second undo / restore | 🟡 | Works; needs `rev` / If-Match and the delete cascade (DB §6.6) |
 | F1.9 | Project page shell with Idea → Storyboard → Video stepper | 🟡 | Placeholder content until F2 |
@@ -221,3 +221,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | **F0.4 done** — `/api/v1` foundation: one `apiRoute()` wrapper gives every endpoint a request id, the Origin (CSRF) check, session + verified-email checks, JSON/size/Zod input validation with trimming and NFC, the standard error body (full §7.2 catalogue) and `private, no-store` caching; cursor pagination helpers (filter-bound cursors). First endpoint `GET /api/v1/me`. Web server code is now covered by `npm test`. Decided: connect MongoDB Atlas at F10.4 (staging), not before — local dev already runs the same replica set + migrations. |
 | 2026-10-17 | F0.4 + time-ago review fixes: `/api/v1` bodies are read as a stream and cut off at the size limit (no Content-Length needed); a handler that returns nothing answers `204`; returned Responses are copied so the wrapper can always add its headers; the Origin check also accepts the origin the request was sent to (127.0.0.1, preview deploys); a failing session lookup is a 500 even on public routes; cursor filters hash the same in any key order; unsupported methods get the JSON `405` (`methodNotAllowed`); pages and the API share one session lookup (`readSession`). Library cards older than 30 days are dated in the profile time zone, so server and browser match. |
 | 2026-10-17 | **F0.5 done — F0 foundation complete.** GitHub Actions CI runs typecheck, lint and all unit tests (188, incl. MongoDB tests on Linux) on every push and pull request, no secrets needed. Pinned Ubuntu 24.04 (`ubuntu-latest` moves to Ubuntu 26 on 2026-10-19) and current action versions (v4 used the deprecated Node 20). Web typecheck now runs `next typegen` first; new root `npm run lint`. |
+| 2026-10-17 | **F1.6 done** — Library on the API: new `GET /api/v1/projects` (filters all / drafts / ready / scheduled / posted / attention, title search incl. Hindi, cursor pages of 1–100, default 24) returning the API `ProjectSummary` shape; the Library page's first render uses the same service, and "Load older videos" fetches further pages from the endpoint (replaces the old `?before=` links). Paging is stable when many videos change at the same moment. |
