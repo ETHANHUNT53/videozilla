@@ -7,7 +7,8 @@ import { Eyebrow, Spinner } from "@/components/ui";
 import { requireUser } from "@/server/dal";
 import type { ProjectFilter } from "@/server/db/types";
 import { getOrCreateProfile } from "@/server/repos/profiles";
-import { hasAnyProject, listProjects, normalizeSearch } from "@/server/repos/projects";
+import { needsWelcome } from "@/server/onboarding";
+import { listProjects, normalizeSearch } from "@/server/repos/projects";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -48,8 +49,9 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
   // First visit: the Welcome screen once (F1.12), for users with no videos yet — people who were already creating
   // before onboarding existed go straight to their Library. Checked before the list queries, so a redirect costs
   // nothing. Only the Library sends there, so deep links are never interrupted.
+  // The proxy already redirects with HTTP before anything renders; this is the fallback if its check failed.
   const profile = await getOrCreateProfile(user.id, user.name); // its time zone also dates older cards consistently
-  if (!profile.onboardingCompletedAt && !(await hasAnyProject(user.id))) redirect("/welcome");
+  if (await needsWelcome(user.id)) redirect("/welcome");
 
   // The first page is read here through the same service as GET /api/v1/projects; "Load older videos" fetches the
   // next pages from that endpoint with the returned cursor.
