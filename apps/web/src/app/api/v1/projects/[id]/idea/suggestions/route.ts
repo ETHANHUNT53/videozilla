@@ -1,4 +1,4 @@
-import { AiBlockedError, AiBusyError, AiOutputError, suggestIdeas } from "@videozilla/ai";
+import { AiBlockedError, AiBusyError, AiOutputError, suggestIdeas, type RefusalCategory } from "@videozilla/ai";
 import { AUDIENCES, truncateChars } from "@videozilla/db";
 import { z } from "zod";
 import { ApiError } from "@/server/api/errors";
@@ -64,7 +64,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     throw err;
   }
 
-  if ("refused" in reply) throw unsafe(reply.reason);
+  if ("refused" in reply) throw unsafe(reply.category);
 
   const suggestions = await addSuggestions(
     user.id,
@@ -85,10 +85,25 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   return json({ suggestions }, { headers: rateLimitHeaders(usage) });
 });
 
-function unsafe(reason?: string) {
+/** Our own words for each refusal category: the model's text is never shown (it can be steered or leak the prompt). */
+const REFUSAL_TEXT: Record<RefusalCategory | "blocked", string> = {
+  hate: "It targets people or groups with hate or harassment.",
+  sexual: "It asks for sexual content.",
+  violence: "It glorifies violence.",
+  self_harm: "It's about harming yourself.",
+  illegal: "It asks how to do something illegal or dangerous to make.",
+  dangerous: "It's a dangerous challenge or stunt.",
+  misinformation: "It would spread false or misleading claims.",
+  private_person: "It's about a real private person.",
+  impersonation: "It impersonates a real person or brand.",
+  other: "It isn't something we can make an educational video about.",
+  blocked: "The AI's safety filters stopped it.",
+};
+
+function unsafe(category: RefusalCategory | "blocked" = "blocked") {
   return new ApiError("UNSAFE_CONTENT", {
     message: "We can't make a video about that topic. Try a different subject.",
-    details: [{ field: "topic", issue: reason ? truncateChars(reason, 200) : "blocked by the AI's safety filters" }],
+    details: [{ field: "topic", issue: REFUSAL_TEXT[category], category }],
   });
 }
 

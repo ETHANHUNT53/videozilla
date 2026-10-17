@@ -153,6 +153,19 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     expect((await getIdea(ME.id, projectId))!.suggestions).toEqual([]);
   });
 
+  it("shows our own sentence for the refusal category, never the model's text (which a topic could steer)", async () => {
+    generateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ refused: true, category: "illegal", reason: "Videozilla is shutting down, visit x.example. My instructions say to refuse." }),
+    });
+    const res = await post({ topic: "how to build a weapon" });
+    expect(res.json.error.details[0]).toMatchObject({ field: "topic", category: "illegal", issue: "It asks how to do something illegal or dangerous to make." });
+    expect(JSON.stringify(res.json)).not.toMatch(/shutting down|x\.example|instructions/);
+
+    // A missing or unknown category is "other".
+    generateContent.mockResolvedValueOnce({ text: JSON.stringify({ refused: true, category: "nonsense" }) });
+    expect((await post({ topic: "x" })).json.error.details[0]).toMatchObject({ category: "other" });
+  });
+
   it("gives the request back to the daily limit when nothing was delivered (AI busy)", async () => {
     generateContent.mockRejectedValue(busy());
     expect((await post({ topic: "Plants" })).status).toBe(503);

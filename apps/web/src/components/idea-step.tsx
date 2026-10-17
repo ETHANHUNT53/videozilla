@@ -178,8 +178,9 @@ export function IdeaStep({ projectId, initial, editable }: { projectId: string; 
 function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string; topic: string; initial: Suggestion[]; editable: boolean }) {
   const [cards, setCards] = useState<Suggestion[]>(initial);
   const [busy, setBusy] = useState<"new" | "more" | string | null>(null); // "new", "more" or the card id for "more like this"
-  // The error to show; `reason` is the AI's own explanation of a refusal (422 UNSAFE_CONTENT).
-  const [error, setError] = useState<{ message: string; reason?: string } | null>(null);
+  // The error to show; `reason` is our own sentence for why a topic was refused (422 UNSAFE_CONTENT), never the AI's
+  // text; `code` lets the 429 message go away when the limit resets.
+  const [error, setError] = useState<{ message: string; reason?: string; code?: string } | null>(null);
   // After 429 LIMIT_REACHED: asking stays off until the daily limit resets (the button would only fail again).
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   useEffect(() => {
@@ -188,7 +189,10 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
     let timer: ReturnType<typeof setTimeout>;
     const check = () => {
       const left = lockedUntil - Date.now();
-      if (left <= 0) setLockedUntil(null);
+      if (left <= 0) {
+        setLockedUntil(null);
+        setError((e) => (e?.code === "LIMIT_REACHED" ? null : e)); // the limit has reset: don't keep saying it's reached
+      }
       else timer = setTimeout(check, Math.min(left, 3_600_000));
     };
     timer = setTimeout(check, 0);
@@ -216,7 +220,7 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
         setError({ message: "Couldn't get ideas. Please try again." });
       } else {
         const issue = err.details[0]?.issue;
-        setError({ message: err.message, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
+        setError({ message: err.message, code: err.code, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
         const resetsAt = err.code === "LIMIT_REACHED" ? Date.parse(String(err.details[0]?.resetsAt ?? "")) : NaN;
         if (Number.isFinite(resetsAt)) setLockedUntil(resetsAt);
       }

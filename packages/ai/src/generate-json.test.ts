@@ -191,6 +191,17 @@ describe("quota circuit breaker", () => {
     expect(generateContent.mock.calls[0][0].model).toBe("gemini-3.8-flash"); // back after the cooldown
   });
 
+  it("logs a skipped (out-of-quota) model once per request, so the call log shows why the fallback was used", async () => {
+    generateContent.mockRejectedValueOnce(quotaError("600s")).mockResolvedValue(reply({ items: ["a", "b"] }));
+    await (await run()).promise;
+    const { promise, logs } = await run();
+    await promise;
+    expect(logs.map((l) => [l.model, l.status, l.error?.split(" until")[0]])).toEqual([
+      ["gemini-3.8-flash", "retry", "skipped: quota cooldown"],
+      ["gemini-3.5-flash-lite", "fallback", undefined],
+    ]);
+  });
+
   it("every model out of quota: AiBusyError at once, saying when to retry (at most an hour)", async () => {
     generateContent.mockRejectedValueOnce(quotaError("35237s")).mockRejectedValueOnce(quotaError("120s"));
     const { promise } = await run();

@@ -139,10 +139,19 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   };
 
   let step = 0; // position in `plan`; a busy model moves us on, and we stay there for the repair round
+  const skipLogged = new Set<string>(); // one "skipped" row per model per request
   const call = async (): Promise<{ text: string; model: string; recited?: boolean }> => {
     for (; step < plan.length; step++) {
       const model = plan[step];
-      if (coolingDown(model)) continue; // out of quota: don't spend time on it
+      if (coolingDown(model)) {
+        // Out of quota: don't spend time on it, but leave a trace in the call log (why the fallback was used, or why
+        // the request failed without a single call).
+        if (!skipLogged.has(model)) {
+          skipLogged.add(model);
+          await log({ model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: quota cooldown until ${new Date(cooldownUntil.get(model)!).toISOString()}` });
+        }
+        continue;
+      }
       // The main model never uses the fallback's reserved time (unless the fallback is out of quota itself).
       const reserve = model === primary && hasFallback && !coolingDown(fallback) ? FALLBACK_RESERVE_MS : 0;
       const remaining = deadline - Date.now() - reserve;
