@@ -8,7 +8,7 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-10-16 |
+| **Last updated** | 2026-10-17 |
 | **Current phase** | Feature build — F0 foundation (F1.4 Google sign-in waits for your Google keys) |
 | **Next feature** | **F0.3 — `packages/db`**: MongoDB client, migrations, validators + indexes (DB Design §8) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
@@ -123,7 +123,7 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | F4.3 | Illustration library: 23 animated glowing objects + flows | 🟡 | M0 |
 | F4.4 | Remaining 7 scene types (Cycle, Timeline, SimpleChart, Definition, Equation, IconGrid, Analogy) | ⬜ | PRD §14.2 |
 | F4.5 | Render performance: glow/blur ≤ 2× real time | ⬜ | Currently ~2.1–2.9× |
-| F5.1 | ElevenLabs voice with timings, approved voices only, no fallback | ✅ | Unit-tested (F0.2); real calls with your voices are F5.3 |
+| F5.1 | ElevenLabs voice with timings, approved voices only, no fallback | 🟡 | Unit-tested with a mocked API (F0.2); ✅ once a real call with your voices works (F5.3) |
 | F5.2 | Forced-alignment fallback | ✅ | Unit-tested (F0.2) |
 | F5.3 | **Your own two voices working through the API** | ⛔ | Needs a paid ElevenLabs plan (Creator or $5 of credits) |
 | F5.4 | Text normalisation + pronunciation dictionary | ⬜ | PRD §15.1 |
@@ -214,3 +214,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-16 | **F1.1–F1.3 done** (checked in the browser). Fixed: revoked sessions stayed valid for up to 5 min (cookie cache) — the data access layer now checks the database; the proxy no longer redirects auth pages on a cookie alone, which could loop after a revoked session. F1.4 waits for Google keys. |
 | 2026-10-16 | Code-review fixes (auth/email): in dev, an email that fails to send because of a network error now prints in the terminal too (it used to fail sign-up); in production a missing `RESEND_API_KEY` is an error instead of printing links to the logs; the session cookie cache is now off in the auth config itself, so revoked sessions stop at once everywhere, not just in the data access layer. |
 | 2026-10-16 | **F0.2 done** — Vitest 4.1.11 at the root (`npm test`), 97 unit tests for the shared packages; F5.1, F5.2, F6.1–F6.3 now ✅. Vitest 5 / vite 8 hit an npm 10 install bug ("edgesOut"), so Vitest 4.1 was installed with npm 11 via npx; plain `npm install` still works with npm 10. |
+| 2026-10-17 | F0.2 review fixes: voice tests no longer pick up `ELEVENLABS_MODEL` / `MOCK_WPM` from your shell; storyboard fixtures moved from `m0/fixtures` to `packages/schema/fixtures` (m0 commands updated) and must be named `<topic>.<en\|hi>[.90].json`; F5.1 back to 🟡 until a real ElevenLabs call with your voices works (F5.3). |

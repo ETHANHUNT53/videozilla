@@ -19,7 +19,7 @@ Videozilla M0 — topic to synced explainer MP4
 
   npm run make -- --topic "Why is the sky blue?" --lang en
   npm run make -- --topic "प्रकाश संश्लेषण" --lang hi --gender male
-  npm run make -- --storyboard fixtures/sky-blue.en.json --tts mock
+  npm run make -- --storyboard ../packages/schema/fixtures/sky-blue.en.json --tts mock
 
 Options
   --topic <text>        Topic for Gemini to plan (needs GEMINI_API_KEY)

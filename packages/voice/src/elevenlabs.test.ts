@@ -19,22 +19,25 @@ const SPOKEN = {
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-describe("ElevenLabs voice: approved voices only", () => {
-  let dir: string;
-  let fetchMock: ReturnType<typeof vi.fn>;
-  const opts = () => ({ language: "en" as const, outPathNoExt: path.join(dir, "scene-1") });
+/** Shared by both suites: a temp output folder, the two approved voices, and a mocked API (no real calls). */
+let dir: string;
+let fetchMock: ReturnType<typeof vi.fn>;
 
-  beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "vz-voice-"));
-    vi.stubEnv("ELEVENLABS_API_KEY", "test-key");
-    vi.stubEnv("ELEVENLABS_VOICE_FEMALE", FEMALE);
-    vi.stubEnv("ELEVENLABS_VOICE_MALE", MALE);
-    fetchMock = vi.fn(async () => json(SPOKEN));
-    vi.stubGlobal("fetch", fetchMock);
-  });
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
-  });
+beforeEach(async () => {
+  dir = await mkdtemp(path.join(tmpdir(), "vz-voice-"));
+  vi.stubEnv("ELEVENLABS_API_KEY", "test-key");
+  vi.stubEnv("ELEVENLABS_VOICE_FEMALE", FEMALE);
+  vi.stubEnv("ELEVENLABS_VOICE_MALE", MALE);
+  vi.stubEnv("ELEVENLABS_MODEL", ""); // a model set in the shell must not change the request under test
+  fetchMock = vi.fn(async () => json(SPOKEN));
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+describe("ElevenLabs voice: approved voices only", () => {
+  const opts = () => ({ language: "en" as const, outPathNoExt: path.join(dir, "scene-1") });
 
   const calledVoice = () => String(fetchMock.mock.calls[0][0]).match(/text-to-speech\/([^/]+)\//)?.[1];
 
@@ -75,21 +78,6 @@ describe("ElevenLabs voice: approved voices only", () => {
 });
 
 describe("ElevenLabs voice: request and timings", () => {
-  let dir: string;
-  let fetchMock: ReturnType<typeof vi.fn>;
-
-  beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "vz-voice-"));
-    vi.stubEnv("ELEVENLABS_API_KEY", "test-key");
-    vi.stubEnv("ELEVENLABS_VOICE_FEMALE", FEMALE);
-    vi.stubEnv("ELEVENLABS_VOICE_MALE", MALE);
-    fetchMock = vi.fn(async () => json(SPOKEN));
-    vi.stubGlobal("fetch", fetchMock);
-  });
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
-  });
-
   it("sends the text, model, neighbouring text and speed", async () => {
     await createElevenLabsTTS().synthesize("Hi there", {
       language: "hi",

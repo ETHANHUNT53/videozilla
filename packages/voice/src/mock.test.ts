@@ -8,6 +8,7 @@ describe("mock voice", () => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), "vz-mock-"));
+    vi.stubEnv("MOCK_WPM", ""); // a rate set in the shell must not change the default-rate tests
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });

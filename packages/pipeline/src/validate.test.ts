@@ -7,7 +7,7 @@ import { validateStoryboard } from "./validate";
 
 type RawScene = RawStoryboard["scenes"][number];
 
-const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../m0/fixtures");
+const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../schema/fixtures");
 
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
 
@@ -44,10 +44,21 @@ function board(middle: Partial<RawScene>): RawStoryboard {
 
 const run = (middle: Partial<RawScene>) => validateStoryboard(board(middle), "en", 60);
 
+/** Fixture files are named `<topic>.<en|hi>[.90].json`; without a length they are 60-second videos. */
+const FIXTURE_NAME = /^[\w-]+\.(en|hi)(?:\.(60|90))?\.json$/;
+
 describe("validateStoryboard: fixtures", () => {
-  it.each(readdirSync(FIXTURES))("needs no repairs for the hand-written fixture %s", (file) => {
+  const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".json"));
+
+  it("names every fixture with its language (and length, when not 60 s)", () => {
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) expect(file).toMatch(FIXTURE_NAME);
+  });
+
+  it.each(files.filter((f) => FIXTURE_NAME.test(f)))("needs no repairs for the hand-written fixture %s", (file) => {
+    const [, language, length] = file.match(FIXTURE_NAME)!;
     const raw = RawStoryboard.parse(JSON.parse(readFileSync(path.join(FIXTURES, file), "utf8")));
-    const { storyboard, report } = validateStoryboard(raw, file.includes(".hi.") ? "hi" : "en", 60);
+    const { storyboard, report } = validateStoryboard(raw, language as "en" | "hi", length === "90" ? 90 : 60);
     expect(report.repairs).toEqual([]);
     expect(storyboard.scenes.map((s) => s.id)).toEqual(raw.scenes.map((_, i) => `s${i + 1}`));
   });

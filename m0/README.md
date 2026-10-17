@@ -37,7 +37,7 @@ npm run make -- --topic "प्रकाश संश्लेषण कैस�
 
 Without any keys (sample storyboard, silent mock voice):
 ```bash
-npm run make -- --storyboard fixtures/sky-blue.en.json --tts mock
+npm run make -- --storyboard ../packages/schema/fixtures/sky-blue.en.json --tts mock
 ```
 
 Re-render an existing run without calling Gemini or ElevenLabs again (no credits used):
@@ -47,7 +47,7 @@ npm run render-run -- out/<run-id>
 
 Quick look at a few still frames per scene instead of the full video:
 ```bash
-npm run make -- --storyboard fixtures/photosynthesis-illustrated.hi.json --tts mock --lang hi --stills
+npm run make -- --storyboard ../packages/schema/fixtures/photosynthesis-illustrated.hi.json --tts mock --lang hi --stills
 ```
 
 Useful options: `--gender male|female` (picks one of your two voices — the only voices used), `--length 90`, `--style bold-dark`, `--voice <voice id>`, `--audience "class 10 CBSE students"`, `--no-render`.
@@ -75,7 +75,7 @@ Opens a browser editor with a small sample timeline.
 |---|---|
 | `src/cli.ts` | The `make` command: storyboard → voice → sync → render |
 | `src/render-run.ts` | Re-render an existing run |
-| `fixtures/` | Hand-written English and Hindi storyboards |
+| `../packages/schema/fixtures/` | Hand-written English and Hindi storyboards (shared with the unit tests) |
 
 The engine itself lives in the shared packages (since F0.1):
 

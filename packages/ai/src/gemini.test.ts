@@ -13,7 +13,7 @@ vi.mock("@google/genai", () => ({
 import { generateStoryboard } from "./gemini";
 import { storyboardSystemPrompt, storyboardUserPrompt } from "./prompt";
 
-const FIXTURE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../m0/fixtures/sky-blue.en.json");
+const FIXTURE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../schema/fixtures/sky-blue.en.json");
 /** A real English 60 s storyboard: 146 words, inside the 125–150 budget. */
 const GOOD = readFileSync(FIXTURE, "utf8");
 const SHORT = JSON.stringify({ ...JSON.parse(GOOD), scenes: JSON.parse(GOOD).scenes.slice(0, 3) });
