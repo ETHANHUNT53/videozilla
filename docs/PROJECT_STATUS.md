@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-17 |
 | **Current phase** | Feature build — F0 foundation (F1.4 Google sign-in waits for your Google keys) |
-| **Next feature** | **F0.3 — `packages/db`**: MongoDB client, migrations, validators + indexes (DB Design §8) |
+| **Next feature** | **F0.4 — API foundation**: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination (API Design §2–§7) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -63,7 +63,7 @@
 |---|---|---|---|
 | F0.1 | Monorepo restructure: npm workspaces; move M0 into `packages/schema`, `pipeline`, `ai`, `voice`, `video` (no behaviour change) | ✅ | Done 2026-10-16. Verified: all 7 workspaces type-check; rebuilt EN + HI timelines/storyboards byte-identical to before; rendered frames pixel-identical; web production build OK; one React/zod version repo-wide. Azure adapter removed (approved-voices rule). |
 | F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ✅ | Done 2026-10-16. `npm test`: 97 tests over schema, pipeline (text, validator, cue sync, beats, captions, duration fitting), voice (approved voices only, no fallback, timings, mock) and ai (busy retry, fallback model, JSON/shape/length fixes). Checked that breaking a rule makes tests fail. Video rendering is covered later by visual-regression tests |
-| F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ⬜ | Replaces start-up index creation in the M1 draft |
+| F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ✅ | Done 2026-10-17. Migrations `001_initial_schema` (19 collections, 12 validators, 36 indexes) and `002_profile_defaults`; `npm run db:migrate` (`-- --status` to list); `npm run db` applies them on start. Web app uses the shared client; start-up index creation removed. 40 integration tests on a throwaway MongoDB |
 | F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ⬜ | API Design §2–§7 |
 | F0.5 | Commit history + CI (typecheck, lint, tests on every push) | 🔵 | Repo on GitHub with full history (2026-10-16); CI still to add |
 
@@ -77,7 +77,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F1.2 | Sign in / sign out, session cookie, route protection | ✅ | Checked: sign out/in, wrong password, Library protected. Sessions are checked against the database on every page (revoked sessions stop at once); proxy only sends signed-out visitors to sign-in |
 | F1.3 | Forgot / reset password | ✅ | Checked: reset link → new password works, old password fails, other sessions revoked |
 | F1.4 | Google sign-in + account linking | 🔵 | Waiting for your Google OAuth client ([guide §C](setup/AUTH_EMAIL_SETUP.md)) |
-| F1.5 | Profile created automatically with India-first defaults | 🟡 | Missing `defaultAudience`, `role` (DB Design §4.2) |
+| F1.5 | Profile created automatically with India-first defaults | ✅ | Now writes `defaultAudience` and `role` (DB Design §4.2), enforced by the database validator; existing profiles backfilled by migration 002 (F0.3) |
 | F1.6 | Library list: filters, search, pagination, needs-attention section | 🟡 | Uses server actions; must move to `GET /api/v1/projects` with cursor `{u, i}` (API §13.2) |
 | F1.7 | Create video (new draft project) | 🟡 | Must also create the idea session in one transaction (DB §6.1) |
 | F1.8 | Rename / duplicate / delete with 10-second undo / restore | 🟡 | Works; needs `rev` / If-Match and the delete cascade (DB §6.6) |
@@ -215,3 +215,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-16 | Code-review fixes (auth/email): in dev, an email that fails to send because of a network error now prints in the terminal too (it used to fail sign-up); in production a missing `RESEND_API_KEY` is an error instead of printing links to the logs; the session cookie cache is now off in the auth config itself, so revoked sessions stop at once everywhere, not just in the data access layer. |
 | 2026-10-16 | **F0.2 done** — Vitest 4.1.11 at the root (`npm test`), 97 unit tests for the shared packages; F5.1, F5.2, F6.1–F6.3 now ✅. Vitest 5 / vite 8 hit an npm 10 install bug ("edgesOut"), so Vitest 4.1 was installed with npm 11 via npx; plain `npm install` still works with npm 10. |
 | 2026-10-17 | F0.2 review fixes: voice tests no longer pick up `ELEVENLABS_MODEL` / `MOCK_WPM` from your shell; storyboard fixtures moved from `m0/fixtures` to `packages/schema/fixtures` (m0 commands updated) and must be named `<topic>.<en\|hi>[.90].json`; F5.1 back to 🟡 until a real ElevenLabs call with your voices works (F5.3). |
+| 2026-10-17 | **F0.3 done** — new `packages/db`: shared MongoDB client, collection names, stored enums, migration runner (checksums, lock, `npm run db:migrate`), migration 001 (all collections, database validators, full index catalogue) and 002 (profile backfill). Local database migrated with all data kept (5 projects, 4 profiles). Web app: start-up index creation removed; new profiles get `defaultAudience` + `role` (F1.5 ✅). Checked in the browser: sign-up, verify, create project, settings save, delete + undo. |

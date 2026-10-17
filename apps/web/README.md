@@ -9,7 +9,7 @@ From the **repository root**:
 ```bash
 npm install                                  # one install for the whole monorepo
 cp apps/web/.env.example apps/web/.env.local # then set BETTER_AUTH_SECRET (command in the file)
-npm run db                                   # terminal 1: local MongoDB (replica set, data in apps/web/.cache/mongo)
+npm run db                                   # terminal 1: local MongoDB (replica set, data in apps/web/.cache/mongo; applies migrations)
 npm run dev                                  # terminal 2: http://localhost:3000
 ```
 
@@ -28,6 +28,7 @@ Without `RESEND_API_KEY`, verification and password-reset emails are printed in 
 | Library: create, rename, duplicate, delete with 10 s undo, filters, search, pagination, "needs attention" | `src/app/(app)/library`, `src/components/library.tsx` |
 | Project page with Idea → Storyboard → Video stepper (Idea Studio arrives in M2) | `src/app/(app)/projects/[id]` |
 | Settings: defaults (language, length, voice, time zone, notifications) | `src/app/(app)/settings`, `src/components/settings.tsx` |
+| Database: shared client, collections, validators and indexes come from [`packages/db`](../../packages/db) migrations (never created at request time) | `src/server/db/*` |
 | Background jobs: daily purge of deleted projects (and their R2 files) | `src/server/jobs/*`, `src/app/api/inngest/route.ts` |
 | R2 storage helpers (signed URLs, prefix delete) | `src/server/storage/r2.ts` |
 

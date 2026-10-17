@@ -1,21 +1,9 @@
+import type { Audience, Language, ProfileRole, ProjectStatus, VoiceGender } from "@videozilla/db";
 import type { ObjectId } from "mongodb";
 
-/** Project lifecycle (PRD §11). */
-export const PROJECT_STATUSES = [
-  "idea_draft",
-  "storyboard_generating",
-  "storyboard_ready",
-  "building",
-  "preview_ready",
-  "rendering",
-  "exported",
-  "scheduled",
-  "publishing",
-  "posted",
-  "publish_failed",
-  "needs_attention",
-] as const;
-export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+/** Project lifecycle (DB Design §5.1); the stored enums live in packages/db. */
+export { PROJECT_STATUSES } from "@videozilla/db";
+export type { Audience, Language, ProfileRole, ProjectStatus, VoiceGender };
 
 /** Library filter groups (PRD F1-FR7). */
 export const STATUS_GROUPS = {
@@ -26,9 +14,6 @@ export const STATUS_GROUPS = {
   attention: ["needs_attention", "publish_failed"],
 } as const satisfies Record<string, readonly ProjectStatus[]>;
 export type StatusGroup = keyof typeof STATUS_GROUPS;
-
-export type Language = "en" | "hi";
-export type VoiceGender = "female" | "male";
 
 export interface ProjectDoc {
   _id: ObjectId;
@@ -60,8 +45,10 @@ export interface ProfileDoc {
   defaultLengthPreset: 60 | 90;
   defaultVoiceGender: VoiceGender;
   defaultStyleId: string;
+  defaultAudience: Audience;
   timezone: string;
   emailNotifications: boolean;
+  role: ProfileRole;
   createdAt: Date;
   updatedAt: Date;
 }

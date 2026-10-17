@@ -8,6 +8,7 @@ AI educational explainer reels: topic → script & storyboard → voiceover → 
 |---|---|
 | [`apps/web`](apps/web) | Next.js web app (auth, library, project flow, API) |
 | [`packages/schema`](packages/schema) | Shared types, Zod schemas and constants |
+| [`packages/db`](packages/db) | MongoDB client, collection names, stored enums, migrations (validators + indexes) |
 | [`packages/pipeline`](packages/pipeline) | Storyboard validation, timeline + cue sync, captions, duration fitting |
 | [`packages/ai`](packages/ai) | Gemini prompts and calls |
 | [`packages/voice`](packages/voice) | ElevenLabs voice (approved voices only) + forced alignment |
@@ -21,7 +22,8 @@ AI educational explainer reels: topic → script & storyboard → voiceover → 
 npm install          # once, from this folder (npm workspaces)
 npm run typecheck    # type-check every workspace
 npm test             # unit tests for the shared packages (Vitest; `npm run test:watch` while editing)
-npm run db           # local MongoDB for the web app
+npm run db           # local MongoDB for the web app (applies pending migrations on start)
+npm run db:migrate   # apply migrations to MONGODB_URI (`-- --status` lists them)
 npm run dev          # web app on http://localhost:3000
 ```
 

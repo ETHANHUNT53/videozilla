@@ -1,6 +1,6 @@
 import "server-only";
 import { ObjectId, type Filter } from "mongodb";
-import { collections, ensureIndexes } from "../db/mongo";
+import { collections } from "../db/mongo";
 import { STATUS_GROUPS, type ProfileDoc, type ProjectDoc, type ProjectSummary, type StatusGroup } from "../db/types";
 
 /**
@@ -35,7 +35,6 @@ export interface ListOptions {
 }
 
 export async function listProjects(userId: string, opts: ListOptions = {}): Promise<{ items: ProjectSummary[]; nextCursor: string | null }> {
-  await ensureIndexes();
   const filter: Filter<ProjectDoc> = { userId, deletedAt: null };
   if (opts.group && opts.group !== "all") filter.status = { $in: [...STATUS_GROUPS[opts.group]] };
   const q = opts.q?.trim();
@@ -55,7 +54,6 @@ export async function getProject(userId: string, id: string): Promise<ProjectDoc
 
 /** New project starts as an idea draft with the user's defaults (PRD F1, F4). */
 export async function createProject(userId: string, profile: Pick<ProfileDoc, "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultStyleId">, title?: string): Promise<string> {
-  await ensureIndexes();
   const now = new Date();
   const doc: ProjectDoc = {
     _id: new ObjectId(),

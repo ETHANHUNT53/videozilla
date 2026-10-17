@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "npm run dev -w @videozilla/web",
-    "db": "npm run db -w @videozilla/web"
+    "db": "npm run db -w @videozilla/web",
+    "db:migrate": "npm run migrate -w @videozilla/db --"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
