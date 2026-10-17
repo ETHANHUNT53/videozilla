@@ -55,11 +55,13 @@ jobs:
         run: npm test -- --reporter=default --reporter=json --outputFile.json=.cache/vitest.json
 
       # Catches what the checks above can't: route-segment exports, server/client boundaries, prerendering.
-      # Server settings are read lazily, so only Better Auth's secret needs a (throwaway, non-secret) value here.
+      # Throwaway, non-secret values: Better Auth is created (with its MongoDB adapter) when its module loads, but the
+      # MongoDB driver only connects on the first query, and the build runs none, so nothing is reached here.
       - name: Build web app
         run: npm run build -w @videozilla/web
         env:
           BETTER_AUTH_SECRET: ci-build-only-placeholder-not-a-real-secret-0123456789
+          MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=ci-build-placeholder
 
       # Step logs need a GitHub sign-in; this puts the test counts on the public run page as well.
       - name: Test summary
