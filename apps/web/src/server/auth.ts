@@ -5,7 +5,8 @@ import { nextCookies } from "better-auth/next-js";
 import { db, mongoClient } from "./db/mongo";
 import { actionEmail, sendEmail } from "./email";
 import { env } from "./env";
-import { deleteAllForUser } from "./repos/projects";
+import { requestAccountDataDeletion } from "./jobs/account-deletion";
+import { cancelUserActivity } from "./repos/account";
 import { getOrCreateProfile } from "./repos/profiles";
 
 /**
@@ -51,10 +52,15 @@ export const auth = betterAuth({
     cookieCache: { enabled: false },
   },
   user: {
+    // Account deletion (DB Design §6.12): stop the user's queued work first (if that fails, nothing is deleted and
+    // they can retry); once Better Auth has removed the sign-in records, a background job deletes all their data.
     deleteUser: {
       enabled: true,
       beforeDelete: async (user) => {
-        await deleteAllForUser(user.id);
+        await cancelUserActivity(user.id);
+      },
+      afterDelete: async (user) => {
+        await requestAccountDataDeletion(user.id);
       },
     },
   },

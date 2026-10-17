@@ -18,7 +18,9 @@ function r2(): S3Client {
   return client;
 }
 
-export const projectPrefix = (userId: string, projectId: string) => `users/${userId}/projects/${projectId}/`;
+/** Everything a user has stored (account deletion). */
+export const userPrefix = (userId: string) => `users/${userId}/`;
+export const projectPrefix = (userId: string, projectId: string) => `${userPrefix(userId)}projects/${projectId}/`;
 
 /** Short-lived download link (generated on click, so links in the UI never go stale). */
 export function signedGetUrl(key: string, expiresInSec = 600, downloadName?: string): Promise<string> {

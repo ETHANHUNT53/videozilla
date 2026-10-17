@@ -43,7 +43,7 @@ import * as one from "@/app/api/v1/projects/[id]/route";
 import * as duplicateRoute from "@/app/api/v1/projects/[id]/duplicate/route";
 import * as restoreRoute from "@/app/api/v1/projects/[id]/restore/route";
 import { ApiError } from "../api/errors";
-import { createProject, deleteAllForUser, deleteProject, duplicateProject, listProjects, normalizeSearch, purgeExpiredProjects, restoreProject, updateProject } from "./projects";
+import { createProject, deleteProject, duplicateProject, listProjects, normalizeSearch, purgeExpiredProjects, restoreProject, updateProject } from "./projects";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const CACHED_BINARY_DIR = path.join(ROOT, "apps/web/node_modules/.cache/mongodb-memory-server");
@@ -403,17 +403,6 @@ describe("purgeExpiredProjects", () => {
     await state.db.collection("projects").updateMany({}, { $set: { deletedAt: past, purgeAt: past } });
     expect(await purgeExpiredProjects(new Date(), [a._id.toHexString()])).toBe(1);
     expect(await state.db.collection("projects").countDocuments({ _id: b._id })).toBe(1);
-  });
-});
-
-describe("deleteAllForUser", () => {
-  it("removes the user's projects, idea sessions and profile, and nobody else's", async () => {
-    await createProject(ME, PROFILE);
-    const theirs = await createProject(OTHER, PROFILE);
-    await deleteAllForUser(ME);
-    expect(await state.db.collection("projects").countDocuments({ userId: ME })).toBe(0);
-    expect(await state.db.collection("idea_sessions").countDocuments({ userId: ME })).toBe(0);
-    expect(await state.db.collection("idea_sessions").countDocuments({ projectId: theirs._id })).toBe(1);
   });
 });
 

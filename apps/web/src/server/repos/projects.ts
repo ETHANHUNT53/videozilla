@@ -404,12 +404,3 @@ export async function purgeExpiredProjects(now = new Date(), ids?: string[]): Pr
     return res.deletedCount;
   });
 }
-
-/** Account deletion: remove everything the user owns (projects, idea sessions, profile), in one transaction. */
-export async function deleteAllForUser(userId: string): Promise<void> {
-  await withTransaction(async (session) => {
-    await collections.projects().deleteMany({ userId }, { session });
-    await collections.ideaSessions().deleteMany({ userId }, { session });
-    await collections.profiles().deleteMany({ userId }, { session });
-  });
-}
