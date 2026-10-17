@@ -9,6 +9,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { COLLECTIONS } from "./collections";
 import * as enums from "./enums";
 import { listMigrations, migrationStatus, runMigrations } from "./migrate";
+import { assertMigrated, LATEST_MIGRATION } from "./schema-version";
+import { truncateChars } from "./text";
 
 /** Reuse the MongoDB binary `npm run db` already downloaded, so tests don't fetch ~100 MB again. */
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -158,6 +160,36 @@ describe("runMigrations", () => {
     await db.collection(COLLECTIONS.migrations).updateOne({ name: "__lock__" }, { $set: { lockedAt: new Date(Date.now() - 60 * 60_000) } });
     expect((await runMigrations(db, quiet)).applied).toHaveLength(2);
     expect(await db.collection(COLLECTIONS.migrations).countDocuments({ name: "__lock__" })).toBe(0);
+  });
+
+  it("stops when another run took the lock over, and leaves that run's lock alone", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "vz-migrations-"));
+    try {
+      // 001 runs so long that another run takes the lock over meanwhile; 002 must then not start.
+      await writeFile(
+        path.join(dir, "001_slow.ts"),
+        `export default { async up({ db }) { await db.collection("migrations").updateOne({ name: "__lock__" }, { $set: { holder: "other" } }); } };\n`,
+      );
+      await writeFile(path.join(dir, "002_next.ts"), `export default { async up({ db }) { await db.collection("config").insertOne({ key: "next" }); } };\n`);
+      await expect(runMigrations(db, { ...quiet, dir })).rejects.toThrow("Lost the migrations lock");
+      expect(await db.collection("config").countDocuments({ key: "next" })).toBe(0);
+      expect(await db.collection(COLLECTIONS.migrations).findOne({ name: "__lock__" })).toMatchObject({ holder: "other" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("lists applied migrations whose file is gone as missing", async () => {
+    await runMigrations(db, quiet);
+    const dir = await mkdtemp(path.join(tmpdir(), "vz-migrations-"));
+    try {
+      expect((await migrationStatus(db, { dir })).map((m) => [m.name, m.state])).toEqual([
+        ["001_initial_schema", "missing"],
+        ["002_profile_defaults", "missing"],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("upgrades a database created by the M1 draft", async () => {
@@ -312,5 +344,26 @@ describe("validator enums match src/enums.ts", () => {
     const validator = (info as CollectionInfo).options!.validator as Document;
     const jsonSchema = (validator.$jsonSchema ?? validator.$and[0].$jsonSchema) as Document;
     expect([...jsonSchema.properties[field].enum].sort()).toEqual([...expected].sort());
+  });
+});
+
+describe("LATEST_MIGRATION", () => {
+  it("is the last migration file", async () => {
+    expect((await listMigrations()).at(-1)!.name).toBe(LATEST_MIGRATION);
+  });
+
+  it("assertMigrated fails on a database that hasn't been migrated, and passes after", async () => {
+    db = freshDb();
+    await expect(assertMigrated(db)).rejects.toThrow(`missing migration ${LATEST_MIGRATION}`);
+    await runMigrations(db, quiet);
+    await expect(assertMigrated(db)).resolves.toBeUndefined();
+  });
+});
+
+describe("truncateChars", () => {
+  it("counts characters like the database does and never splits an emoji", () => {
+    expect(truncateChars("abc", 5)).toBe("abc");
+    expect(truncateChars(`${"a".repeat(59)}🎬🎬`, 60)).toBe(`${"a".repeat(59)}🎬`);
+    expect(truncateChars("प्रकाश", 3)).toHaveLength(3);
   });
 });

@@ -1,5 +1,5 @@
 import "server-only";
-import { COLLECTIONS, getMongoClient } from "@videozilla/db";
+import { assertMigrated, COLLECTIONS, getMongoClient } from "@videozilla/db";
 import type { Db, MongoClient } from "mongodb";
 import { env } from "../env";
 import type { ProfileDoc, ProjectDoc } from "./types";
@@ -14,6 +14,21 @@ export function mongoClient(): MongoClient {
 
 export function db(): Db {
   return mongoClient().db(env.mongoDb);
+}
+
+const globalForSchema = globalThis as unknown as { __vzMigrated?: Promise<void> };
+
+/**
+ * Fails clearly (once per process) when this database hasn't had the migrations this code needs, instead of running
+ * without its unique indexes and validators. A failure is retried on the next call, so running the migration is
+ * enough; no restart needed.
+ */
+export function ensureMigrated(): Promise<void> {
+  globalForSchema.__vzMigrated ??= assertMigrated(db()).catch((err) => {
+    globalForSchema.__vzMigrated = undefined;
+    throw err;
+  });
+  return globalForSchema.__vzMigrated;
 }
 
 export const collections = {

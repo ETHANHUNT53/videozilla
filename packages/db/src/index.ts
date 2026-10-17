@@ -2,3 +2,5 @@
 export * from "./client";
 export * from "./collections";
 export * from "./enums";
+export * from "./schema-version";
+export * from "./text";

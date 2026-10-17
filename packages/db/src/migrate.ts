@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -63,67 +63,87 @@ function records(db: Db): Collection<MigrationRecord> {
   return db.collection<MigrationRecord>(COLLECTIONS.migrations);
 }
 
-/** Which migrations are applied, pending, or changed since they were applied. */
-export async function migrationStatus(db: Db, opts: MigrateOptions = {}) {
-  const files = await listMigrations(opts.dir);
-  const applied = new Map((await records(db).find({ name: { $ne: LOCK } }).toArray()).map((r) => [r.name, r]));
-  return files.map((f) => {
-    const record = applied.get(f.name);
-    const state = !record ? "pending" : record.checksum === f.checksum ? "applied" : "changed";
-    return { name: f.name, state, appliedAt: record?.appliedAt ?? null } as const;
-  });
+export interface MigrationState {
+  name: string;
+  /** pending: not run yet · applied: run, file unchanged · changed: file edited after it ran · missing: ran, file gone */
+  state: "pending" | "applied" | "changed" | "missing";
+  appliedAt: Date | null;
+  /** The migration file and its checksum (null when missing). */
+  file: string | null;
+  checksum: string | null;
 }
 
-async function acquireLock(db: Db): Promise<void> {
+/** Every migration file plus every applied record without a file, in name order. */
+export async function migrationStatus(db: Db, opts: MigrateOptions = {}): Promise<MigrationState[]> {
+  const files = await listMigrations(opts.dir);
+  const applied = new Map((await records(db).find({ name: { $ne: LOCK } }).toArray()).map((r) => [r.name, r]));
+  const states: MigrationState[] = files.map((f) => {
+    const record = applied.get(f.name);
+    const state = !record ? "pending" : record.checksum === f.checksum ? "applied" : "changed";
+    return { name: f.name, state, appliedAt: record?.appliedAt ?? null, file: f.file, checksum: f.checksum };
+  });
+  for (const record of applied.values()) {
+    if (!files.some((f) => f.name === record.name)) states.push({ name: record.name, state: "missing", appliedAt: record.appliedAt ?? null, file: null, checksum: null });
+  }
+  return states.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Takes the run lock for `holder` (or a stale one from a crashed run). */
+async function acquireLock(db: Db, holder: string): Promise<void> {
   const now = new Date();
   try {
-    await records(db).insertOne({ name: LOCK, lockedAt: now, holder: `${hostname()}:${process.pid}` });
+    await records(db).insertOne({ name: LOCK, lockedAt: now, holder });
   } catch (err) {
     if (!(err instanceof MongoServerError && err.code === 11000)) throw err;
     const takenOver = await records(db).findOneAndUpdate(
       { name: LOCK, lockedAt: { $lt: new Date(now.getTime() - STALE_LOCK_MS) } },
-      { $set: { lockedAt: now, holder: `${hostname()}:${process.pid}` } },
+      { $set: { lockedAt: now, holder } },
     );
     if (!takenOver) throw new Error("Another migration run is in progress (the migrations lock is held). Try again in a minute.");
   }
 }
 
+/** Refreshes the lock before each migration, so a long run is never mistaken for a crashed one. */
+async function renewLock(db: Db, holder: string): Promise<void> {
+  const res = await records(db).updateOne({ name: LOCK, holder }, { $set: { lockedAt: new Date() } });
+  if (res.matchedCount !== 1) throw new Error("Lost the migrations lock to another run; stopping. Check `npm run db:migrate -- --status`.");
+}
+
 /** Applies every pending migration in order. Returns the names applied by this run and those already applied. */
 export async function runMigrations(db: Db, opts: MigrateOptions = {}): Promise<{ applied: string[]; alreadyApplied: string[] }> {
   const log = opts.log ?? ((m: string) => console.log(m));
+  const holder = `${hostname()}:${process.pid}:${randomUUID()}`;
   await records(db).createIndex({ name: 1 }, { unique: true, name: "name" });
-  await acquireLock(db);
+  await acquireLock(db, holder);
   try {
-    const files = await listMigrations(opts.dir);
-    const done = new Map((await records(db).find({ name: { $ne: LOCK } }).toArray()).map((r) => [r.name, r]));
-
-    for (const name of done.keys()) {
-      if (!files.some((f) => f.name === name)) log(`warning: migration ${name} was applied but its file is missing`);
-    }
-    const changed = files.filter((f) => done.has(f.name) && done.get(f.name)!.checksum !== f.checksum);
+    const states = await migrationStatus(db, opts);
+    for (const m of states.filter((s) => s.state === "missing")) log(`warning: migration ${m.name} was applied but its file is missing`);
+    const changed = states.filter((s) => s.state === "changed");
     if (changed.length) {
       throw new Error(
-        `Migration ${changed.map((f) => f.name).join(", ")} was changed after it was applied. ` +
+        `Migration ${changed.map((m) => m.name).join(", ")} was changed after it was applied. ` +
           "Undo the edit and put the change in a new migration file instead.",
       );
     }
 
     const applied: string[] = [];
-    for (const f of files.filter((f) => !done.has(f.name))) {
-      const mod = (await import(pathToFileURL(f.file).href)) as { default?: Migration };
-      if (typeof mod.default?.up !== "function") throw new Error(`Migration ${f.name} must default-export { up(ctx) }.`);
-      log(`applying ${f.name}…`);
+    for (const m of states.filter((s) => s.state === "pending")) {
+      const mod = (await import(pathToFileURL(m.file!).href)) as { default?: Migration };
+      if (typeof mod.default?.up !== "function") throw new Error(`Migration ${m.name} must default-export { up(ctx) }.`);
+      await renewLock(db, holder);
+      log(`applying ${m.name}…`);
       try {
-        await mod.default.up({ db, log: (m) => log(`  ${m}`) });
+        await mod.default.up({ db, log: (msg) => log(`  ${msg}`) });
       } catch (err) {
-        throw new Error(`Migration ${f.name} failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        throw new Error(`Migration ${m.name} failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
       }
-      await records(db).insertOne({ name: f.name, appliedAt: new Date(), checksum: f.checksum });
-      applied.push(f.name);
+      await records(db).insertOne({ name: m.name, appliedAt: new Date(), checksum: m.checksum! });
+      applied.push(m.name);
     }
-    return { applied, alreadyApplied: files.filter((f) => done.has(f.name)).map((f) => f.name) };
+    return { applied, alreadyApplied: states.filter((s) => s.state === "applied").map((s) => s.name) };
   } finally {
-    await records(db).deleteOne({ name: LOCK });
+    // Only our own lock: if a stale-lock takeover happened, the other run's lock must stay.
+    await records(db).deleteOne({ name: LOCK, holder });
   }
 }
 

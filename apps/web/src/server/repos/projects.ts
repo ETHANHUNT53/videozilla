@@ -1,6 +1,7 @@
 import "server-only";
+import { truncateChars } from "@videozilla/db";
 import { ObjectId, type Filter } from "mongodb";
-import { collections } from "../db/mongo";
+import { collections, ensureMigrated } from "../db/mongo";
 import { STATUS_GROUPS, type ProfileDoc, type ProjectDoc, type ProjectSummary, type StatusGroup } from "../db/types";
 
 /**
@@ -35,6 +36,7 @@ export interface ListOptions {
 }
 
 export async function listProjects(userId: string, opts: ListOptions = {}): Promise<{ items: ProjectSummary[]; nextCursor: string | null }> {
+  await ensureMigrated();
   const filter: Filter<ProjectDoc> = { userId, deletedAt: null };
   if (opts.group && opts.group !== "all") filter.status = { $in: [...STATUS_GROUPS[opts.group]] };
   const q = opts.q?.trim();
@@ -54,11 +56,12 @@ export async function getProject(userId: string, id: string): Promise<ProjectDoc
 
 /** New project starts as an idea draft with the user's defaults (PRD F1, F4). */
 export async function createProject(userId: string, profile: Pick<ProfileDoc, "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultStyleId">, title?: string): Promise<string> {
+  await ensureMigrated();
   const now = new Date();
   const doc: ProjectDoc = {
     _id: new ObjectId(),
     userId,
-    title: (title?.trim() || "Untitled video").slice(0, 80),
+    title: truncateChars(title?.trim() || "Untitled video", 80),
     language: profile.defaultLanguage,
     lengthPreset: profile.defaultLengthPreset,
     audience: "students",
@@ -79,7 +82,7 @@ export async function createProject(userId: string, profile: Pick<ProfileDoc, "d
 
 export async function renameProject(userId: string, id: string, title: string): Promise<boolean> {
   const _id = toObjectId(id);
-  const clean = title.trim().slice(0, 80);
+  const clean = truncateChars(title.trim(), 80);
   if (!_id || !clean) return false;
   const res = await collections.projects().updateOne({ _id, userId, deletedAt: null }, { $set: { title: clean, updatedAt: new Date() }, $inc: { rev: 1 } });
   return res.matchedCount === 1;
@@ -113,7 +116,7 @@ export async function duplicateProject(userId: string, id: string): Promise<stri
   const copy: ProjectDoc = {
     ...src,
     _id: new ObjectId(),
-    title: `${src.title} (copy)`.slice(0, 80),
+    title: truncateChars(`${src.title} (copy)`, 80),
     status: src.currentStoryboardVersion ? "storyboard_ready" : "idea_draft",
     failedStep: null,
     createdAt: now,

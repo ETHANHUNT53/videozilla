@@ -1,4 +1,4 @@
-import { getMongoClient } from "./client";
+import { MongoClient } from "mongodb";
 import { migrationStatus, runMigrations } from "./migrate";
 
 /**
@@ -11,7 +11,7 @@ async function main() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set (locally it comes from apps/web/.env.local).");
   const dbName = process.env.MONGODB_DB || "videozilla";
-  const client = getMongoClient(uri, "videozilla-migrate");
+  const client = new MongoClient(uri, { appName: "videozilla-migrate" });
   try {
     const db = client.db(dbName);
     if (process.argv.includes("--status")) {
