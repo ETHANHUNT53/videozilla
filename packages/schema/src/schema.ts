@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- scene props differ per scene type (each validated by its own Zod schema); typing them per type is a later refactor. */
 import { z } from "zod";
 
 export const LANGUAGES = ["en", "hi"] as const;

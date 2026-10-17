@@ -19,7 +19,7 @@ AI educational explainer reels: topic → script & storyboard → voiceover → 
 ## Getting started
 
 ```bash
-npm install          # once, from this folder (npm workspaces)
+npm install          # once, from this folder (npm workspaces; Node 22, see .nvmrc)
 npm run typecheck    # type-check every workspace
 npm test             # unit tests for the shared packages (Vitest; `npm run test:watch` while editing)
 npm run db           # local MongoDB for the web app (applies pending migrations on start)
@@ -36,5 +36,5 @@ See [apps/web/README.md](apps/web/README.md) and [m0/README.md](m0/README.md) fo
 ## Workflow
 
 - Branches: `dev` for all ongoing work, `main` only for approved milestones.
-- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): every push and pull request runs `npm ci`, `npm run typecheck`, `npm run lint` and `npm test`. Results: [Actions tab](https://github.com/ETHANHUNT53/videozilla/actions).
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): pushes to `dev` / `main` and every pull request run `npm ci`, `npm run typecheck`, `npm run lint` (packages + web app), `npm test` and a production build of the web app. Results: [Actions tab](https://github.com/ETHANHUNT53/videozilla/actions).
 - Built one small feature at a time; progress is tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).

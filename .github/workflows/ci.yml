@@ -1,23 +1,24 @@
-# F0.5 — every push and pull request: install from the lockfile, then typecheck, lint and unit tests.
+# F0.5 — install from the lockfile, then typecheck, lint, unit tests and a production build of the web app.
 # No secrets are needed: tests mock Gemini / ElevenLabs and run MongoDB in memory.
 name: CI
 
 on:
+  # Pushes to the long-lived branches; any other branch is checked through its pull request (one run per commit, not two).
   push:
-    branches: ["**"]
+    branches: [dev, main]
   pull_request:
 
 permissions:
   contents: read
 
-# A newer push to the same branch cancels the older run.
+# A newer push to the same branch or pull request cancels the older run.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   check:
-    name: Typecheck, lint, test
+    name: Typecheck, lint, test, build
     # Pinned (not ubuntu-latest) so an OS upgrade can't break the in-memory MongoDB used by the tests without notice.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -26,22 +27,23 @@ jobs:
       MONGOMS_DOWNLOAD_DIR: ${{ github.workspace }}/.cache/mongodb-binaries
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v7
+      # Actions are pinned to commit SHAs (a tag can be moved); the comment is the release it points to.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
-
-      - name: Cache MongoDB binary
-        uses: actions/cache@v5
-        with:
-          path: .cache/mongodb-binaries
-          key: mongodb-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: mongodb-${{ runner.os }}-
 
       - name: Install
         run: npm ci
+
+      # Keyed on the mongodb-memory-server version (which decides the MongoDB binary), not the whole lockfile.
+      - name: Cache MongoDB binary
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/mongodb-binaries
+          key: mongodb-${{ runner.os }}-${{ hashFiles('node_modules/mongodb-memory-server-core/package.json') }}
 
       - name: Typecheck
         run: npm run typecheck
@@ -51,6 +53,13 @@ jobs:
 
       - name: Unit tests
         run: npm test -- --reporter=default --reporter=json --outputFile.json=.cache/vitest.json
+
+      # Catches what the checks above can't: route-segment exports, server/client boundaries, prerendering.
+      # Server settings are read lazily, so only Better Auth's secret needs a (throwaway, non-secret) value here.
+      - name: Build web app
+        run: npm run build -w @videozilla/web
+        env:
+          BETTER_AUTH_SECRET: ci-build-only-placeholder-not-a-real-secret-0123456789
 
       # Step logs need a GitHub sign-in; this puts the test counts on the public run page as well.
       - name: Test summary

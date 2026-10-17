@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- repairs untrusted model output of any shape before it is validated; typing these is a later refactor. */
 import {
   ACCENT_NAMES,
   SCENE_PROPS,
