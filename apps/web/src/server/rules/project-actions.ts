@@ -44,3 +44,11 @@ export function allowedActions(status: ProjectStatus): AllowedAction[] {
 export function isAllowed(status: ProjectStatus, action: AllowedAction): boolean {
   return BY_STATUS[status].includes(action);
 }
+
+/**
+ * The statuses in which `action` is allowed. Repositories put it in their update filter
+ * (`status: { $in: statusesAllowing("delete") }`), so the check and the write are one atomic step.
+ */
+export function statusesAllowing(action: AllowedAction): ProjectStatus[] {
+  return (Object.keys(BY_STATUS) as ProjectStatus[]).filter((status) => BY_STATUS[status].includes(action));
+}

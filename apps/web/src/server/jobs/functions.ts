@@ -17,7 +17,8 @@ export const purgeDeletedProjects = inngest.createFunction(
         await step.run(`delete-files-${p.id}`, () => deletePrefix(projectPrefix(p.userId, p.id)));
       }
     }
-    const removed = await step.run("delete-documents", () => purgeExpiredProjects());
+    // Exactly the projects found above (whose files were just deleted), with their idea sessions.
+    const removed = await step.run("delete-documents", () => purgeExpiredProjects(new Date(), expired.map((p) => p.id)));
     return { removed };
   },
 );

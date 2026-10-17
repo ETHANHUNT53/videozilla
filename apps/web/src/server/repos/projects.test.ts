@@ -37,7 +37,7 @@ vi.mock("../api/session", () => ({ sessionUser }));
 
 import { DELETE, GET, POST } from "@/app/api/v1/projects/route";
 import { ApiError } from "../api/errors";
-import { createProject, duplicateProject, listProjects, normalizeSearch } from "./projects";
+import { createProject, deleteAllForUser, duplicateProject, listProjects, normalizeSearch, purgeExpiredProjects, softDeleteProject } from "./projects";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const CACHED_BINARY_DIR = path.join(ROOT, "apps/web/node_modules/.cache/mongodb-memory-server");
@@ -355,9 +355,58 @@ describe("duplicateProject", () => {
     expect(await state.db.collection("idea_sessions").countDocuments({ projectId: copy!._id })).toBe(1);
   });
 
+  it("copies only the settings: no stray or later fields come along from the source", async () => {
+    const [src] = await seed([project(1, { latestRenderId: new ObjectId(), permalink: "https://instagram.com/p/x", postedAt: base, status: "posted" })]);
+    await state.db.collection("projects").updateOne({ _id: src._id }, { $set: { someFutureField: "keep out" } });
+    const copy = await state.db.collection("projects").findOne({ _id: new ObjectId((await duplicateProject(ME, src._id.toHexString()))!) });
+    expect(copy).toMatchObject({ status: "idea_draft", latestRenderId: null, permalink: null, postedAt: null, title: "Video 1 (copy)" });
+    expect(copy).not.toHaveProperty("someFutureField");
+  });
+
   it("can't copy another user's project", async () => {
     const [theirs] = await seed([project(1, { userId: OTHER })]);
     expect(await duplicateProject(ME, theirs._id.toHexString())).toBeNull();
+  });
+});
+
+describe("softDeleteProject", () => {
+  it("follows the status rules: not while the video is being posted to Instagram", async () => {
+    const [publishing, draft] = await seed([project(1, { status: "publishing" }), project(2)]);
+    expect(await softDeleteProject(ME, publishing._id.toHexString())).toBe(false);
+    expect(await state.db.collection("projects").findOne({ _id: publishing._id })).toMatchObject({ deletedAt: null });
+    expect(await softDeleteProject(ME, draft._id.toHexString())).toBe(true);
+  });
+});
+
+describe("purgeExpiredProjects", () => {
+  it("removes expired projects together with their idea sessions, and nothing else", async () => {
+    const old = await createProject(ME, PROFILE, { title: "Old" });
+    const kept = await createProject(ME, PROFILE, { title: "Kept" });
+    const past = new Date(Date.now() - 1000);
+    await state.db.collection("projects").updateOne({ _id: old._id }, { $set: { deletedAt: past, purgeAt: past } });
+    expect(await purgeExpiredProjects()).toBe(1);
+    expect(await state.db.collection("projects").countDocuments({ _id: old._id })).toBe(0);
+    expect(await state.db.collection("idea_sessions").countDocuments({ projectId: old._id })).toBe(0);
+    expect(await state.db.collection("idea_sessions").countDocuments({ projectId: kept._id })).toBe(1);
+  });
+
+  it("with ids, removes only those projects (the ones whose files the job deleted)", async () => {
+    const [a, b] = await seed([project(1), project(2)]);
+    const past = new Date(Date.now() - 1000);
+    await state.db.collection("projects").updateMany({}, { $set: { deletedAt: past, purgeAt: past } });
+    expect(await purgeExpiredProjects(new Date(), [a._id.toHexString()])).toBe(1);
+    expect(await state.db.collection("projects").countDocuments({ _id: b._id })).toBe(1);
+  });
+});
+
+describe("deleteAllForUser", () => {
+  it("removes the user's projects, idea sessions and profile, and nobody else's", async () => {
+    await createProject(ME, PROFILE);
+    const theirs = await createProject(OTHER, PROFILE);
+    await deleteAllForUser(ME);
+    expect(await state.db.collection("projects").countDocuments({ userId: ME })).toBe(0);
+    expect(await state.db.collection("idea_sessions").countDocuments({ userId: ME })).toBe(0);
+    expect(await state.db.collection("idea_sessions").countDocuments({ projectId: theirs._id })).toBe(1);
   });
 });
 
@@ -387,6 +436,13 @@ describe("POST /api/v1/projects", () => {
     expect(body).toMatchObject({ title: "प्रकाश संश्लेषण", language: "hi", lengthPreset: 90, voiceGender: "male" });
     const list = await (await GET(new Request(`${APP}/api/v1/projects`))).json();
     expect(list.items[0].id).toBe(body.id);
+  });
+
+  it("counts the 80-character title limit in characters, like rename and the database", async () => {
+    const res = await post(JSON.stringify({ title: "🎬".repeat(80) }));
+    expect(res.status).toBe(201);
+    expect(Array.from((await res.json()).title as string)).toHaveLength(80);
+    expect((await post(JSON.stringify({ title: "🎬".repeat(81) }))).status).toBe(400);
   });
 
   it("rejects invalid or unknown fields", async () => {

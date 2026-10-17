@@ -242,6 +242,7 @@ function ProjectCard({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(project.title);
   const [menu, setMenu] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const status = STATUS_DISPLAY[project.status];
 
@@ -296,6 +297,11 @@ function ProjectCard({
             <Chip color={status.color}>{status.label}</Chip>
             <TimeAgo iso={project.updatedAt} renderedAt={renderedAt} timeZone={timeZone} className="font-mono text-xs text-dim" />
           </div>
+          {note ? (
+            <p role="alert" className="text-xs text-red">
+              {note}
+            </p>
+          ) : null}
         </div>
         <div className="relative">
           <button onClick={() => setMenu((m) => !m)} className="rounded-lg px-2 py-1 text-muted hover:bg-surface-hover hover:text-fg" aria-label="Video actions" aria-expanded={menu}>
@@ -326,9 +332,12 @@ function ProjectCard({
                 danger
                 onClick={() => {
                   setMenu(false);
+                  setNote(null);
                   start(async () => {
                     const { ok } = await deleteProjectAction(project.id);
                     if (ok) onDeleted();
+                    // Refused by the status rules (DB Design §5.2), e.g. while it is being posted to Instagram.
+                    else setNote(project.status === "publishing" ? "Can't delete while it's being posted. Try again in a moment." : "Couldn't delete this video. Reload and try again.");
                   });
                 }}
               >

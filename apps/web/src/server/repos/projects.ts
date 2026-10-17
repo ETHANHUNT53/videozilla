@@ -3,6 +3,7 @@ import { truncateChars } from "@videozilla/db";
 import { ObjectId, type Filter } from "mongodb";
 import { collections, ensureMigrated, withTransaction } from "../db/mongo";
 import { afterCursorDesc, decodeCursor, DEFAULT_LIMIT, toPage, type Page } from "../api/pagination";
+import { statusesAllowing } from "../rules/project-actions";
 import { STATUS_GROUPS, type IdeaSessionDoc, type Language, type ProfileDoc, type ProjectDoc, type ProjectFilter, type ProjectSummary, type VoiceGender } from "../db/types";
 
 /**
@@ -99,24 +100,25 @@ export interface CreateProjectInput {
 
 type ProfileDefaults = Pick<ProfileDoc, "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultStyleId" | "defaultAudience" | "defaultBoardOrExam">;
 
+/** The settings a new project takes from the profile, the request, or the project it duplicates. */
+type ProjectSettings = Pick<ProjectDoc, "title" | "language" | "lengthPreset" | "audience" | "boardOrExam" | "styleId" | "voiceGender" | "captionsEnabled">;
+
 /**
- * Creates a project as an idea draft, with the user's profile defaults for anything not given, together with its
- * empty idea session — both in one transaction, so a project never exists without one (DB Design §4.3, §4.4, §6.1).
+ * A brand-new idea-draft project document with every DB Design §4.3 field. Only `settings` carry over; status,
+ * progress, render and publishing fields always start fresh, so nothing else can leak in from a source project.
  */
-export async function createProject(userId: string, profile: ProfileDefaults, input: CreateProjectInput = {}): Promise<ProjectDoc> {
-  await ensureMigrated();
-  const now = new Date();
-  const project: ProjectDoc = {
+function freshProject(userId: string, settings: ProjectSettings, now: Date, duplicatedFrom: ObjectId | null = null): ProjectDoc {
+  return {
     _id: new ObjectId(),
     userId,
-    title: truncateChars(input.title?.trim() || "Untitled video", 80),
-    language: input.language ?? profile.defaultLanguage,
-    lengthPreset: input.lengthPreset ?? profile.defaultLengthPreset,
-    audience: profile.defaultAudience,
-    boardOrExam: profile.defaultBoardOrExam ?? null,
-    styleId: profile.defaultStyleId,
-    voiceGender: input.voiceGender ?? profile.defaultVoiceGender,
-    captionsEnabled: false,
+    title: truncateChars(settings.title.trim() || "Untitled video", 80),
+    language: settings.language,
+    lengthPreset: settings.lengthPreset,
+    audience: settings.audience,
+    boardOrExam: settings.boardOrExam ?? null,
+    styleId: settings.styleId,
+    voiceGender: settings.voiceGender,
+    captionsEnabled: settings.captionsEnabled ?? false,
     status: "idea_draft",
     statusChangedAt: now,
     attention: null,
@@ -126,7 +128,7 @@ export async function createProject(userId: string, profile: ProfileDefaults, in
     exportOutdated: false,
     postedAt: null,
     permalink: null,
-    duplicatedFrom: null,
+    duplicatedFrom,
     revisionCount: 0,
     createdAt: now,
     updatedAt: now,
@@ -134,6 +136,29 @@ export async function createProject(userId: string, profile: ProfileDefaults, in
     purgeAt: null,
     rev: 0,
   };
+}
+
+/**
+ * Creates a project as an idea draft, with the user's profile defaults for anything not given, together with its
+ * empty idea session — both in one transaction, so a project never exists without one (DB Design §4.3, §4.4, §6.1).
+ */
+export async function createProject(userId: string, profile: ProfileDefaults, input: CreateProjectInput = {}): Promise<ProjectDoc> {
+  await ensureMigrated();
+  const now = new Date();
+  const project = freshProject(
+    userId,
+    {
+      title: input.title ?? "",
+      language: input.language ?? profile.defaultLanguage,
+      lengthPreset: input.lengthPreset ?? profile.defaultLengthPreset,
+      audience: profile.defaultAudience,
+      boardOrExam: profile.defaultBoardOrExam ?? null,
+      styleId: profile.defaultStyleId,
+      voiceGender: input.voiceGender ?? profile.defaultVoiceGender,
+      captionsEnabled: false,
+    },
+    now,
+  );
   await withTransaction(async (session) => {
     await collections.projects().insertOne(project, { session });
     await collections.ideaSessions().insertOne(emptyIdea(project._id, userId, now), { session });
@@ -165,17 +190,26 @@ export async function renameProject(userId: string, id: string, title: string): 
   const _id = toObjectId(id);
   const clean = truncateChars(title.trim(), 80);
   if (!_id || !clean) return false;
-  const res = await collections.projects().updateOne({ _id, userId, deletedAt: null }, { $set: { title: clean, updatedAt: new Date() }, $inc: { rev: 1 } });
+  const res = await collections.projects().updateOne(
+    { _id, userId, deletedAt: null, status: { $in: statusesAllowing("rename") } },
+    { $set: { title: clean, updatedAt: new Date() }, $inc: { rev: 1 } },
+  );
   return res.matchedCount === 1;
 }
 
-/** Soft delete: hidden at once, purged with its files after 30 days (PRD F1-FR10). */
+/**
+ * Soft delete: hidden at once, purged with its files after 30 days (PRD F1-FR10). Only in statuses that allow it
+ * (DB Design §5.2), so not while an Instagram post is going out. The check is part of the update, so it can't race.
+ */
 export async function softDeleteProject(userId: string, id: string): Promise<boolean> {
   const _id = toObjectId(id);
   if (!_id) return false;
   const now = new Date();
   const purgeAt = new Date(now.getTime() + PURGE_AFTER_DAYS * 24 * 3600 * 1000);
-  const res = await collections.projects().updateOne({ _id, userId, deletedAt: null }, { $set: { deletedAt: now, purgeAt }, $inc: { rev: 1 } });
+  const res = await collections.projects().updateOne(
+    { _id, userId, deletedAt: null, status: { $in: statusesAllowing("delete") } },
+    { $set: { deletedAt: now, purgeAt }, $inc: { rev: 1 } },
+  );
   return res.matchedCount === 1;
 }
 
@@ -190,38 +224,19 @@ export async function restoreProject(userId: string, id: string): Promise<boolea
 }
 
 /**
- * Copies a project's settings and its idea session into a fresh draft, in one transaction (DB Design §6.13).
- * Renders, timelines and publishing are not copied. Storyboards don't exist before M2; when they do (F3), the current
- * version will be copied as version 1 and the copy will start as `storyboard_ready`.
+ * Copies a project's settings and its idea session into a fresh draft, in one transaction (DB Design §6.13). The
+ * source is read inside it too, so the copy matches one moment of the source. Only the settings fields carry over
+ * (freshProject); renders, timelines and publishing are not copied. Storyboards don't exist before M2; when they do
+ * (F3), the current version will be copied as version 1 and the copy will start as `storyboard_ready`.
  */
 export async function duplicateProject(userId: string, id: string): Promise<string | null> {
-  const src = await getProject(userId, id);
-  if (!src) return null;
-  const now = new Date();
-  const settings = { ...src };
-  delete settings.failedStep; // M1 draft field, superseded by `attention`
-  const copy: ProjectDoc = {
-    ...settings,
-    _id: new ObjectId(),
-    title: truncateChars(`${src.title} (copy)`, 80),
-    status: "idea_draft",
-    statusChangedAt: now,
-    attention: null,
-    currentStoryboardVersion: null,
-    currentTimelineId: null,
-    latestRenderId: null,
-    exportOutdated: false,
-    postedAt: null,
-    permalink: null,
-    duplicatedFrom: src._id,
-    revisionCount: 0,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-    purgeAt: null,
-    rev: 0,
-  };
-  await withTransaction(async (session) => {
+  const _id = toObjectId(id);
+  if (!_id) return null;
+  return withTransaction(async (session) => {
+    const src = await collections.projects().findOne({ _id, userId, deletedAt: null, status: { $in: statusesAllowing("duplicate") } }, { session });
+    if (!src) return null;
+    const now = new Date();
+    const copy = freshProject(userId, { ...src, title: `${src.title} (copy)` }, now, src._id);
     const idea = await collections.ideaSessions().findOne({ projectId: src._id, userId }, { session });
     await collections.projects().insertOne(copy, { session });
     await collections.ideaSessions().insertOne(
@@ -235,18 +250,31 @@ export async function duplicateProject(userId: string, id: string): Promise<stri
       },
       { session },
     );
+    return copy._id.toHexString();
   });
-  return copy._id.toHexString();
 }
 
-/** Daily job: permanently remove projects whose 30-day undo window has passed. */
-export async function purgeExpiredProjects(now = new Date()): Promise<number> {
-  const res = await collections.projects().deleteMany({ purgeAt: { $lte: now } });
-  return res.deletedCount;
+/**
+ * Daily job: permanently remove projects whose 30-day undo window has passed, together with their idea sessions (one
+ * transaction). Pass `ids` (from the job's "find" step) to remove exactly the projects whose files were deleted.
+ */
+export async function purgeExpiredProjects(now = new Date(), ids?: string[]): Promise<number> {
+  const filter: Filter<ProjectDoc> = { purgeAt: { $lte: now } };
+  if (ids) filter._id = { $in: ids.map((i) => new ObjectId(i)) };
+  const expired = (await collections.projects().find(filter, { projection: { _id: 1 } }).toArray()).map((p) => p._id);
+  if (!expired.length) return 0;
+  return withTransaction(async (session) => {
+    const res = await collections.projects().deleteMany({ _id: { $in: expired }, purgeAt: { $lte: now } }, { session });
+    await collections.ideaSessions().deleteMany({ projectId: { $in: expired } }, { session });
+    return res.deletedCount;
+  });
 }
 
-/** Account deletion: remove everything the user owns. */
+/** Account deletion: remove everything the user owns (projects, idea sessions, profile), in one transaction. */
 export async function deleteAllForUser(userId: string): Promise<void> {
-  await collections.projects().deleteMany({ userId });
-  await collections.profiles().deleteMany({ userId });
+  await withTransaction(async (session) => {
+    await collections.projects().deleteMany({ userId }, { session });
+    await collections.ideaSessions().deleteMany({ userId }, { session });
+    await collections.profiles().deleteMany({ userId }, { session });
+  });
 }

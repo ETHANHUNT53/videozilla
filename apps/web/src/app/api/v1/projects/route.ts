@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiRoute, created, methodNotAllowed } from "@/server/api/handler";
 import { pageQuery } from "@/server/api/pagination";
+import { textField } from "@/server/api/request";
 import { toProject } from "@/server/api/resources";
 import { PROJECT_FILTERS } from "@/server/db/types";
 import { getOrCreateProfile } from "@/server/repos/profiles";
@@ -15,12 +16,7 @@ import { createProject, listProjects, SEARCH_MAX_CHARS } from "@/server/repos/pr
  */
 const listQuery = z.strictObject({
   filter: z.enum(PROJECT_FILTERS).default("all"),
-  // Counted in characters (code points), like the titles: an emoji is one character, not two.
-  q: z
-    .string()
-    .min(1)
-    .refine((s) => Array.from(s).length <= SEARCH_MAX_CHARS, `Must be at most ${SEARCH_MAX_CHARS} characters`)
-    .optional(),
+  q: textField(SEARCH_MAX_CHARS).optional(), // counted in characters: an emoji is one, not two
   exclude: z.literal("attention").optional(),
   ...pageQuery,
 });
@@ -35,7 +31,7 @@ export const GET = apiRoute({ query: listQuery }, async ({ user, query: { exclud
  * duplicate draft is harmless and can be deleted. Response: `201 Project` with `Location`.
  */
 const createBody = z.strictObject({
-  title: z.string().min(1).max(80).optional(),
+  title: textField(80).optional(), // same 80 characters as the database and rename
   language: z.enum(["en", "hi"]).optional(),
   lengthPreset: z.union([z.literal(60), z.literal(90)]).optional(),
   voiceGender: z.enum(["female", "male"]).optional(),

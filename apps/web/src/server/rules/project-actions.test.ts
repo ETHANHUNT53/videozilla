@@ -1,6 +1,6 @@
 import { PROJECT_STATUSES } from "@videozilla/db";
 import { describe, expect, it } from "vitest";
-import { ALLOWED_ACTIONS, allowedActions, isAllowed } from "./project-actions";
+import { ALLOWED_ACTIONS, allowedActions, isAllowed, statusesAllowing } from "./project-actions";
 
 describe("allowedActions (DB Design §5.2)", () => {
   it("covers every status with known actions only", () => {
@@ -33,6 +33,11 @@ describe("allowedActions (DB Design §5.2)", () => {
     ["revise", ["storyboard_ready", "building", "preview_ready", "rendering", "exported"]],
   ] as const)("%s only in %j", (action, statuses) => {
     expect(PROJECT_STATUSES.filter((s) => isAllowed(s, action))).toEqual(statuses);
+  });
+
+  it("statusesAllowing lists the same statuses as isAllowed, for the repositories' update filters", () => {
+    for (const action of ALLOWED_ACTIONS) expect(statusesAllowing(action).sort()).toEqual(PROJECT_STATUSES.filter((s) => isAllowed(s, action)).sort());
+    expect(statusesAllowing("delete")).not.toContain("publishing");
   });
 
   it("returns a copy the caller can't use to change the table", () => {

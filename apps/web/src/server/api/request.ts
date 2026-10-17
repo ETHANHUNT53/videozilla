@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import { ApiError, type ErrorDetail } from "./errors";
 
 /** Echo the client's X-Request-Id when it's safe (≤ 64 chars of [A-Za-z0-9-]); otherwise make one (API Design §2). */
@@ -45,6 +45,17 @@ export function sanitize(value: unknown, path = ""): unknown {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitize(v, path ? `${path}.${k}` : k)]));
   }
   return value;
+}
+
+/**
+ * A non-empty text field of at most `max` characters, counted as code points like the database's `maxLength` and
+ * `truncateChars` (Zod's `.max()` counts UTF-16 units, so an emoji would count twice).
+ */
+export function textField(max: number) {
+  return z
+    .string()
+    .min(1)
+    .refine((s) => Array.from(s).length <= max, `Must be at most ${max} characters`);
 }
 
 /** Parses with a Zod schema, turning failures into 400 VALIDATION_FAILED with field-level details. */
