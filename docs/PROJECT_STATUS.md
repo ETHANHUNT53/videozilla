@@ -9,8 +9,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-10-17 |
-| **Current phase** | Feature build — F1 accounts & library: moving the M1 draft onto the API and DB designs (F1.4 Google sign-in waits for your Google keys) |
-| **Next feature** | **F1.14 — Cross-user security tests**: for every `/api/v1` route, another signed-in user gets `404` (never `403`) and can't read or change anything (System Design §13.2, API §17) |
+| **Current phase** | Feature build — F1 accounts & library done (except F1.4 Google sign-in, which waits for your Google keys); F2 Idea Studio next |
+| **Next feature** | **F2.1 — Idea session autosave**: `PUT /api/v1/projects/{id}/idea` saves the Idea Studio draft (first feature of F2 — Idea Studio) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -28,14 +28,14 @@
 | Area | Done | Draft | Not started | Blocked |
 |---|---|---|---|---|
 | Planning & design | 8 | 0 | 0 | 0 |
-| F0 Foundation | 1 | 0 | 3 (+1 in progress) | 0 |
-| F1 Accounts & library | 0 | 7 (+3 in progress) | 4 | 0 |
-| F2 Idea Studio | 0 | 0 | 7 | 0 |
+| F0 Foundation | 5 | 0 | 0 | 0 |
+| F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
+| F2 Idea Studio | 1 | 0 | 6 | 0 |
 | F3 Storyboard | 0 | 0 | 7 | 0 |
-| F4–F6 Video engine (from M0) | 0 | 9 | 5 | 1 |
+| F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
-| F9 Instagram | 0 | 0 | 8 | 1 |
+| F9 Instagram | 0 | 0 | 7 | 1 |
 | F10 Reliability & ops | 0 | 1 | 6 | 0 |
 
 ---
@@ -84,9 +84,9 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F1.9 | Project page shell with Idea → Storyboard → Video stepper | ✅ | Done 2026-10-17. Page reads through the same service / `Project` resource as `GET /api/v1/projects/{id}`; stepper shows done / active / upcoming steps; click the title to rename; "needs attention" banner; step-specific workspace placeholders until M2–M6. Checked in the browser in idea_draft, storyboard_ready and preview_ready |
 | F1.10 | Settings: defaults (language, length, voice, time zone, notifications) | ✅ | Done 2026-10-17. `PATCH /api/v1/me/profile` (strict: display name, default language / length / voice / audience / board, time zone, emails; `role` can't be sent) returns the `Profile`; Settings page saves through it (now also audience and board); server actions removed. New videos pick up the defaults — checked in the browser |
 | F1.11 | Delete account (full data deletion job) | ✅ | Done 2026-10-17. Before delete: active runs, scheduled posts and queued renders are cancelled. After Better Auth removes the sign-in records, the `delete-account-data` job deletes all 15 user collections in batches (one resumable step each) and the user's R2 files; without the job system it runs inline; a daily sweep finishes any leftovers. Guarded: never runs while the account exists. Note vs DB §6.12: the sign-in records go first (Better Auth's flow), so the user is signed out at once. Checked in the browser |
-| F1.12 | Onboarding "Welcome" screen | ✅ | Done 2026-10-17 ([design note](features/F1.12-onboarding.md)). `/welcome` (Stitch screen 16): 3 step cards, main video language (required), optional "what do you teach or create about" (new profile field `about`, ≤ 200 chars), time-zone note; Start creating saves them, Skip doesn't; both set `onboardingCompletedAt` via `PATCH /api/v1/me/profile`. Only the Library sends users there, and only first-time users: no projects yet (deleted ones count) and onboarding not done. Checked in the browser (new sign-up + skip) |
+| F1.12 | Onboarding "Welcome" screen | ✅ | Done 2026-10-17 ([design note](features/F1.12-onboarding.md)). `/welcome` (Stitch screen 16): 3 step cards, main video language (required), optional "what do you teach or create about" (new profile field `about`, ≤ 200 chars), time-zone note; Start creating saves them, Skip doesn't; both set `onboardingCompletedAt` via `PATCH /api/v1/me/profile`. Only the Library sends users there, and only first-time users: no projects yet (deleted ones count) and onboarding not done. The check runs in the proxy (a real redirect before the Library renders, so no "Loading your videos…" flash), with the same check on the Library page as a fallback. Checked in the browser (new sign-up + skip) |
 | F1.13 | Usage limits per day (`usage_counters`) | ✅ | Done 2026-10-17 ([design note](features/F1.13-usage-limits.md)). Shared `consumeUsage()` checks and counts in one database operation per IST day (works inside a transaction), throws `429 LIMIT_REACHED` with `{ counter, limit, used, resetsAt }` and `Retry-After`; limits = PRD defaults → admin `config.limits` → `profiles.limitsOverride`; `GET /api/v1/me/usage`; RateLimit headers helper. Used by storyboard / revision / build / render endpoints when they arrive (M2–M4). No UI (PRD: shown only when near the limit) |
-| F1.14 | Cross-user security tests for every route | ⬜ | System Design §13.2 |
+| F1.14 | Cross-user security tests for every route | ✅ | Done 2026-10-17 ([design note](features/F1.14-cross-user-security.md)). `server/security/cross-user.test.ts` (33 tests): as user B, every `/api/v1` handler against user A's live, deleted and needs-attention projects answers `404` exactly like an unknown id and changes nothing (A's projects, ideas, profile, runs and usage compared before/after); lists, search and A's cursor show only B's data; `userId` / `role` in bodies → `400`; `/me`, `/me/usage`, `/me/profile` only B's own. Every route: `401` signed out, `403` unverified (except `GET /me`). A coverage check fails if a new route file isn't in the suite. Checked that removing the `userId` filter makes tests fail. No leaks found |
 
 ### F2 — Idea Studio
 
@@ -239,3 +239,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | F1.12 review fixes: only users with no videos yet are sent to Welcome (existing creators go straight to their Library), checked before the Library queries; `onboardingCompletedAt` keeps the first completion time; the "what do you teach" inputs count 200 characters like the API, with one shared limit (`lib/profile-limits.ts`). |
 | 2026-10-17 | **F1.13 done** — daily usage limits ([design note](features/F1.13-usage-limits.md)): per user and IST day, checked and counted in one database step so concurrent requests can't pass the limit (tested with 15 at once against 10); `429 LIMIT_REACHED` with when it resets; admin-wide and per-user overrides; `GET /api/v1/me/usage`. Fixed a gap in the DB Design §7.5 pattern (a counter's first use on a day that already has another counter looked like "limit reached"); DB design updated. Also corrected the F1.12 status wording for the narrowed Welcome gate. |
 | 2026-10-17 | F1.13 review fixes: `consumeUsage` no longer uses the duplicate-key error as "limit reached" (inside a transaction it aborted the transaction, so the request hung or failed instead of answering 429). It first makes sure the day's document exists, then increments without upsert. Amounts must be positive whole numbers; a stored counter that isn't a number is an error, not "limit reached". Design note and DB §7.5 note updated. |
+| 2026-10-17 | **F1.14 done** — cross-user security tests ([design note](features/F1.14-cross-user-security.md)): 33 tests prove another signed-in user can't read, change, delete, restore or copy someone else's videos, profile or usage through any `/api/v1` route, and gets the same `404` as for an id that doesn't exist; a coverage check makes every new route add its case. No leaks found. Also: the Welcome redirect (F1.12) now happens in the proxy, so first-time users no longer see the Library's "Loading your videos…" flash first. Summary counts corrected. Next: F2.1. |
