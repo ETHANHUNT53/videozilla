@@ -17,6 +17,7 @@ import { getOrCreateProfile, updateProfile } from "./profiles";
 import { createProject, deleteProject } from "./projects";
 import { getIdea } from "./ideas";
 import { resetLimitsCache } from "./usage";
+import { resetModelCooldowns } from "@videozilla/ai";
 
 const APP = "http://localhost:3000";
 const ME = { id: new ObjectId().toHexString(), name: "Me", email: "me@example.com", emailVerified: true, image: null, createdAt: new Date() };
@@ -42,6 +43,7 @@ beforeEach(async () => {
   vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
   sessionUser.mockResolvedValue(ME);
   generateContent.mockReset();
+  resetModelCooldowns();
 });
 
 async function post(body: unknown, id = projectId) {
@@ -136,6 +138,10 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     expect(res.json.error.code).toBe("LIMIT_REACHED");
     expect(res.json.error.message).toMatch(/AI idea requests/);
     expect(res.headers.get("retry-after")).toBeTruthy();
+    // The same RateLimit headers as a successful call, so the page can say when it resets.
+    expect(res.headers.get("ratelimit-limit")).toBe("1");
+    expect(res.headers.get("ratelimit-remaining")).toBe("0");
+    expect(Number(res.headers.get("ratelimit-reset"))).toBeGreaterThan(0);
     expect(generateContent).toHaveBeenCalledTimes(1);
   });
 
@@ -172,6 +178,37 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     expect(res.status).toBe(409);
     expect(res.json.error.code).toBe("INVALID_STATE");
     expect((await testMongo.db.collection("idea_sessions").findOne({ projectId: new ObjectId(projectId) }))!.suggestions).toEqual([]);
+    // Nothing was delivered, so the request goes back to the daily limit.
+    expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME.id }))!.ideas).toBe(0);
+  });
+
+  it("a reply that keeps repeating existing text (RECITATION) is 503 with the request given back, not a safety refusal", async () => {
+    generateContent.mockResolvedValue({ text: "", candidates: [{ finishReason: "RECITATION" }] });
+    const res = await post({ topic: "Gitanjali by Tagore" });
+    expect(res.status).toBe(503);
+    expect(res.json.error.code).toBe("AI_BUSY");
+    expect(generateContent).toHaveBeenCalledTimes(2); // one "use your own words" retry
+    expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME.id }))!.ideas).toBe(0);
+  });
+
+  it("a recitation fixed on the retry gives the 5 cards", async () => {
+    generateContent.mockResolvedValueOnce({ text: "", candidates: [{ finishReason: "RECITATION" }] }).mockResolvedValueOnce(fiveIdeas());
+    const res = await post({ topic: "Gitanjali by Tagore" });
+    expect(res.status).toBe(200);
+    expect(res.json.suggestions).toHaveLength(5);
+  });
+
+  it("both models out of Gemini quota: 503 with Gemini's own retry time (at most an hour), request given back", async () => {
+    const quota = (delay: string) => new Error(`429 You exceeded your current quota. Quota exceeded for metric: free_tier_requests "retryDelay":"${delay}"`);
+    generateContent.mockRejectedValueOnce(quota("35237s")).mockRejectedValueOnce(quota("90s"));
+    const res = await post({ topic: "Plants" });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("90");
+    expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME.id }))!.ideas).toBe(0);
+    // The next request doesn't even try: both models are cooling down.
+    generateContent.mockClear();
+    expect((await post({ topic: "Plants" })).status).toBe(503);
+    expect(generateContent).not.toHaveBeenCalled();
   });
 
   it("Gemini busy on both models: 503 AI_BUSY with Retry-After", async () => {

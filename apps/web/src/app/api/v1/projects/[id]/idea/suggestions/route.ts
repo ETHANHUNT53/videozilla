@@ -59,7 +59,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     await refundUsage(user.id, usage);
     if (err instanceof AiBusyError || err instanceof AiOutputError) {
       if (err instanceof AiOutputError) console.warn(`[ideas] ${err.message}`);
-      throw new ApiError("AI_BUSY", { retryAfterSec: BUSY_RETRY_SEC });
+      throw new ApiError("AI_BUSY", { retryAfterSec: err instanceof AiBusyError ? err.retryAfterSec : BUSY_RETRY_SEC });
     }
     throw err;
   }
@@ -76,6 +76,8 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
       keyPoints: i.keyPoints.map((k) => truncateChars(k, 160)),
     })),
   );
+  // Nothing delivered from here on, so the request goes back to the daily limit.
+  if (!suggestions || suggestions === "invalid_state") await refundUsage(user.id, usage);
   if (!suggestions) throw new ApiError("NOT_FOUND"); // deleted while Gemini was thinking
   if (suggestions === "invalid_state") {
     throw new ApiError("INVALID_STATE", { message: "The video moved on to its storyboard while the ideas were being made, so they weren't saved." });

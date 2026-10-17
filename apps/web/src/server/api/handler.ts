@@ -131,6 +131,7 @@ export function apiRoute<A extends Auth = "verified", B = undefined, Q = undefin
       if (!(err instanceof ApiError)) console.error(`[api] ${requestId} ${req.method} ${new URL(req.url).pathname} failed:`, err);
       res = json(errorBody(apiErr, requestId), { status: apiErr.status });
       if (apiErr.retryAfterSec !== null) res.headers.set("Retry-After", String(apiErr.retryAfterSec));
+      for (const [name, value] of Object.entries(apiErr.headers)) res.headers.set(name, value);
     }
     res.headers.set("X-Request-Id", requestId);
     if (!res.headers.has("Cache-Control")) res.headers.set("Cache-Control", "private, no-store");

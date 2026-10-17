@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import type { AutosaveState } from "@/lib/autosave";
 import { clampChars, stripControlChars } from "@/lib/project-client";
@@ -178,7 +178,22 @@ export function IdeaStep({ projectId, initial, editable }: { projectId: string; 
 function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string; topic: string; initial: Suggestion[]; editable: boolean }) {
   const [cards, setCards] = useState<Suggestion[]>(initial);
   const [busy, setBusy] = useState<"new" | "more" | string | null>(null); // "new", "more" or the card id for "more like this"
-  const [error, setError] = useState<string | null>(null);
+  // The error to show; `reason` is the AI's own explanation of a refusal (422 UNSAFE_CONTENT).
+  const [error, setError] = useState<{ message: string; reason?: string } | null>(null);
+  // After 429 LIMIT_REACHED: asking stays off until the daily limit resets (the button would only fail again).
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  useEffect(() => {
+    if (lockedUntil === null) return;
+    // Long waits are re-checked at least hourly: a laptop may sleep through a single long timer.
+    let timer: ReturnType<typeof setTimeout>;
+    const check = () => {
+      const left = lockedUntil - Date.now();
+      if (left <= 0) setLockedUntil(null);
+      else timer = setTimeout(check, Math.min(left, 3_600_000));
+    };
+    timer = setTimeout(check, 0);
+    return () => clearTimeout(timer);
+  }, [lockedUntil]);
   const trimmed = topic.trim();
 
   // Each request costs a Gemini call and a unit of the daily limit: a second click before the re-render must not send
@@ -197,7 +212,14 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
       });
       setCards((prev) => [...prev, ...data.suggestions].slice(-MAX_CARDS));
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Couldn't get ideas. Please try again.");
+      if (!(err instanceof ApiClientError)) {
+        setError({ message: "Couldn't get ideas. Please try again." });
+      } else {
+        const issue = err.details[0]?.issue;
+        setError({ message: err.message, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
+        const resetsAt = err.code === "LIMIT_REACHED" ? Date.parse(String(err.details[0]?.resetsAt ?? "")) : NaN;
+        if (Number.isFinite(resetsAt)) setLockedUntil(resetsAt);
+      }
     } finally {
       asking.current = false;
       setBusy(null);
@@ -205,7 +227,7 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
   };
 
   const newestFirst = [...cards].reverse();
-  const canAsk = editable && busy === null;
+  const canAsk = editable && busy === null && lockedUntil === null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -222,13 +244,16 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-xl border border-red/40 bg-red/5 px-4 py-3 text-sm">
-          {error}
-        </p>
+        <div role="alert" className="flex flex-col gap-1 rounded-xl border border-red/40 bg-red/5 px-4 py-3 text-sm">
+          <p>{error.message}</p>
+          {error.reason ? <p className="text-muted">{error.reason}</p> : null}
+        </div>
       ) : null}
 
       {cards.length ? (
         <>
+          {/* Visible, not only a tooltip: phones can't hover. */}
+          <p className="text-xs text-dim">“Use this” turns an idea into a brief for your video. It arrives in the next update.</p>
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3" aria-label="Video ideas">
             {newestFirst.map((c) => (
               <li key={c.id} className="flex flex-col gap-3 rounded-xl border border-line bg-raised p-4">

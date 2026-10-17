@@ -8,7 +8,7 @@ vi.mock("@google/genai", () => ({
   },
 }));
 
-import { AiBlockedError, AiBusyError, AiOutputError, generateJson, type AiCallLog } from "./generate-json";
+import { AiBlockedError, AiBusyError, AiOutputError, generateJson, quotaCooldownMs, resetModelCooldowns, type AiCallLog } from "./generate-json";
 
 const Shape = z.object({ items: z.array(z.string()).length(2) });
 const reply = (data: unknown, tokens = { promptTokenCount: 10, candidatesTokenCount: 5 }) => ({ text: typeof data === "string" ? data : JSON.stringify(data), usageMetadata: tokens });
@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.stubEnv("GEMINI_FAST_MODEL", "");
   vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
   generateContent.mockReset();
+  resetModelCooldowns();
 });
 afterEach(() => vi.useRealTimers());
 
@@ -128,5 +129,79 @@ describe("generateJson", () => {
   it("needs GEMINI_API_KEY", async () => {
     vi.stubEnv("GEMINI_API_KEY", "");
     await expect(generateJson({ system: "s", prompt: "p", schema: Shape })).rejects.toThrow(/GEMINI_API_KEY is missing/);
+  });
+});
+
+/** Gemini's real free-tier daily-quota error (2026-10-17), shortened. */
+const quotaError = (retryDelay = "35237s") =>
+  Object.assign(
+    new Error(
+      `{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details.\\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"${retryDelay}"}]}}`,
+    ),
+    { status: 429 },
+  );
+
+describe("RECITATION (repeating existing text) is an unusable reply, not a safety block", () => {
+  it("retries once with 'use your own words' added to the request, and accepts the new reply", async () => {
+    generateContent.mockResolvedValueOnce({ text: "", candidates: [{ finishReason: "RECITATION" }] }).mockResolvedValueOnce(reply({ items: ["a", "b"] }));
+    const { promise, logs } = await run();
+    await expect(promise).resolves.toMatchObject({ data: { items: ["a", "b"] } });
+    const contents = generateContent.mock.calls[1][0].contents as { role: string; parts: { text: string }[] }[];
+    expect(contents.map((c) => c.role)).toEqual(["user"]); // turns still alternate
+    expect(contents[0].parts[0].text).toMatch(/^user prompt\n\nYour reply was stopped because it repeated existing text/);
+    expect(logs[0]).toMatchObject({ status: "failed", error: "recitation" });
+  });
+
+  it("recitation twice: AiOutputError (the app answers 503 and gives the request back), never AiBlockedError", async () => {
+    generateContent.mockResolvedValue({ text: "", candidates: [{ finishReason: "RECITATION" }] });
+    const { promise } = await run();
+    await expect(promise).rejects.toBeInstanceOf(AiOutputError);
+    await expect(promise).rejects.not.toBeInstanceOf(AiBlockedError);
+  });
+});
+
+describe("quota circuit breaker", () => {
+  it("reads the cooldown from Gemini's retryDelay; daily quotas without one wait 30 min; other errors aren't quota errors", () => {
+    expect(quotaCooldownMs(quotaError("35237s"))).toBe(35_237_000);
+    expect(quotaCooldownMs(quotaError("2.5s"))).toBe(10_000); // at least 10 s
+    expect(quotaCooldownMs(new Error("You exceeded your current quota … GenerateRequestsPerDayPerProjectPerModel-FreeTier"))).toBe(30 * 60_000);
+    expect(quotaCooldownMs(new Error("Quota exceeded for metric: …per minute"))).toBe(60_000);
+    expect(quotaCooldownMs(busy())).toBeNull();
+    expect(quotaCooldownMs(new Error("429 RESOURCE_EXHAUSTED: Resource has been exhausted"))).toBeNull();
+  });
+
+  it("a quota error goes straight to the fallback (no retry of the main model), with the fallback's full time", async () => {
+    generateContent.mockRejectedValueOnce(quotaError()).mockResolvedValueOnce(reply({ items: ["a", "b"] }));
+    const { promise, logs } = await run();
+    await expect(promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite" });
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+    expect(logs[0]).toMatchObject({ status: "retry", error: expect.stringMatching(/exceeded your current quota/) });
+  });
+
+  it("later requests skip the out-of-quota model entirely until the cooldown ends", async () => {
+    generateContent.mockRejectedValueOnce(quotaError("600s")).mockResolvedValue(reply({ items: ["a", "b"] }));
+    await (await run()).promise;
+    generateContent.mockClear();
+    await expect((await run()).promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite" });
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.5-flash-lite"]);
+
+    vi.advanceTimersByTime(601_000);
+    generateContent.mockClear();
+    await (await run()).promise;
+    expect(generateContent.mock.calls[0][0].model).toBe("gemini-3.8-flash"); // back after the cooldown
+  });
+
+  it("every model out of quota: AiBusyError at once, saying when to retry (at most an hour)", async () => {
+    generateContent.mockRejectedValueOnce(quotaError("35237s")).mockRejectedValueOnce(quotaError("120s"));
+    const { promise } = await run();
+    await expect(promise).rejects.toMatchObject({ name: "AiBusyError", retryAfterSec: 120 });
+    generateContent.mockClear();
+    const again = await run();
+    await expect(again.promise).rejects.toBeInstanceOf(AiBusyError);
+    expect(generateContent).not.toHaveBeenCalled();
+    // Once the fallback's cooldown ends it's used again (the main model is still out for hours).
+    vi.advanceTimersByTime(121_000);
+    generateContent.mockResolvedValueOnce(reply({ items: ["a", "b"] }));
+    await expect((await run()).promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite" });
   });
 });

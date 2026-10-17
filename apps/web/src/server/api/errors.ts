@@ -50,10 +50,12 @@ export class ApiError extends Error {
   readonly retryable: boolean;
   readonly details: ErrorDetail[];
   readonly retryAfterSec: number | null;
+  /** Extra response headers (e.g. RateLimit-* on 429 LIMIT_REACHED). */
+  readonly headers: Record<string, string>;
 
   constructor(
     readonly code: ErrorCode,
-    opts: { message?: string; details?: ErrorDetail[]; retryAfterSec?: number } = {},
+    opts: { message?: string; details?: ErrorDetail[]; retryAfterSec?: number; headers?: Record<string, string> } = {},
   ) {
     const [status, retryable, message] = CATALOGUE[code];
     super(opts.message ?? message);
@@ -62,6 +64,7 @@ export class ApiError extends Error {
     this.retryable = retryable;
     this.details = opts.details ?? [];
     this.retryAfterSec = opts.retryAfterSec ?? null;
+    this.headers = opts.headers ?? {};
   }
 }
 

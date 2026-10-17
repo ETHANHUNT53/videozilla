@@ -115,10 +115,13 @@ export async function consumeUsage(userId: string, counter: UsageCounter, opts: 
     throw new Error(`Usage counter ${counter} for ${userId} on ${date} isn't a number (${JSON.stringify(raw)})`);
   }
   const used = raw ?? 0;
+  const now = opts.now ?? new Date();
   throw new ApiError("LIMIT_REACHED", {
     message: `You've reached today's limit for ${LABELS[counter as LimitedCounter]}. It resets at midnight (IST).`,
     details: [{ field: counter, issue: `limit ${limit} per day reached`, counter, limit, used, resetsAt: resetsAt.toISOString() }],
-    retryAfterSec: Math.max(1, Math.ceil((resetsAt.getTime() - (opts.now ?? new Date()).getTime()) / 1000)),
+    retryAfterSec: Math.max(1, Math.ceil((resetsAt.getTime() - now.getTime()) / 1000)),
+    // Same RateLimit headers as a successful call (API Design §11), so clients can show when it resets.
+    headers: rateLimitHeaders({ counter, used, limit, resetsAt }, now),
   });
 }
 

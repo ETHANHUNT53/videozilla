@@ -73,7 +73,7 @@ export function ideaSuggestionsSystemPrompt(language: IdeaLanguage): string {
     "- angle: one sentence on what makes this take distinct.",
     "- keyPoints: exactly 3 short points the video explains, in teaching order.",
     "- Each idea must be teachable in 60–90 seconds: one clear concept, not a whole chapter.",
-    "- The 5 ideas must differ in angle, not just in wording.",
+    "- The 5 ideas must each be about a different concept, not the same concept reworded or translated.",
     "- Fit the audience level, and the board or exam when one is given. Prefer Indian examples and units (₹, km, °C) where natural.",
     `- Write every field in ${LANGUAGE_TEXT[language]}.`,
     "- Be accurate and conservative with facts and numbers. For health, finance, legal, mental-health or current-affairs topics, stay general education: no personal advice, no predictions.",
@@ -89,7 +89,7 @@ export function ideaSuggestionsUserPrompt(input: IdeaSuggestionsInput): string {
   if (input.boardOrExam && BOARD_TEXT[input.boardOrExam]) lines.push(`Board or exam: ${BOARD_TEXT[input.boardOrExam]}.`);
   if (input.creatorAbout?.trim()) lines.push(`The creator teaches or makes videos about: <creator_context>${asData(input.creatorAbout.trim())}</creator_context>`);
   if (input.avoidTitles?.length) {
-    lines.push("Already suggested — every new idea must cover a different concept or angle from all of these, never a rewording of one:", "<avoid_titles>", ...input.avoidTitles.map((t) => `- ${asData(t)}`), "</avoid_titles>");
+    lines.push("Already suggested (titles may be in another language) — every new idea must be about a concept none of these covers. A rewording, a synonym or a translation of one of them counts as the same idea:", "<avoid_titles>", ...input.avoidTitles.map((t) => `- ${asData(t)}`), "</avoid_titles>");
   }
   lines.push("Return the JSON.");
   return lines.join("\n");
