@@ -88,6 +88,36 @@ describe("consumeUsage", () => {
     ).rejects.toThrow("run insert failed");
     expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: ME })).toBe(0);
   });
+
+  it("answers 429 (not a database error) when the limit is reached inside a transaction", async () => {
+    await testMongo.db.collection("config").insertOne({ key: "limits", value: { renders: 1 } });
+    await consumeUsage(ME, "renders", { now: NOON_IST });
+    const err = await limitError(mongoModule.withTransaction((session) => consumeUsage(ME, "renders", { session, now: NOON_IST })));
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe("LIMIT_REACHED");
+    expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME }))!.renders).toBe(1);
+  });
+
+  it("counts the first use of the day inside a transaction, and a second counter on the same day", async () => {
+    await mongoModule.withTransaction((session) => consumeUsage(ME, "storyboards", { session, now: NOON_IST }));
+    await mongoModule.withTransaction((session) => consumeUsage(ME, "builds", { session, now: NOON_IST }));
+    expect(await testMongo.db.collection("usage_counters").findOne({ userId: ME })).toMatchObject({ storyboards: 1, builds: 1 });
+  });
+
+  it("refuses amounts that aren't positive whole numbers (they would lower or corrupt the count)", async () => {
+    for (const amount of [0, -5, 1.5, Number.NaN]) {
+      await expect(consumeUsage(ME, "voiceCharacters", { amount, now: NOON_IST }), String(amount)).rejects.toThrow("positive whole number");
+    }
+    expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: ME })).toBe(0);
+  });
+
+  it("reports a counter that isn't a number as an error, not as 'limit reached'", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await testMongo.db.collection("usage_counters").insertOne({ userId: ME, date: istDay(NOON_IST).date, storyboards: "3" });
+    const err = await consumeUsage(ME, "storyboards", { now: NOON_IST }).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(ApiError);
+    expect(String(err)).toMatch(/isn't a number/);
+  });
 });
 
 describe("limits", () => {

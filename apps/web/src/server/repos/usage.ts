@@ -1,5 +1,5 @@
 import "server-only";
-import { MongoServerError, type ClientSession } from "mongodb";
+import type { ClientSession } from "mongodb";
 import { ApiError } from "../api/errors";
 import { collections } from "../db/mongo";
 
@@ -75,32 +75,42 @@ export interface UsageResult {
 /**
  * Counts `amount` against today's `counter`, or throws `429 LIMIT_REACHED` (nothing counted) when that would pass the
  * limit. Pass `session` to make it part of the transaction that starts the work (DB Design §6.2, §6.8).
+ *
+ * Two steps, neither of which can fail with a duplicate key (a write error would abort the caller's transaction):
+ * 1. make sure today's document exists: an upsert on exactly `{ userId, date }` (the unique index), which MongoDB
+ *    retries by itself when two first requests of the day race;
+ * 2. increment the counter only while it stays within the limit (no upsert). Matching nothing means the limit is
+ *    reached. One atomic update, so concurrent requests can't both take the last slot.
  */
 export async function consumeUsage(userId: string, counter: UsageCounter, opts: { amount?: number; session?: ClientSession; now?: Date } = {}): Promise<UsageResult> {
   const amount = opts.amount ?? 1;
+  // A zero, negative, fractional or NaN amount would skip the check, lower the count or corrupt it.
+  if (!Number.isInteger(amount) || amount < 1) throw new Error(`Usage amount must be a positive whole number (got ${amount} for ${counter})`);
   const { date, resetsAt } = istDay(opts.now);
   const limit = counter === "voiceCharacters" ? null : (await limitsFor(userId))[counter];
   const expiresAt = new Date(resetsAt.getTime() + KEEP_DAYS * 86_400_000);
+  const session = opts.session;
 
-  // Below the limit after adding `amount` — or this counter not used yet today (the day's document may already exist
-  // for other counters; without $exists that case would fall through to the upsert and look like "limit reached").
-  const room = limit === null ? {} : { $or: [{ [counter]: { $lte: limit - amount } }, { [counter]: { $exists: false } }] };
-  const filter = { userId, date, ...room };
-  const update = { $inc: { [counter]: amount }, $set: { updatedAt: new Date() }, $setOnInsert: { expiresAt } };
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (limit !== null && amount > limit) break;
-    try {
-      const doc = await collections.usageCounters().findOneAndUpdate(filter, update, { upsert: true, returnDocument: "after", session: opts.session });
-      return { counter, used: doc![counter] as number, limit, resetsAt };
-    } catch (err) {
-      // Duplicate {userId, date}: the day's document exists and the filter didn't match it (over the limit), or two
-      // first requests of the day raced. Retry once: the second attempt sees the document.
-      if (!(err instanceof MongoServerError && err.code === 11000)) throw err;
-    }
+  if (limit === null || amount <= limit) {
+    await collections.usageCounters().updateOne({ userId, date }, { $setOnInsert: { userId, date, expiresAt } }, { upsert: true, session });
+    // Within the limit after adding `amount`, or this counter not used yet today (the document exists for the day, but
+    // maybe only with other counters).
+    const room = limit === null ? {} : { $or: [{ [counter]: { $lte: limit - amount } }, { [counter]: { $exists: false } }] };
+    const doc = await collections.usageCounters().findOneAndUpdate(
+      { userId, date, ...room },
+      { $inc: { [counter]: amount }, $set: { updatedAt: new Date() } },
+      { returnDocument: "after", session },
+    );
+    if (doc) return { counter, used: doc[counter] as number, limit, resetsAt };
   }
-  const current = await collections.usageCounters().findOne({ userId, date }, { session: opts.session });
-  const used = (current?.[counter] as number | undefined) ?? 0;
+
+  const current = await collections.usageCounters().findOne({ userId, date }, { session });
+  const raw = current?.[counter];
+  if (raw !== undefined && typeof raw !== "number") {
+    // Not a real "limit reached": the stored count is broken. Fail loudly so it shows up in the logs.
+    throw new Error(`Usage counter ${counter} for ${userId} on ${date} isn't a number (${JSON.stringify(raw)})`);
+  }
+  const used = raw ?? 0;
   throw new ApiError("LIMIT_REACHED", {
     message: `You've reached today's limit for ${LABELS[counter as LimitedCounter]}. It resets at midnight (IST).`,
     details: [{ field: counter, issue: `limit ${limit} per day reached`, counter, limit, used, resetsAt: resetsAt.toISOString() }],

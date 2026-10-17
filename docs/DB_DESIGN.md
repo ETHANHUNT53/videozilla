@@ -620,7 +620,7 @@ updateOne(
 
 `matchedCount = 0` on an existing document → `429 LIMIT_REACHED`. Upsert races are resolved by the unique `{userId, date}` index with a single retry.
 
-**Implementation note (F1.13):** the counter filter must also accept a counter that is **missing** from the day's document (`$or: [{ [counter]: { $lte: limit - amount } }, { [counter]: { $exists: false } }]`). Otherwise the first use of one counter on a day that already has a document for another counter matches nothing, the upsert hits the unique index, and it looks like "limit reached". A duplicate-key error is retried once, then treated as the limit. See [F1.13 design note](features/F1.13-usage-limits.md).
+**Implementation note (F1.13):** don't rely on the duplicate-key error. Inside a transaction a write error aborts it, so the request fails instead of answering 429. Instead, (1) upsert on exactly `{ userId, date }` with `$setOnInsert` to make sure the day's document exists (MongoDB retries that upsert itself on a race), then (2) `$inc` **without upsert**, with a filter that also accepts a counter **missing** from the day's document (`$or: [{ [counter]: { $lte: limit - amount } }, { [counter]: { $exists: false } }]`). Matching nothing in step 2 means the limit is reached. See [F1.13 design note](features/F1.13-usage-limits.md).
 
 ### 7.6 Transactional outbox for Inngest events
 
