@@ -36,4 +36,5 @@ See [apps/web/README.md](apps/web/README.md) and [m0/README.md](m0/README.md) fo
 ## Workflow
 
 - Branches: `dev` for all ongoing work, `main` only for approved milestones.
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): every push and pull request runs `npm ci`, `npm run typecheck`, `npm run lint` and `npm test`. Results: [Actions tab](https://github.com/ETHANHUNT53/videozilla/actions).
 - Built one small feature at a time; progress is tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).

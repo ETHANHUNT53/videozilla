@@ -9,8 +9,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-10-17 |
-| **Current phase** | Feature build — F0 foundation (F1.4 Google sign-in waits for your Google keys) |
-| **Next feature** | **F0.5 — CI**: typecheck, lint and tests on every push (GitHub Actions) |
+| **Current phase** | Feature build — F1 accounts & library: moving the M1 draft onto the API and DB designs (F1.4 Google sign-in waits for your Google keys) |
+| **Next feature** | **F1.6 — Library on the API**: `GET /api/v1/projects` with filters, search and cursor pagination (API §13.2) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -65,7 +65,7 @@
 | F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ✅ | Done 2026-10-16. `npm test`: 97 tests over schema, pipeline (text, validator, cue sync, beats, captions, duration fitting), voice (approved voices only, no fallback, timings, mock) and ai (busy retry, fallback model, JSON/shape/length fixes). Checked that breaking a rule makes tests fail. Video rendering is covered later by visual-regression tests |
 | F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ✅ | Done 2026-10-17. Migrations `001_initial_schema` (19 collections, 12 validators, 36 indexes) and `002_profile_defaults`; `npm run db:migrate` (`-- --status` to list); `npm run db` applies them on start. Web app uses the shared client; start-up index creation removed. 40 integration tests on a throwaway MongoDB |
 | F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ✅ | Done 2026-10-17. `apiRoute()` wrapper in `apps/web/src/server/api/`; first endpoint `GET /api/v1/me`; unknown `/api/v1` paths return JSON 404. 35 tests; checked against the running app. Rate limits stay at the edge (F10) |
-| F0.5 | Commit history + CI (typecheck, lint, tests on every push) | 🔵 | Repo on GitHub with full history (2026-10-16); CI still to add |
+| F0.5 | Commit history + CI (typecheck, lint, tests on every push) | ✅ | Done 2026-10-17. GitHub Actions `CI` workflow on every push and pull request (Ubuntu 24.04, Node 22): install, typecheck, lint, unit tests; test counts shown on the run page. First green runs: [#1](https://github.com/ETHANHUNT53/videozilla/actions/runs/39007909555), [#2](https://github.com/ETHANHUNT53/videozilla/actions/runs/39008053595) (188 tests) |
 
 ### F1 — Accounts & project library
 
@@ -220,3 +220,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | F0.3 review fixes: the migration lock is renewed before each migration and a run only releases its own lock (a run that lost it stops); `--status` also lists applied migrations whose file is gone; the web app checks once per process that the latest migration ran and fails with a clear error otherwise (production needs `npm run db:migrate` on deploy); `npm run db` stops if migrations fail; scripts use their own short-lived Mongo client; titles and names are cut by characters, never mid-emoji. |
 | 2026-10-17 | **F0.4 done** — `/api/v1` foundation: one `apiRoute()` wrapper gives every endpoint a request id, the Origin (CSRF) check, session + verified-email checks, JSON/size/Zod input validation with trimming and NFC, the standard error body (full §7.2 catalogue) and `private, no-store` caching; cursor pagination helpers (filter-bound cursors). First endpoint `GET /api/v1/me`. Web server code is now covered by `npm test`. Decided: connect MongoDB Atlas at F10.4 (staging), not before — local dev already runs the same replica set + migrations. |
 | 2026-10-17 | F0.4 + time-ago review fixes: `/api/v1` bodies are read as a stream and cut off at the size limit (no Content-Length needed); a handler that returns nothing answers `204`; returned Responses are copied so the wrapper can always add its headers; the Origin check also accepts the origin the request was sent to (127.0.0.1, preview deploys); a failing session lookup is a 500 even on public routes; cursor filters hash the same in any key order; unsupported methods get the JSON `405` (`methodNotAllowed`); pages and the API share one session lookup (`readSession`). Library cards older than 30 days are dated in the profile time zone, so server and browser match. |
+| 2026-10-17 | **F0.5 done — F0 foundation complete.** GitHub Actions CI runs typecheck, lint and all unit tests (188, incl. MongoDB tests on Linux) on every push and pull request, no secrets needed. Pinned Ubuntu 24.04 (`ubuntu-latest` moves to Ubuntu 26 on 2026-10-19) and current action versions (v4 used the deprecated Node 20). Web typecheck now runs `next typegen` first; new root `npm run lint`. |
