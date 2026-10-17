@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { authClient } from "@/lib/auth-client";
+import { ABOUT_MAX_CHARS } from "@/lib/profile-limits";
 import { clampChars } from "@/lib/project-client";
 import { AUDIENCE_OPTIONS, BOARD_OPTIONS, LANGUAGE_OPTIONS, LENGTH_OPTIONS, VOICE_OPTIONS } from "@/lib/project-options";
 import type { ProfileResource } from "@/server/api/resources";
@@ -67,7 +68,7 @@ export function ProfileSettingsForm({ profile }: { profile: Profile }) {
       </div>
       <div className="sm:col-span-2">
         <Field label="What do you teach or create about?" hint="Optional — helps the AI suggest ideas for your audience">
-          <Input value={draft.about ?? ""} onChange={(e) => set("about", e.target.value)} maxLength={200} placeholder="e.g. Class 9 science, personal finance, history" />
+          <Input value={draft.about ?? ""} onChange={(e) => set("about", clampChars(e.target.value, ABOUT_MAX_CHARS))} placeholder="e.g. Class 9 science, personal finance, history" />
         </Field>
       </div>
       <Field label="Default language">

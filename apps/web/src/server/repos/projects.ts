@@ -97,6 +97,11 @@ export async function listProjects(userId: string, query: ListQuery = {}): Promi
   return toPage(rows, limit, toSummary, (p) => ({ u: p.updatedAt.toISOString(), i: p._id.toHexString() }), scope);
 }
 
+/** Whether the user has ever made a project (deleted ones count): decides who sees the Welcome screen (F1.12). */
+export async function hasAnyProject(userId: string): Promise<boolean> {
+  return (await collections.projects().countDocuments({ userId }, { limit: 1 })) > 0;
+}
+
 export async function getProject(userId: string, id: string): Promise<ProjectDoc | null> {
   const _id = toObjectId(id);
   if (!_id) return null;

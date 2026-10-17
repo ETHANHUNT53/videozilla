@@ -7,7 +7,7 @@ import { Eyebrow, Spinner } from "@/components/ui";
 import { requireUser } from "@/server/dal";
 import type { ProjectFilter } from "@/server/db/types";
 import { getOrCreateProfile } from "@/server/repos/profiles";
-import { listProjects, normalizeSearch } from "@/server/repos/projects";
+import { hasAnyProject, listProjects, normalizeSearch } from "@/server/repos/projects";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -45,18 +45,21 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
   const q = normalizeSearch(typeof params.q === "string" ? params.q : undefined) ?? "";
   const showAttention = filter === "all" && !q;
 
+  // First visit: the Welcome screen once (F1.12), for users with no videos yet — people who were already creating
+  // before onboarding existed go straight to their Library. Checked before the list queries, so a redirect costs
+  // nothing. Only the Library sends there, so deep links are never interrupted.
+  const profile = await getOrCreateProfile(user.id, user.name); // its time zone also dates older cards consistently
+  if (!profile.onboardingCompletedAt && !(await hasAnyProject(user.id))) redirect("/welcome");
+
   // The first page is read here through the same service as GET /api/v1/projects; "Load older videos" fetches the
   // next pages from that endpoint with the returned cursor.
-  const [page, attention, renderedAt, profile] = await Promise.all([
+  const [page, attention, renderedAt] = await Promise.all([
     // With the attention section shown, the main list leaves those projects out in the query itself, so they never
     // appear twice and every page of the main list is a full page.
     listProjects(user.id, { filter, q: q || undefined, excludeAttention: showAttention }),
     showAttention ? listProjects(user.id, { filter: "attention" }) : Promise.resolve(null),
     readTime(),
-    getOrCreateProfile(user.id, user.name), // its time zone dates older cards the same on the server and in the browser
   ]);
-  // First visit: the Welcome screen once (F1.12). Only the Library sends there, so deep links are never interrupted.
-  if (!profile.onboardingCompletedAt) redirect("/welcome");
 
   return (
     <div className="flex flex-col gap-6">

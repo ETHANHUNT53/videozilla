@@ -1,6 +1,7 @@
 import "server-only";
 import { truncateChars } from "@videozilla/db";
 import { ObjectId } from "mongodb";
+import { ABOUT_MAX_CHARS } from "@/lib/profile-limits";
 import { collections, ensureMigrated } from "../db/mongo";
 import type { Audience, Language, ProfileDoc, VoiceGender } from "../db/types";
 
@@ -51,8 +52,8 @@ export type ProfileUpdate = Partial<
   onboardingCompleted?: true;
 };
 
-/** Longest "what do you teach or create about" answer, in characters. */
-export const ABOUT_MAX_CHARS = 200;
+// Longest "what do you teach or create about" answer, in characters (shared with the forms).
+export { ABOUT_MAX_CHARS };
 
 // An IANA zone name as written in the tz database: "UTC" or Area/Location with capitalised parts ("Asia/Kolkata",
 // "America/Argentina/Buenos_Aires"). Offsets ("+05:30"), other casings ("utc") and Etc/ zones are not accepted.
@@ -85,9 +86,13 @@ export async function updateProfile(userId: string, update: ProfileUpdate, displ
   const set: Record<string, unknown> = { ...fields, updatedAt: now };
   if (fields.displayName !== undefined) set.displayName = truncateChars(fields.displayName.trim(), 60);
   if (fields.about !== undefined) set.about = truncateChars(fields.about?.trim() ?? "", ABOUT_MAX_CHARS) || null;
-  if (onboardingCompleted) set.onboardingCompletedAt = now;
   // Defaults only for a new profile, and never for a field this update sets (MongoDB refuses both on one path).
   const onInsert = Object.fromEntries(Object.entries(newProfileFields(userId, displayNameFallback, now)).filter(([k]) => !(k in set)));
   const res = await collections.profiles().findOneAndUpdate({ userId }, { $set: set, $setOnInsert: onInsert }, { upsert: true, returnDocument: "after" });
+  // Onboarding done: record when only the first time, so a repeated request (double-click, retry) keeps the real time.
+  if (onboardingCompleted && !res!.onboardingCompletedAt) {
+    const done = await collections.profiles().findOneAndUpdate({ userId, onboardingCompletedAt: null }, { $set: { onboardingCompletedAt: now } }, { returnDocument: "after" });
+    return done ?? (await collections.profiles().findOne({ userId }))!;
+  }
   return res!;
 }

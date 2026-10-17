@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
+import { ABOUT_MAX_CHARS } from "@/lib/profile-limits";
+import { clampChars } from "@/lib/project-client";
 import type { ProfileResource } from "@/server/api/resources";
 import { Button, Logo, cx, inputStyles } from "./ui";
-
-const ABOUT_MAX = 200;
 
 const STEP_CARDS = [
   { n: "01", label: "Idea", text: "Type a topic or paste notes.", foot: "instant structure", color: "text-cyan" },
@@ -107,8 +107,8 @@ export function WelcomeView({ profile }: { profile: ProfileResource }) {
           </span>
           <input
             value={about}
-            onChange={(e) => setAbout(e.target.value)}
-            maxLength={ABOUT_MAX}
+            // Characters counted like the API (an emoji is one), not maxLength's UTF-16 units.
+            onChange={(e) => setAbout(clampChars(e.target.value, ABOUT_MAX_CHARS))}
             placeholder="e.g. Class 9 science, personal finance, history"
             className={inputStyles}
           />

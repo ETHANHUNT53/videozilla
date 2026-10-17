@@ -8,6 +8,7 @@ import { GET as getMe } from "@/app/api/v1/me/route";
 import { GET, PATCH } from "@/app/api/v1/me/profile/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { getOrCreateProfile, isValidTimeZone, updateProfile } from "./profiles";
+import { hasAnyProject } from "./projects";
 
 const ME = "6ad20f12aa355a5a9f3db9cb";
 const APP = "http://localhost:3000";
@@ -142,5 +143,29 @@ describe("onboarding (F1.12)", () => {
 
   it("can't be undone or set to anything but true", async () => {
     for (const value of [false, "yes", 1]) expect((await patch({ onboardingCompleted: value })).status, String(value)).toBe(400);
+  });
+
+  it("records when onboarding was finished only the first time (a repeat or double-click keeps it)", async () => {
+    await patch({ onboardingCompleted: true });
+    const first = (await testMongo.db.collection("profiles").findOne({ userId: ME }))!.onboardingCompletedAt as Date;
+    await new Promise((r) => setTimeout(r, 5));
+    const again = await (await patch({ about: "History", onboardingCompleted: true })).json();
+    expect(again).toMatchObject({ about: "History", onboardingCompleted: true });
+    expect((await testMongo.db.collection("profiles").findOne({ userId: ME }))!.onboardingCompletedAt).toEqual(first);
+  });
+
+  it("finishes onboarding in the same save that creates a missing profile", async () => {
+    const p = await updateProfile(ME, { onboardingCompleted: true }, "Asha");
+    expect(p.onboardingCompletedAt).toBeInstanceOf(Date);
+    expect(p).toMatchObject({ displayName: "Asha", role: "user" });
+  });
+});
+
+describe("hasAnyProject (who sees the Welcome screen)", () => {
+  it("is false for a new user and true once they have made a project, even a deleted one", async () => {
+    expect(await hasAnyProject(ME)).toBe(false);
+    await testMongo.db.collection("projects").insertOne({ userId: ME, deletedAt: new Date() }, { bypassDocumentValidation: true });
+    expect(await hasAnyProject(ME)).toBe(true);
+    expect(await hasAnyProject("6ad2130caa355a5a9f3db9d6")).toBe(false);
   });
 });
