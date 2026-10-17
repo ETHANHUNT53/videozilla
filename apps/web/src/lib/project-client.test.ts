@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "./api-client";
-import { clampChars, conflictCopy, patchProject } from "./project-client";
+import { clampChars, conflictCopy, currentNote, patchProject } from "./project-client";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -25,6 +25,21 @@ describe("conflictCopy", () => {
     expect(conflictCopy(new ApiClientError(412, "PRECONDITION_FAILED", "x", [{ issue: "stale", current }]))).toEqual(current);
     expect(conflictCopy(new ApiClientError(409, "INVALID_STATE", "x"))).toBeUndefined();
     expect(conflictCopy(new Error("x"))).toBeUndefined();
+  });
+});
+
+describe("currentNote", () => {
+  it("shows a note only while the project is at the revision it was written about", () => {
+    const note = { value: "This video was changed in another tab, so your rename wasn't saved. Try again.", rev: 3 };
+    expect(currentNote(note, 3)).toBe(note.value);
+    expect(currentNote(note, 4)).toBeNull(); // a later save (title or settings) moved the project on
+    expect(currentNote(null, 3)).toBeNull();
+  });
+
+  it("works for structured messages too", () => {
+    const saved = { value: { tone: "info", text: "Saved." }, rev: 5 };
+    expect(currentNote(saved, 5)).toEqual({ tone: "info", text: "Saved." });
+    expect(currentNote(saved, 6)).toBeNull();
   });
 });
 

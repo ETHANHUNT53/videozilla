@@ -29,6 +29,20 @@ export function conflictCopy<P>(err: unknown): P | undefined {
   return err instanceof ApiClientError && err.code === "PRECONDITION_FAILED" ? (err.details[0]?.current as P | undefined) : undefined;
 }
 
+/** A message about one revision of a project, e.g. "your rename wasn't saved". */
+export interface RevNote<T = string> {
+  value: T;
+  rev: number;
+}
+
+/**
+ * The note's value while the project is still at the revision it was written about; once any save (here or elsewhere)
+ * moves the project on, the note no longer applies and is hidden.
+ */
+export function currentNote<T>(note: RevNote<T> | null, rev: number): T | null {
+  return note && note.rev === rev ? note.value : null;
+}
+
 /**
  * Keeps at most `max` characters, counted like the API (an emoji is one character). Use it in a text input's
  * onChange instead of `maxLength`, which counts UTF-16 units and stops emoji titles at half the length.

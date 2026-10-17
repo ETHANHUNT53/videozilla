@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { ApiClientError } from "@/lib/api-client";
-import { clampChars, conflictCopy, patchProject } from "@/lib/project-client";
+import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
 import {
   AUDIENCE_OPTIONS,
   BOARD_OPTIONS,
@@ -125,7 +125,9 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
   // The text being typed; outside an edit (and its save) the heading shows project.title, so a newer copy of the
   // project (e.g. loaded after a 412 in the settings panel) always shows its own title.
   const [title, setTitle] = useState(project.title);
-  const [note, setNote] = useState<string | null>(null);
+  // Tied to the revision it is about, so a later successful save (title or settings) hides it.
+  const [revNote, setNote] = useState<RevNote | null>(null);
+  const note = currentNote(revNote, project.rev);
   const [pending, start] = useTransition();
   const canRename = project.allowedActions.includes("rename");
   // Enter saves and removes the input, and its blur can then fire save again from the same render: only the first call
@@ -158,7 +160,10 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
         const current = conflictCopy<Project>(err);
         if (current) onSaved(current);
         setTitle(current?.title ?? project.title);
-        setNote(current ? "This video was changed in another tab, so your rename wasn't saved. Try again." : err instanceof ApiClientError ? err.message : "Couldn't rename this video.");
+        setNote({
+          value: current ? "This video was changed in another tab, so your rename wasn't saved. Try again." : err instanceof ApiClientError ? err.message : "Couldn't rename this video.",
+          rev: (current ?? project).rev,
+        });
       }
     });
   };
@@ -205,7 +210,9 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
 function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Project) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Settings>(settingsOf(project));
-  const [message, setMessage] = useState<{ tone: "info" | "error"; text: string } | null>(null);
+  // Tied to the revision it is about, like the title's note: a later rename hides it.
+  const [revMessage, setMessage] = useState<RevNote<{ tone: "info" | "error"; text: string }> | null>(null);
+  const message = currentNote(revMessage, project.rev);
   const [pending, start] = useTransition();
   const scriptEditable = project.allowedActions.includes("edit_script_settings");
   const mediaEditable = project.allowedActions.includes("edit_media_settings");
@@ -227,17 +234,20 @@ function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Pr
         onSaved(next);
         setDraft(settingsOf(next));
         setEditing(false);
-        if (requiresRegeneration) setMessage({ tone: "info", text: "Saved. Regenerate the storyboard to use the new settings." });
-        else if (next.exportOutdated && !project.exportOutdated) setMessage({ tone: "info", text: "Saved. Rebuild or re-export the video to apply it." });
-        else setMessage({ tone: "info", text: "Saved." });
+        const text = requiresRegeneration
+          ? "Saved. Regenerate the storyboard to use the new settings."
+          : next.exportOutdated && !project.exportOutdated
+            ? "Saved. Rebuild or re-export the video to apply it."
+            : "Saved.";
+        setMessage({ value: { tone: "info", text }, rev: next.rev });
       } catch (err) {
         const latest = conflictCopy<Project>(err);
         if (latest) {
           onSaved(latest);
           setDraft(settingsOf(latest));
-          setMessage({ tone: "error", text: "This video was changed in another tab. We loaded the latest settings — check them and save again." });
+          setMessage({ value: { tone: "error", text: "This video was changed in another tab. We loaded the latest settings — check them and save again." }, rev: latest.rev });
         } else {
-          setMessage({ tone: "error", text: err instanceof ApiClientError ? err.message : "Couldn't save the settings. Please try again." });
+          setMessage({ value: { tone: "error", text: err instanceof ApiClientError ? err.message : "Couldn't save the settings. Please try again." }, rev: project.rev });
         }
       }
     });
