@@ -22,6 +22,9 @@ export function toProject(p: ProjectDoc) {
   };
 }
 
+/** The `Project` resource's shape; client components import it as a type only. */
+export type ProjectResource = ReturnType<typeof toProject>;
+
 /**
  * Database documents → API resource shapes (API Design §12). Optional fields with no value are `null`, never
  * omitted, so shapes stay stable; dates are ISO 8601 strings; internal fields (`_id`, `role`, …) are not exposed.
