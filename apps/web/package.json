@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "db": "tsx scripts/dev-db.ts",
     "jobs": "npx --yes inngest-cli@1.46.0 dev -u http://localhost:3000/api/inngest",
     "email:test": "tsx scripts/test-email.ts"

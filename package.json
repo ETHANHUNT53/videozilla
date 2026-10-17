@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint -w @videozilla/web",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "npm run dev -w @videozilla/web",
