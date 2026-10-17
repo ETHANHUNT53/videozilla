@@ -31,15 +31,21 @@ describe("conflictCopy", () => {
 describe("currentNote", () => {
   it("shows a note only while the project is at the revision it was written about", () => {
     const note = { value: "This video was changed in another tab, so your rename wasn't saved. Try again.", rev: 3 };
-    expect(currentNote(note, 3)).toBe(note.value);
-    expect(currentNote(note, 4)).toBeNull(); // a later save (title or settings) moved the project on
-    expect(currentNote(null, 3)).toBeNull();
+    expect(currentNote(note, { rev: 3, status: "idea_draft" })).toBe(note.value);
+    expect(currentNote(note, { rev: 4, status: "idea_draft" })).toBeNull(); // a later save moved the project on
+    expect(currentNote(null, { rev: 3, status: "idea_draft" })).toBeNull();
   });
 
   it("works for structured messages too", () => {
     const saved = { value: { tone: "info", text: "Saved." }, rev: 5 };
-    expect(currentNote(saved, 5)).toEqual({ tone: "info", text: "Saved." });
-    expect(currentNote(saved, 6)).toBeNull();
+    expect(currentNote(saved, { rev: 5, status: "storyboard_ready" })).toEqual({ tone: "info", text: "Saved." });
+    expect(currentNote(saved, { rev: 6, status: "storyboard_ready" })).toBeNull();
+  });
+
+  it("keeps a hint tied to a status through unrelated saves, until the stage changes", () => {
+    const hint = { value: "Saved. Regenerate the storyboard to use the new settings.", rev: 5, status: "storyboard_ready" };
+    expect(currentNote(hint, { rev: 6, status: "storyboard_ready" })).toBe(hint.value); // e.g. renamed afterwards
+    expect(currentNote(hint, { rev: 7, status: "storyboard_generating" })).toBeNull(); // regenerating now
   });
 });
 

@@ -38,7 +38,21 @@ describe("updateProfile", () => {
 
   it("knows real time zones", () => {
     expect(isValidTimeZone("Asia/Kolkata")).toBe(true);
+    expect(isValidTimeZone("America/Argentina/Buenos_Aires")).toBe(true);
+    expect(isValidTimeZone("UTC")).toBe(true);
     expect(isValidTimeZone("Mars/Olympus")).toBe(false);
+  });
+
+  it("accepts only IANA names in their real spelling, never offsets, other casings or Etc zones", () => {
+    // Intl itself accepts all of these, so they used to be stored as sent.
+    for (const tz of ["+05:30", "-08:00", "utc", "asia/kolkata", "ASIA/KOLKATA", "Etc/GMT-5", "GMT"]) expect(isValidTimeZone(tz), tz).toBe(false);
+  });
+
+  it("saves in one step even when the profile doesn't exist yet: defaults plus the changes", async () => {
+    const p = await updateProfile(ME, { defaultLanguage: "hi", timezone: "Asia/Dubai" }, "Asha");
+    expect(p).toMatchObject({ userId: ME, displayName: "Asha", defaultLanguage: "hi", timezone: "Asia/Dubai", defaultLengthPreset: 60, role: "user" });
+    expect(await testMongo.db.collection("profiles").countDocuments({ userId: ME })).toBe(1);
+    expect((await updateProfile(ME, { displayName: "  Asha M  " })).displayName).toBe("Asha M");
   });
 });
 
@@ -73,6 +87,8 @@ describe("PATCH /api/v1/me/profile", () => {
     [{ defaultAudience: "toddlers" }],
     [{ defaultBoardOrExam: "sat" }],
     [{ timezone: "Mars/Olympus" }],
+    [{ timezone: "+05:30" }],
+    [{ timezone: "utc" }],
     [{ emailNotifications: "yes" }],
     [{ role: "admin" }],
     [{ defaultStyleId: "neon" }],

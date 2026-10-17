@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
-import { clampChars, conflictCopy, patchProject } from "@/lib/project-client";
+import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
 import { FILTERS, STATUS_DISPLAY, type ProjectStatus } from "@/lib/status";
 import { TimeAgo } from "./time-ago";
 import { Chip, cx, inputStyles } from "./ui";
@@ -272,11 +272,14 @@ function ProjectCard({
     if (!editing) setTitle(project.title);
   }
   const [menu, setMenu] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  // Tied to the revision it is about (like the project page's notes), so a later successful save hides it.
+  const [revNote, setRevNote] = useState<RevNote | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
   const status = STATUS_DISPLAY[project.status];
 
+  const note = currentNote(revNote, { rev: saved.rev, status: project.status });
+  const setNote = (text: string | null, rev = saved.rev) => setRevNote(text === null ? null : { value: text, rev });
   const fail = (err: unknown, fallback: string) => setNote(err instanceof ApiClientError ? err.message : fallback);
 
   // Enter saves and removes the input, and its blur can then fire save again from the same render: only the first
@@ -306,7 +309,7 @@ function ProjectCard({
           setSaved({ title: current.title, rev: current.rev });
           setTitle(current.title);
           onSaved({ ...project, ...current });
-          setNote("This video was changed in another tab, so your rename wasn't saved. Try again.");
+          setNote("This video was changed in another tab, so your rename wasn't saved. Try again.", current.rev);
         } else {
           setTitle(saved.title);
           fail(err, "Couldn't rename this video. Please try again.");

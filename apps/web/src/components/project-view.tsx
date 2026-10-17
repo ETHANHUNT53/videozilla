@@ -127,7 +127,7 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
   const [title, setTitle] = useState(project.title);
   // Tied to the revision it is about, so a later successful save (title or settings) hides it.
   const [revNote, setNote] = useState<RevNote | null>(null);
-  const note = currentNote(revNote, project.rev);
+  const note = currentNote(revNote, project);
   const [pending, start] = useTransition();
   const canRename = project.allowedActions.includes("rename");
   // Enter saves and removes the input, and its blur can then fire save again from the same render: only the first call
@@ -212,7 +212,7 @@ function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Pr
   const [draft, setDraft] = useState<Settings>(settingsOf(project));
   // Tied to the revision it is about, like the title's note: a later rename hides it.
   const [revMessage, setMessage] = useState<RevNote<{ tone: "info" | "error"; text: string }> | null>(null);
-  const message = currentNote(revMessage, project.rev);
+  const message = currentNote(revMessage, project);
   const [pending, start] = useTransition();
   const scriptEditable = project.allowedActions.includes("edit_script_settings");
   const mediaEditable = project.allowedActions.includes("edit_media_settings");
@@ -234,12 +234,15 @@ function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Pr
         onSaved(next);
         setDraft(settingsOf(next));
         setEditing(false);
-        const text = requiresRegeneration
-          ? "Saved. Regenerate the storyboard to use the new settings."
-          : next.exportOutdated && !project.exportOutdated
-            ? "Saved. Rebuild or re-export the video to apply it."
-            : "Saved.";
-        setMessage({ value: { tone: "info", text }, rev: next.rev });
+        // "Regenerate" / "rebuild" stay true until the video moves to another stage, so they stay on screen through
+        // unrelated saves (a rename); a plain "Saved." is about this save only.
+        if (requiresRegeneration) {
+          setMessage({ value: { tone: "info", text: "Saved. Regenerate the storyboard to use the new settings." }, rev: next.rev, status: next.status });
+        } else if (next.exportOutdated && !project.exportOutdated) {
+          setMessage({ value: { tone: "info", text: "Saved. Rebuild or re-export the video to apply it." }, rev: next.rev, status: next.status });
+        } else {
+          setMessage({ value: { tone: "info", text: "Saved." }, rev: next.rev });
+        }
       } catch (err) {
         const latest = conflictCopy<Project>(err);
         if (latest) {

@@ -29,18 +29,23 @@ export function conflictCopy<P>(err: unknown): P | undefined {
   return err instanceof ApiClientError && err.code === "PRECONDITION_FAILED" ? (err.details[0]?.current as P | undefined) : undefined;
 }
 
-/** A message about one revision of a project, e.g. "your rename wasn't saved". */
+/**
+ * A message about a project. By default it is about one revision (e.g. "your rename wasn't saved") and is hidden once
+ * any save moves the project on. A hint that stays true until the project's stage changes (e.g. "regenerate the
+ * storyboard to use the new settings") sets `status` instead and is shown for as long as the project is in it.
+ */
 export interface RevNote<T = string> {
   value: T;
   rev: number;
+  /** Keep showing while the project is in this status, whatever its revision. */
+  status?: string;
 }
 
-/**
- * The note's value while the project is still at the revision it was written about; once any save (here or elsewhere)
- * moves the project on, the note no longer applies and is hidden.
- */
-export function currentNote<T>(note: RevNote<T> | null, rev: number): T | null {
-  return note && note.rev === rev ? note.value : null;
+/** The note's value while it still applies to the project (see RevNote). */
+export function currentNote<T>(note: RevNote<T> | null, project: { rev: number; status: string }): T | null {
+  if (!note) return null;
+  if (note.status !== undefined) return note.status === project.status ? note.value : null;
+  return note.rev === project.rev ? note.value : null;
 }
 
 /**

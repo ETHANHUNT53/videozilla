@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { authClient } from "@/lib/auth-client";
+import { clampChars } from "@/lib/project-client";
 import { AUDIENCE_OPTIONS, BOARD_OPTIONS, LANGUAGE_OPTIONS, LENGTH_OPTIONS, VOICE_OPTIONS } from "@/lib/project-options";
 import type { ProfileResource } from "@/server/api/resources";
 import { Button, Field, Input, Select } from "./ui";
@@ -45,7 +46,9 @@ export function ProfileSettingsForm({ profile }: { profile: Profile }) {
         setSaved(editableOf(data));
         setDraft(editableOf(data));
         setState({ status: "saved" });
-        router.refresh(); // so pages already visited (e.g. Library) read the new defaults
+        // Drops the browser's cached pages, so a Library page visited earlier is fetched again with the new time zone
+        // (its dates) on the next visit. This form itself keeps the PATCH response as its state.
+        router.refresh();
       } catch (err) {
         const detail = err instanceof ApiClientError ? err.details[0] : undefined;
         const message = err instanceof ApiClientError ? (detail?.field ? `${err.message} (${detail.field}: ${detail.issue})` : err.message) : "Couldn't save. Please try again.";
@@ -58,7 +61,8 @@ export function ProfileSettingsForm({ profile }: { profile: Profile }) {
     <form onSubmit={submit} className="grid gap-5 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <Field label="Display name">
-          <Input value={draft.displayName} onChange={(e) => set("displayName", e.target.value)} maxLength={60} />
+          {/* 60 characters counted like the API (an emoji is one), not maxLength's UTF-16 units. */}
+          <Input value={draft.displayName} onChange={(e) => set("displayName", clampChars(e.target.value, 60))} />
         </Field>
       </div>
       <Field label="Default language">
