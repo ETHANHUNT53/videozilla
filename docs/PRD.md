@@ -1353,6 +1353,7 @@ Next.js route handlers (or server actions). All require auth. JSON in/out, valid
 | Builds | 15 / day |
 | Final renders | 10 / day |
 | AI illustrations | 40 / day |
+| AI idea requests (suggestions, briefs, idea chat together) | 150 / day (added 2026-10-17, M2 design Q2) |
 | Publishes | Instagram's limits apply |
 
 Limits are configurable per user (admin) and shown to users only when approached ("You've reached today's limit for renders; it resets at midnight").

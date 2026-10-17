@@ -387,7 +387,7 @@ Work queue for the render agent (System Design §10.3).
 
 ### 4.17 `usage_counters`
 
-`userId`, `date` (string `YYYY-MM-DD` in IST), `storyboards`, `revisions`, `builds`, `renders`, `illustrations`, `voiceCharacters`, `updatedAt`. Unique `{userId, date}`. Incremented with `$inc` in the same operation that checks the limit (§7.5). TTL on a `expiresAt` = date + 40 days.
+`userId`, `date` (string `YYYY-MM-DD` in IST), `storyboards`, `revisions`, `builds`, `renders`, `illustrations`, `ideas` (idea suggestions, briefs and idea chat, added in M2), `voiceCharacters`, `updatedAt`. Unique `{userId, date}`. Incremented with `$inc` in the same operation that checks the limit (§7.5). TTL on a `expiresAt` = date + 40 days.
 
 ### 4.18 `voice_stats`
 

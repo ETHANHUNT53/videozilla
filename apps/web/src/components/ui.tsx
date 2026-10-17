@@ -21,7 +21,8 @@ const buttonBase =
   "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none";
 
 export const buttonStyles = {
-  primary: `${buttonBase} bg-cyan text-bg hover:bg-cyan/90 glow-cyan`,
+  // Disabled: a muted outline (not faded cyan), so it never reads as the main action.
+  primary: `${buttonBase} bg-cyan text-bg hover:bg-cyan/90 glow-cyan disabled:border disabled:border-line-strong disabled:bg-surface disabled:text-muted`,
   secondary: `${buttonBase} border border-line-strong bg-surface text-fg hover:bg-surface-hover`,
   ghost: `${buttonBase} text-muted hover:text-fg hover:bg-surface`,
   danger: `${buttonBase} border border-red/40 text-red hover:bg-red/10`,

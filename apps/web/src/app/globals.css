@@ -51,6 +51,10 @@ body {
 .glow-cyan {
   box-shadow: 0 0 22px rgba(56, 217, 245, 0.35);
 }
+/* Unlayered, so it would beat Tailwind's disabled:shadow-none; a disabled action never glows. */
+.glow-cyan:disabled {
+  box-shadow: none;
+}
 .text-glow {
   text-shadow: 0 0 24px currentColor;
 }

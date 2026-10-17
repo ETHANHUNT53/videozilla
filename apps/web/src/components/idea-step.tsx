@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { apiCall } from "@/lib/api-client";
+import { useId, useState } from "react";
+import { ApiClientError, apiCall } from "@/lib/api-client";
 import type { AutosaveState } from "@/lib/autosave";
 import { clampChars, stripControlChars } from "@/lib/project-client";
 import { useAutosave } from "@/lib/use-autosave";
@@ -11,9 +11,12 @@ import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
 type Idea = IdeaSessionResource;
 type Mode = Idea["mode"];
 type Draft = Pick<Idea, "mode" | "topicInput" | "ideaInput" | "notesText">;
+type Suggestion = Idea["suggestions"][number];
 
 /** Same limits as the API and the database (characters, so an emoji or a Hindi letter is one). */
 const LIMITS = { topicInput: 200, ideaInput: 500, notesText: 20_000 } as const;
+/** The server keeps the newest 30 cards; "avoid these titles" sends at most 30 of up to 120 characters. */
+const MAX_CARDS = 30;
 
 const TABS: { mode: Mode; label: string; field: keyof typeof LIMITS }[] = [
   { mode: "topic", label: "Find a topic", field: "topicInput" },
@@ -25,8 +28,9 @@ const draftOf = (i: Idea): Draft => ({ mode: i.mode, topicInput: i.topicInput, i
 const count = (s: string) => Array.from(s).length;
 
 /**
- * The Idea step (PRD F2, first part — F2.1): three ways to start, each with its own text, autosaved through
- * `PUT /api/v1/projects/{id}/idea`. The AI actions arrive in F2.2–F2.4; F2.7 restyles this as Stitch screen 09.
+ * The Idea step (PRD F2): three ways to start, each with its own text, autosaved through
+ * `PUT /api/v1/projects/{id}/idea` (F2.1). "Find a topic" asks Gemini for 5 idea cards (F2.2). Briefs (F2.3) and
+ * notes (F2.4) come next; F2.7 restyles this as Stitch screen 09.
  */
 export function IdeaStep({ projectId, initial, editable }: { projectId: string; initial: Idea; editable: boolean }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
@@ -82,6 +86,39 @@ export function IdeaStep({ projectId, initial, editable }: { projectId: string; 
         ))}
       </div>
 
+      {/* Above the text box, so it's in view on a phone too. */}
+      {conflict ? (
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-orange/40 bg-orange/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-sm">This idea was changed in another tab. Your latest typing isn&apos;t saved yet.</span>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                const latest = draftOf(conflict);
+                setDraft(latest);
+                queue.loadLatest(latest, conflict.rev);
+              }}
+            >
+              Load latest
+            </Button>
+            <Button type="button" onClick={() => queue.keepMine()}>
+              Keep mine
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {state.status === "error" && state.stopped ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red/40 bg-red/5 px-4 py-3">
+          <span className="text-sm">{state.error}</span>
+          {/* A full reload: this editor and its stopped autosave are local state that a refresh would keep. */}
+          <Button type="button" variant="secondary" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      ) : null}
+
       <div role="tabpanel" id="idea-panel" aria-labelledby={`idea-tab-${tab.mode}`} className="flex flex-col gap-3">
         {tab.mode === "topic" ? (
           <TextBox
@@ -118,69 +155,133 @@ export function IdeaStep({ projectId, initial, editable }: { projectId: string; 
             That was longer than {LIMITS[tab.field].toLocaleString("en-IN")} characters, so the end was cut off.
           </p>
         ) : null}
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" disabled title="Arrives in the next update">
-            {tab.mode === "topic" ? "Suggest 5 ideas" : tab.mode === "idea" ? "Sharpen my idea" : "Turn my notes into a brief"}
-          </Button>
-          <span className="font-mono text-xs text-dim">{"// AI planning arrives next"}</span>
-        </div>
-      </div>
 
-      {conflict ? (
-        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-orange/40 bg-orange/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-sm">This idea was changed in another tab. Your latest typing isn&apos;t saved yet.</span>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                const latest = draftOf(conflict);
-                setDraft(latest);
-                queue.loadLatest(latest, conflict.rev);
-              }}
-            >
-              Load latest
+        {tab.mode === "topic" ? (
+          <TopicIdeas projectId={projectId} topic={draft.topicInput} initial={initial.suggestions} editable={editable} />
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" disabled title="Arrives in a later update">
+              {tab.mode === "idea" ? "Sharpen my idea" : "Turn my notes into a brief"}
             </Button>
-            <Button type="button" onClick={() => queue.keepMine()}>
-              Keep mine
-            </Button>
+            <span className="font-mono text-xs text-dim">{"// arrives in a later update"}</span>
           </div>
-        </div>
-      ) : null}
-
-      {state.status === "error" && state.stopped ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red/40 bg-red/5 px-4 py-3">
-          <span className="text-sm">{state.error}</span>
-          {/* A full reload: this editor and its stopped autosave are local state that a refresh would keep. */}
-          <Button type="button" variant="secondary" onClick={() => window.location.reload()}>
-            Reload
-          </Button>
-        </div>
-      ) : null}
+        )}
+      </div>
     </Card>
   );
 }
 
+/**
+ * "Find a topic" (F2.2): asks for 5 idea cards (`POST …/idea/suggestions`), then "Suggest 5 more" or "More like this"
+ * without repeating titles already shown. Cards are saved with the video, newest first here.
+ */
+function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string; topic: string; initial: Suggestion[]; editable: boolean }) {
+  const [cards, setCards] = useState<Suggestion[]>(initial);
+  const [busy, setBusy] = useState<"new" | "more" | string | null>(null); // "new", "more" or the card id for "more like this"
+  const [error, setError] = useState<string | null>(null);
+  const trimmed = topic.trim();
+
+  const ask = async (kind: string, askTopic: string, avoid: Suggestion[]) => {
+    setBusy(kind);
+    setError(null);
+    try {
+      const { data } = await apiCall<{ suggestions: Suggestion[] }>(`/api/v1/projects/${projectId}/idea/suggestions`, {
+        method: "POST",
+        body: { topic: clampChars(askTopic, LIMITS.topicInput), ...(avoid.length && { avoidTitles: avoid.slice(-MAX_CARDS).map((c) => clampChars(c.title, 120)) }) },
+      });
+      setCards((prev) => [...prev, ...data.suggestions].slice(-MAX_CARDS));
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Couldn't get ideas. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const newestFirst = [...cards].reverse();
+  const canAsk = editable && busy === null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" disabled={!canAsk || !trimmed} onClick={() => ask("new", trimmed, cards)} aria-busy={busy === "new"}>
+          {busy === "new" ? "Thinking…" : "Suggest 5 ideas"}
+        </Button>
+        {!trimmed && editable ? <span className="text-xs text-dim">Type a subject first.</span> : null}
+        {busy ? (
+          <span role="status" className="font-mono text-xs text-violet">
+            {"// gemini is thinking — usually about 10 seconds"}
+          </span>
+        ) : null}
+      </div>
+
+      {error ? (
+        <p role="alert" className="rounded-xl border border-red/40 bg-red/5 px-4 py-3 text-sm">
+          {error}
+        </p>
+      ) : null}
+
+      {cards.length ? (
+        <>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3" aria-label="Video ideas">
+            {newestFirst.map((c) => (
+              <li key={c.id} className="flex flex-col gap-3 rounded-xl border border-line bg-raised p-4">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-base font-semibold leading-snug">{c.title}</h3>
+                  <p className="text-sm text-cyan">“{c.hook}”</p>
+                </div>
+                <p className="text-sm text-muted">{c.angle}</p>
+                <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm">
+                  {c.keyPoints.map((k, i) => (
+                    <li key={i}>{k}</li>
+                  ))}
+                </ol>
+                <div className="mt-auto flex flex-wrap gap-2 pt-1">
+                  <Button type="button" disabled title="Turning an idea into a brief arrives in the next update (F2.3)">
+                    Use this
+                  </Button>
+                  <Button type="button" variant="secondary" disabled={!canAsk} onClick={() => ask(c.id, c.title, cards)} aria-busy={busy === c.id}>
+                    {busy === c.id ? "Thinking…" : "More like this"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div>
+            <Button type="button" variant="secondary" disabled={!canAsk || !trimmed} onClick={() => ask("more", trimmed, cards)} aria-busy={busy === "more"}>
+              {busy === "more" ? "Thinking…" : "Suggest 5 more"}
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function TextBox(props: { label: string; hint: string; value: string; max: number; rows?: number; readOnly: boolean; onChange: (v: string) => void }) {
+  const id = useId();
   const used = count(props.value);
   const common = {
+    id,
     value: props.value,
     readOnly: props.readOnly,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => props.onChange(e.target.value),
     className: cx(inputStyles, props.rows !== undefined && "resize-y leading-relaxed"),
-    "aria-describedby": "idea-hint idea-count",
+    // The label is the name; the hint and the counter are its description.
+    "aria-describedby": `${id}-hint ${id}-count`,
   };
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-sm text-muted">{props.label}</span>
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm text-muted">
+        {props.label}
+      </label>
       {props.rows ? <textarea rows={props.rows} {...common} /> : <input type="text" {...common} />}
-      <span className="flex justify-between gap-3 text-xs text-dim">
-        <span id="idea-hint">{props.hint}</span>
-        <span id="idea-count" className={cx("shrink-0 font-mono", used >= props.max && "text-orange")}>
+      <div className="flex justify-between gap-3 text-xs text-dim">
+        <span id={`${id}-hint`}>{props.hint}</span>
+        <span id={`${id}-count`} className={cx("shrink-0 font-mono", used >= props.max && "text-orange")}>
           {used.toLocaleString("en-IN")} / {props.max.toLocaleString("en-IN")}
         </span>
-      </span>
-    </label>
+      </div>
+    </div>
   );
 }
 

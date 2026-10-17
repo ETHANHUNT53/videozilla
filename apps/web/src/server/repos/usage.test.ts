@@ -122,7 +122,7 @@ describe("consumeUsage", () => {
 
 describe("limits", () => {
   it("default to PRD §20.6, then the admin config, then the user's override (invalid values ignored)", async () => {
-    expect(await limitsFor(ME)).toEqual({ storyboards: 20, revisions: 100, builds: 15, renders: 10, illustrations: 40 });
+    expect(await limitsFor(ME)).toEqual({ storyboards: 20, revisions: 100, builds: 15, renders: 10, illustrations: 40, ideas: 150 });
     await testMongo.db.collection("config").insertOne({ key: "limits", value: { renders: 5, builds: -1, storyboards: "lots" } });
     resetLimitsCache();
     expect(await limitsFor(ME)).toMatchObject({ renders: 5, builds: 15, storyboards: 20 });
@@ -152,6 +152,7 @@ describe("GET /api/v1/me/usage", () => {
       builds: { used: 0, limit: 15 },
       renders: { used: 0, limit: 10 },
       illustrations: { used: 0, limit: 40 },
+      ideas: { used: 0, limit: 150 },
     });
   });
 

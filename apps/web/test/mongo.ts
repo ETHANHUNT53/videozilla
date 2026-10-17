@@ -59,5 +59,6 @@ export const mongoModule = {
     renderJobs: () => testMongo.db.collection("render_jobs"),
     usageCounters: () => testMongo.db.collection("usage_counters"),
     config: () => testMongo.db.collection("config"),
+    aiCalls: () => testMongo.db.collection("ai_calls"),
   },
 };

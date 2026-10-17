@@ -41,6 +41,7 @@ export const collections = {
   renderJobs: () => db().collection(COLLECTIONS.renderJobs),
   usageCounters: () => db().collection(COLLECTIONS.usageCounters),
   config: () => db().collection(COLLECTIONS.config),
+  aiCalls: () => db().collection(COLLECTIONS.aiCalls),
 };
 
 /**

@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-17 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **F2.2 — Find a topic → 5 AI idea cards** (`POST /api/v1/projects/{id}/idea/suggestions`, Gemini fast model). Starts by copying the Gemini key into the web app (Q1) and adds the shared `ideas` limit, 150/day (Q2) |
+| **Next feature** | **None for now — stop point reached.** F2.2 is the last feature of this run (agreed scope); F2.3 ("I have an idea" → brief + 2 angles, which also makes "Use this" work) starts when you say so |
 | **Agreed scope (2026-10-17, updated)** | Build feature by feature **up to F2.2**, then stop: after F2.2 is built, reviewed and QA'd, no further feature starts until you say so (F2.3 continues later) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
@@ -31,7 +31,7 @@
 | Planning & design | 9 | 0 | 0 | 0 |
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
-| F2 Idea Studio | 2 | 0 | 6 | 0 |
+| F2 Idea Studio | 3 | 0 | 5 | 0 |
 | F3 Storyboard | 0 | 0 | 7 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
@@ -95,7 +95,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | ID | Feature | Status | Notes |
 |---|---|---|---|
 | F2.1 | Idea session autosave (`PUT /projects/{id}/idea`) | ✅ | Done 2026-10-17 ([design note](features/F2.1-idea-autosave.md)). `GET` / `PUT /api/v1/projects/{id}/idea` (strict, `If-Match` → `412` with the current idea, a no-op save keeps the rev, `409` outside `idea_draft` / `storyboard_ready`, limits counted in characters, 128 KB body); saving moves the video to the top of the Library. Idea step on the project page: 3 tabs with their own text and counters, autosave (800 ms, "Saving…" / "Saved" / "Offline — will save when reconnected"), "changed in another tab" bar with Load latest / Keep mine. Real HTTP 404 for unknown project pages (K1). 29 new tests + cross-user cases; checked in the browser |
-| F2.2 | "Find a topic" → 5 AI idea suggestions | ⬜ | Gemini fast model |
+| F2.2 | "Find a topic" → 5 AI idea suggestions | ✅ | Done 2026-10-17 ([design note](features/F2.2-topic-suggestions.md)). `POST /api/v1/projects/{id}/idea/suggestions` → 5 cards (title, hook, angle, 3 key points) in the video's language, fitted to its audience and board and to your "what I teach"; saved with the video (newest 30); **Suggest 5 more** and **More like this** tell Gemini every title already shown so it picks new concepts; prohibited topics → `422`; Gemini busy → `503`; shared `ideas` limit 150/day (`429`); every call logged in `ai_calls`. Shared `generateJson` helper (15 s budget, fallback model, one repair). **Use this** waits for F2.3. Also QA's F2.1 points: label-only accessible names, conflict bar above the text box, proper disabled button style. Gemini key copied into the web app's local env file (not printed, not committed). Checked with real Gemini in Hindi |
 | F2.3 | "I have an idea" → brief + 2 alternative angles | ⬜ | |
 | F2.4 | "Use my notes" (≤ 20,000 chars) → focused brief | ⬜ | Prompt-injection hygiene |
 | F2.5 | Idea chat to refine the brief | ⬜ | |
@@ -259,3 +259,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | Scope agreed with you: continue feature by feature through **F2.5**, then stop until you say so. QA note added as known issue K4 (Welcome can reappear for a never-onboarded user once all their videos are purged). |
 | 2026-10-17 | F2.1 review fixes: leaving while a save is in flight no longer drops what was typed after it; saves on tab hide, page close and unmount use keepalive; pasted control characters (PDF page breaks) are dropped so notes can always be saved; "Reload" after a stopped save is a full reload, and a 412 without the other copy stops with a reload message; Library cards show "opening…" while a project page loads. |
 | 2026-10-17 | Scope changed by you: stop after **F2.2** (not F2.5); F2.3 continues later when you say so. |
+| 2026-10-17 | **F2.2 done** — Find a topic → 5 AI idea cards ([design note](features/F2.2-topic-suggestions.md)). New shared daily limit `ideas` (150) for idea AI requests (PRD §20.6 and DB §4.17 updated). Real-Gemini test showed gemini-3.8-flash needs ~15 s at default thinking on the free tier: it now runs with thinking LOW (8–12 s) and always leaves 4 s for the 2-second fallback model, so answers stay inside 15 s. QA's F2.1 points 1–3 fixed; 4 (stale If-Match on an unchanged save → 412) documented as intended; 5 (tab switch saves after 800 ms) unchanged by design. **Stop point reached** (agreed scope): no further feature until you say so. |

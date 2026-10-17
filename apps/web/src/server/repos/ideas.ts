@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { collections, withTransaction } from "../db/mongo";
 import type { IdeaSessionDoc, ProjectStatus } from "../db/types";
@@ -88,4 +89,34 @@ export async function saveIdea(userId: string, projectId: string, input: IdeaInp
     await collections.projects().updateOne({ _id, userId }, { $set: { updatedAt: now } }, { session });
     return { ok: true, idea, changed: true } as const;
   });
+}
+
+/** Most suggestion cards kept per idea session (DB Design §4.4): the newest win. */
+export const MAX_SUGGESTIONS = 30;
+
+export type Suggestion = IdeaSessionDoc["suggestions"][number];
+
+/**
+ * Saves new AI idea cards (F2.2) after the ones already there, keeping the newest 30, and returns them with their ids.
+ * The idea's `rev` doesn't change: it guards what the user types, and a suggestion run must never make the next
+ * autosave look like a conflict. Null when the project is unknown, someone else's or deleted.
+ */
+export async function addSuggestions(userId: string, projectId: string, cards: Omit<Suggestion, "id">[]): Promise<Suggestion[] | null> {
+  const _id = toObjectId(projectId);
+  if (!_id) return null;
+  const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { projection: { _id: 1 } });
+  if (!project) return null;
+  const now = new Date();
+  const saved: Suggestion[] = cards.map((c) => ({ id: `sg_${randomBytes(6).toString("hex")}`, ...c }));
+  // A project from before idea sessions existed gets its (empty) session here.
+  // (without the fields this update sets itself).
+  const fresh: Partial<IdeaSessionDoc> = emptyIdea(_id, userId, now);
+  delete fresh.suggestions;
+  delete fresh.updatedAt;
+  await collections.ideaSessions().updateOne(
+    { projectId: _id, userId },
+    { $push: { suggestions: { $each: saved, $slice: -MAX_SUGGESTIONS } }, $set: { updatedAt: now }, $setOnInsert: fresh },
+    { upsert: true },
+  );
+  return saved;
 }

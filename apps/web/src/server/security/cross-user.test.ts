@@ -21,6 +21,7 @@ import * as projects from "@/app/api/v1/projects/route";
 import * as one from "@/app/api/v1/projects/[id]/route";
 import * as duplicate from "@/app/api/v1/projects/[id]/duplicate/route";
 import * as idea from "@/app/api/v1/projects/[id]/idea/route";
+import * as suggestions from "@/app/api/v1/projects/[id]/idea/suggestions/route";
 import * as restore from "@/app/api/v1/projects/[id]/restore/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { needsWelcome } from "../onboarding";
@@ -169,6 +170,14 @@ describe("B against A's projects (id routes)", () => {
     for (const id of [a.live, a.deleted, a.attention]) await expectLikeUnknown(idea.GET, "GET", "/idea", id);
   });
 
+  it("POST /projects/{id}/idea/suggestions: 404 like an unknown id; no AI call, nothing saved for A, B's limit untouched", async () => {
+    const before = await snapshotA();
+    for (const id of [a.live, a.deleted, a.attention]) await expectLikeUnknown(suggestions.POST, "POST", "/idea/suggestions", id, { topic: "Steal A's ideas" });
+    expect(await snapshotA()).toEqual(before);
+    expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: B.id })).toBe(0);
+    expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
+  });
+
   it("PUT /projects/{id}/idea: 404, with or without If-Match; A's idea and project are unchanged", async () => {
     const before = await snapshotA();
     for (const id of [a.live, a.deleted]) await expectLikeUnknown(idea.PUT, "PUT", "/idea", id, { mode: "idea", ideaInput: "B was here" });
@@ -251,6 +260,7 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["POST /projects/{id}/duplicate", duplicate.POST, "POST", "/api/v1/projects/x/duplicate", { id: "x" }],
   ["GET /projects/{id}/idea", idea.GET, "GET", "/api/v1/projects/x/idea", { id: "x" }],
   ["PUT /projects/{id}/idea", idea.PUT, "PUT", "/api/v1/projects/x/idea", { id: "x" }],
+  ["POST /projects/{id}/idea/suggestions", suggestions.POST, "POST", "/api/v1/projects/x/idea/suggestions", { id: "x" }],
 ];
 
 describe("every route needs a session, and a verified email", () => {
@@ -280,6 +290,7 @@ const MODULES: Record<string, Record<string, unknown>> = {
   "/projects/[id]": one,
   "/projects/[id]/duplicate": duplicate,
   "/projects/[id]/idea": idea,
+  "/projects/[id]/idea/suggestions": suggestions,
   "/projects/[id]/restore": restore,
 };
 const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];

@@ -8,14 +8,14 @@ import { collections } from "../db/mongo";
  * in one database operation, so concurrent requests can't both take the last slot. See docs/features/F1.13.
  */
 
-export const LIMITED_COUNTERS = ["storyboards", "revisions", "builds", "renders", "illustrations"] as const;
+export const LIMITED_COUNTERS = ["storyboards", "revisions", "builds", "renders", "illustrations", "ideas"] as const;
 export type LimitedCounter = (typeof LIMITED_COUNTERS)[number];
 /** Counted for cost tracking, never limited. */
 export type TrackedCounter = "voiceCharacters";
 export type UsageCounter = LimitedCounter | TrackedCounter;
 
-/** PRD §20.6 defaults. */
-export const DEFAULT_LIMITS: Record<LimitedCounter, number> = { storyboards: 20, revisions: 100, builds: 15, renders: 10, illustrations: 40 };
+/** PRD §20.6 defaults; `ideas` (idea suggestions, briefs and idea chat together) was added in M2 (approved 2026-10-17). */
+export const DEFAULT_LIMITS: Record<LimitedCounter, number> = { storyboards: 20, revisions: 100, builds: 15, renders: 10, illustrations: 40, ideas: 150 };
 
 const LABELS: Record<LimitedCounter, string> = {
   storyboards: "storyboard generations",
@@ -23,6 +23,7 @@ const LABELS: Record<LimitedCounter, string> = {
   builds: "video builds",
   renders: "renders",
   illustrations: "AI illustrations",
+  ideas: "AI idea requests",
 };
 
 const IST_OFFSET_MS = 5.5 * 3600_000; // India has no daylight saving
