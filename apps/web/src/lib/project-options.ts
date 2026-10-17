@@ -51,9 +51,13 @@ export const STEPS = [
   { id: "video", n: "03", label: "Video", hint: "// render & post" },
 ] as const;
 
-/** The step a project is on (0 = Idea, 1 = Storyboard, 2 = Video). */
-export function stepIndex(status: ProjectStatus): 0 | 1 | 2 {
+/**
+ * The step a project is on (0 = Idea, 1 = Storyboard, 2 = Video). A project that needs attention is on the step where
+ * it failed (`attention.kind`): a failed storyboard generation is still the Storyboard step, not Video.
+ */
+export function stepIndex(status: ProjectStatus, attentionKind?: "storyboard" | "build" | "render" | "publish" | null): 0 | 1 | 2 {
   if (status === "idea_draft") return 0;
   if (status === "storyboard_generating" || status === "storyboard_ready") return 1;
+  if (status === "needs_attention" && attentionKind === "storyboard") return 1;
   return 2;
 }

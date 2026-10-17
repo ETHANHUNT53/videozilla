@@ -42,4 +42,10 @@ describe("stepIndex", () => {
       needs_attention: 2,
     });
   });
+
+  it("puts a project that needs attention on the step where it failed", () => {
+    expect(stepIndex("needs_attention", "storyboard")).toBe(1);
+    for (const kind of ["build", "render", "publish"] as const) expect(stepIndex("needs_attention", kind)).toBe(2);
+    expect(stepIndex("publish_failed", "publish")).toBe(2);
+  });
 });

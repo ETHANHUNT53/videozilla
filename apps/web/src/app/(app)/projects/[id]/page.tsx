@@ -25,7 +25,7 @@ async function ProjectContent({ params }: { params: PageProps<"/projects/[id]">[
   const project = await getProject(user.id, id);
   // Unknown or someone else's project: 404, never a hint that it exists.
   if (!project) notFound();
-  // Keyed by id only: after a save the page keeps its state (and "Saved" message); edits made in another tab
-  // meanwhile are caught by If-Match (412 → the page loads the latest copy).
+  // Keyed by id only, so a save keeps the page's state (and "Saved" message). A newer copy from a refresh replaces the
+  // local one (higher rev wins); edits made in another tab meanwhile are caught by If-Match (412 → the latest copy).
   return <ProjectView key={id} initial={toProject(project)} />;
 }

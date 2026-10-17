@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
+import { clampChars, conflictCopy, patchProject } from "@/lib/project-client";
 import { FILTERS, STATUS_DISPLAY, type ProjectStatus } from "@/lib/status";
 import { TimeAgo } from "./time-ago";
 import { Chip, cx, inputStyles } from "./ui";
@@ -278,7 +279,13 @@ function ProjectCard({
 
   const fail = (err: unknown, fallback: string) => setNote(err instanceof ApiClientError ? err.message : fallback);
 
+  // Enter saves and removes the input, and its blur can then fire save again from the same render: only the first
+  // call per edit may send a PATCH (a second one with the same If-Match would come back 412).
+  const savingEdit = useRef(false);
+
   const saveTitle = () => {
+    if (savingEdit.current) return;
+    savingEdit.current = true;
     setEditing(false);
     const clean = title.trim();
     if (!clean || clean === saved.title) {
@@ -289,12 +296,12 @@ function ProjectCard({
     start(async () => {
       try {
         // If-Match: don't overwrite a change made in another tab meanwhile (412 → show the latest title).
-        const { data } = await apiCall<Project>(`/api/v1/projects/${project.id}`, { method: "PATCH", body: { title: clean }, headers: { "If-Match": `"${saved.rev}"` } });
+        const { project: data } = await patchProject<Project>({ id: project.id, rev: saved.rev }, { title: clean });
         setSaved({ title: data.title, rev: data.rev });
         setTitle(data.title);
         onSaved({ ...project, ...data });
       } catch (err) {
-        const current = err instanceof ApiClientError && err.code === "PRECONDITION_FAILED" ? (err.details[0]?.current as Project | undefined) : undefined;
+        const current = conflictCopy<Project>(err);
         if (current) {
           setSaved({ title: current.title, rev: current.rev });
           setTitle(current.title);
@@ -324,13 +331,13 @@ function ProjectCard({
             <input
               autoFocus
               value={title}
-              maxLength={80}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => setTitle(clampChars(e.target.value))}
               onBlur={saveTitle}
               onKeyDown={(e) => {
                 if (e.key === "Enter") saveTitle();
                 if (e.key === "Escape") {
-                  setTitle(project.title);
+                  savingEdit.current = true; // cancelled: the blur that follows must not save the typed text
+                  setTitle(saved.title);
                   setEditing(false);
                 }
               }}
@@ -361,6 +368,7 @@ function ProjectCard({
               <MenuItem
                 onClick={() => {
                   setMenu(false);
+                  savingEdit.current = false;
                   setEditing(true);
                 }}
               >

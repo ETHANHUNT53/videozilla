@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { ApiClientError, apiCall } from "@/lib/api-client";
+import { useRef, useState, useTransition } from "react";
+import { ApiClientError } from "@/lib/api-client";
+import { clampChars, conflictCopy, patchProject } from "@/lib/project-client";
 import {
   AUDIENCE_OPTIONS,
   BOARD_OPTIONS,
@@ -51,30 +52,17 @@ const WORKSPACE = [
   },
 ] as const;
 
-/** `PATCH /api/v1/projects/{id}` with the revision this page last saw (API Design §8). */
-async function patchProject(p: Project, body: Partial<Settings> & { title?: string }) {
-  const { data } = await apiCall<Project & { requiresRegeneration: boolean }>(`/api/v1/projects/${p.id}`, {
-    method: "PATCH",
-    body,
-    headers: { "If-Match": `"${p.rev}"` },
-  });
-  const { requiresRegeneration, ...project } = data;
-  return { project: project as Project, requiresRegeneration };
-}
-
-/** The latest project sent back with a `412`, if any (a change made in another tab). */
-function conflictCopy(err: unknown): Project | undefined {
-  return err instanceof ApiClientError && err.code === "PRECONDITION_FAILED" ? (err.details[0]?.current as Project | undefined) : undefined;
-}
-
 /**
  * The project page (PRD S4 shell, Stitch screen 07): title, status, the Idea → Storyboard → Video stepper, a
  * "needs attention" banner, the step's workspace and the settings panel. Reads and writes go through `/api/v1`.
  */
 export function ProjectView({ initial }: { initial: Project }) {
   const [project, setProject] = useState(initial);
+  // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
+  // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
+  if (initial.rev > project.rev) setProject(initial);
   const router = useRouter();
-  const step = stepIndex(project.status);
+  const step = stepIndex(project.status, project.attention?.kind);
   const status = STATUS_DISPLAY[project.status];
 
   const saved = (next: Project) => {
@@ -134,12 +122,26 @@ export function ProjectView({ initial }: { initial: Project }) {
 
 function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Project) => void }) {
   const [editing, setEditing] = useState(false);
+  // The text being typed; outside an edit (and its save) the heading shows project.title, so a newer copy of the
+  // project (e.g. loaded after a 412 in the settings panel) always shows its own title.
   const [title, setTitle] = useState(project.title);
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const canRename = project.allowedActions.includes("rename");
+  // Enter saves and removes the input, and its blur can then fire save again from the same render: only the first call
+  // per edit may send a PATCH (a second one with the same If-Match would come back 412). Escape also ends the edit.
+  const ended = useRef(false);
+
+  const startEdit = () => {
+    ended.current = false;
+    setTitle(project.title);
+    setNote(null);
+    setEditing(true);
+  };
 
   const save = () => {
+    if (ended.current) return;
+    ended.current = true;
     setEditing(false);
     const clean = title.trim();
     if (!clean || clean === project.title) {
@@ -149,11 +151,11 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
     setNote(null);
     start(async () => {
       try {
-        const { project: next } = await patchProject(project, { title: clean });
+        const { project: next } = await patchProject<Project>(project, { title: clean });
         setTitle(next.title);
         onSaved(next);
       } catch (err) {
-        const current = conflictCopy(err);
+        const current = conflictCopy<Project>(err);
         if (current) onSaved(current);
         setTitle(current?.title ?? project.title);
         setNote(current ? "This video was changed in another tab, so your rename wasn't saved. Try again." : err instanceof ApiClientError ? err.message : "Couldn't rename this video.");
@@ -167,12 +169,12 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
         <input
           autoFocus
           value={title}
-          maxLength={80}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => setTitle(clampChars(e.target.value))}
           onBlur={save}
           onKeyDown={(e) => {
             if (e.key === "Enter") save();
             if (e.key === "Escape") {
+              ended.current = true; // cancelled: the blur that follows must not save the typed text
               setTitle(project.title);
               setEditing(false);
             }
@@ -183,11 +185,11 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
       ) : (
         <h1 className={cx("text-3xl font-semibold tracking-tight", pending && "opacity-60")}>
           {canRename ? (
-            <button type="button" onClick={() => setEditing(true)} className="text-left hover:text-cyan" title="Rename">
-              {title}
+            <button type="button" onClick={startEdit} className="text-left hover:text-cyan" title="Rename">
+              {pending ? title : project.title}
             </button>
           ) : (
-            title
+            project.title
           )}
         </h1>
       )}
@@ -221,7 +223,7 @@ function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Pr
     setMessage(null);
     start(async () => {
       try {
-        const { project: next, requiresRegeneration } = await patchProject(project, changes);
+        const { project: next, requiresRegeneration } = await patchProject<Project>(project, changes);
         onSaved(next);
         setDraft(settingsOf(next));
         setEditing(false);
@@ -229,7 +231,7 @@ function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Pr
         else if (next.exportOutdated && !project.exportOutdated) setMessage({ tone: "info", text: "Saved. Rebuild or re-export the video to apply it." });
         else setMessage({ tone: "info", text: "Saved." });
       } catch (err) {
-        const latest = conflictCopy(err);
+        const latest = conflictCopy<Project>(err);
         if (latest) {
           onSaved(latest);
           setDraft(settingsOf(latest));
