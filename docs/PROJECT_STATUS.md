@@ -11,7 +11,7 @@
 | **Last updated** | 2026-10-17 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
 | **Next feature** | **F2.2 — Find a topic → 5 AI idea cards** (`POST /api/v1/projects/{id}/idea/suggestions`, Gemini fast model). Starts by copying the Gemini key into the web app (Q1) and adds the shared `ideas` limit, 150/day (Q2) |
-| **Agreed scope (2026-10-17)** | Build feature by feature **up to F2.5**, then stop: after F2.5 is built, reviewed and QA'd, no further feature starts until you say so |
+| **Agreed scope (2026-10-17, updated)** | Build feature by feature **up to F2.2**, then stop: after F2.2 is built, reviewed and QA'd, no further feature starts until you say so (F2.3 continues later) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -258,3 +258,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | **F2.1 done** — idea autosave ([design note](features/F2.1-idea-autosave.md)): the project page's Idea step has the three ways to start (Find a topic / I have an idea / Use my notes), each keeping its own text, saved automatically with a "Saved" indicator, offline retry and a two-tab conflict bar; `GET` / `PUT /api/v1/projects/{id}/idea`. Unknown project pages now return a real HTTP 404 (QA leftover K1). AI buttons arrive in F2.2–F2.4. |
 | 2026-10-17 | Scope agreed with you: continue feature by feature through **F2.5**, then stop until you say so. QA note added as known issue K4 (Welcome can reappear for a never-onboarded user once all their videos are purged). |
 | 2026-10-17 | F2.1 review fixes: leaving while a save is in flight no longer drops what was typed after it; saves on tab hide, page close and unmount use keepalive; pasted control characters (PDF page breaks) are dropped so notes can always be saved; "Reload" after a stopped save is a full reload, and a 412 without the other copy stops with a reload message; Library cards show "opening…" while a project page loads. |
+| 2026-10-17 | Scope changed by you: stop after **F2.2** (not F2.5); F2.3 continues later when you say so. |
