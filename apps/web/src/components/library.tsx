@@ -36,12 +36,13 @@ export function LibraryToolbar({ filter, q }: { filter: string; q: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="flex gap-1 rounded-xl border border-line bg-surface p-1">
+      {/* On a narrow phone the filters scroll sideways inside their row instead of widening the page. */}
+      <div className="flex max-w-full min-w-0 gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
         {FILTERS.map((f) => (
           <button
             key={f.id}
             onClick={() => go({ filter: f.id })}
-            className={cx("rounded-lg px-3 py-1.5 text-sm transition-colors", filter === f.id ? "bg-surface-hover text-fg" : "text-muted hover:text-fg")}
+            className={cx("shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors", filter === f.id ? "bg-surface-hover text-fg" : "text-muted hover:text-fg")}
           >
             {f.label}
           </button>

@@ -58,8 +58,9 @@ describe("clampChars", () => {
 });
 
 describe("stripControlChars", () => {
-  it("drops the invisible characters the API rejects (e.g. PDF page breaks) and keeps tabs, new lines and Hindi", () => {
-    expect(stripControlChars("Chapter 1\fPhotosynthesis\u0000\u0007\u007F")).toBe("Chapter 1Photosynthesis");
+  it("turns page breaks and vertical tabs into new lines, drops the other characters the API rejects, keeps tabs, new lines and Hindi", () => {
+    expect(stripControlChars("Chapter 1\fPhotosynthesis\u0000\u0007\u007F")).toBe("Chapter 1\nPhotosynthesis");
+    expect(stripControlChars("Page one\fPage two\vend")).toBe("Page one\nPage two\nend");
     expect(stripControlChars("a\tb\nc\r\nd")).toBe("a\tb\nc\r\nd");
     expect(stripControlChars("प्रकाश संश्लेषण 🌱")).toBe("प्रकाश संश्लेषण 🌱");
   });

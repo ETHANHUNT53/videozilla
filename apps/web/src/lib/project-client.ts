@@ -51,9 +51,12 @@ export function currentNote<T>(note: RevNote<T> | null, project: { rev: number; 
 // Control characters other than tab and new line (\r is kept: the API turns \r\n into \n). Same set the API rejects.
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
-/** Drops the invisible control characters the API rejects (page breaks and the like from pasted PDFs or Word). */
+/**
+ * Removes the invisible control characters the API rejects (from pasted PDFs or Word). Page breaks (\f) and vertical
+ * tabs (\v) become new lines, so text from two pages doesn't run together; the rest are dropped.
+ */
 export function stripControlChars(value: string): string {
-  return value.replace(CONTROL, "");
+  return value.replace(/[\v\f]/g, "\n").replace(CONTROL, "");
 }
 
 /**
