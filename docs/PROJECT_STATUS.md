@@ -9,8 +9,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-10-17 |
-| **Current phase** | Feature build — F1 accounts & library done (except F1.4 Google sign-in, which waits for your Google keys); F2 Idea Studio next |
-| **Next feature** | **F2.1 — Idea session autosave**: `PUT /api/v1/projects/{id}/idea` saves the Idea Studio draft (first feature of F2 — Idea Studio) |
+| **Current phase** | **M2 design — waiting for your approval.** F1 accounts & library done (except F1.4 Google sign-in, which waits for your Google keys). [M2 design](M2_DESIGN.md) (Idea Studio + Storyboard) written, with 2 questions for you (§7) |
+| **Next feature** | **F2.1 — Idea autosave** (after you approve the M2 design): `GET` / `PUT /api/v1/projects/{id}/idea`, autosave with "Saved" status, a first working Idea step, and a real 404 for unknown project pages |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -27,10 +27,10 @@
 
 | Area | Done | Draft | Not started | Blocked |
 |---|---|---|---|---|
-| Planning & design | 8 | 0 | 0 | 0 |
+| Planning & design | 8 | 0 | 0 (+1 in progress) | 0 |
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
-| F2 Idea Studio | 1 | 0 | 6 | 0 |
+| F2 Idea Studio | 1 | 0 | 7 | 0 |
 | F3 Storyboard | 0 | 0 | 7 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
@@ -40,7 +40,7 @@
 
 ---
 
-## 1. Planning & design (done)
+## 1. Planning & design
 
 | ID | Item | Status | Where |
 |---|---|---|---|
@@ -52,6 +52,7 @@
 | D6 | API design (approved) | ✅ | [API_DESIGN.md](API_DESIGN.md) |
 | D7 | UI design system + 18 screens in Google Stitch | ✅ | [ui/README.md](ui/README.md) |
 | D8 | Stitch prompts for every screen | ✅ | [ui/STITCH_PROMPTS.md](ui/STITCH_PROMPTS.md) |
+| D9 | M2 design: Idea Studio + Storyboard (build order, F2.1 details, AI and generate flows, 2 questions) | 🔵 | [M2_DESIGN.md](M2_DESIGN.md) — waiting for your approval |
 
 ---
 
@@ -92,13 +93,14 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
-| F2.1 | Idea session autosave (`PUT /projects/{id}/idea`) | ⬜ | |
+| F2.1 | Idea session autosave (`PUT /projects/{id}/idea`) | ⬜ | Next, after M2 design approval ([M2 design §3](M2_DESIGN.md)). Includes the real-404 fix for `/projects/{id}` (QA leftover) |
 | F2.2 | "Find a topic" → 5 AI idea suggestions | ⬜ | Gemini fast model |
 | F2.3 | "I have an idea" → brief + 2 alternative angles | ⬜ | |
 | F2.4 | "Use my notes" (≤ 20,000 chars) → focused brief | ⬜ | Prompt-injection hygiene |
 | F2.5 | Idea chat to refine the brief | ⬜ | |
 | F2.6 | Video settings panel (language, length, audience, board/exam, voice, style) | ✅ | Built with F1.9: "// edit parameters" saves via `PATCH /api/v1/projects/{id}` with `If-Match`; fields lock by status from `allowedActions` (script settings before the build, voice / captions after the storyboard), with "regenerate" / "rebuild" notes. Only the two approved voices; style is Midnight only (V1) |
 | F2.7 | Idea Studio screen (Stitch screen 09) | ⬜ | |
+| F2.8 | Direct brief edits; video title follows the brief title until renamed | ⬜ | PRD F2-FR7 / FR11 (new row from the M2 design) |
 
 ### F3 — Storyboard
 
@@ -192,6 +194,15 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 3 | Domain + trademark check for "Videozilla" | Email sending, OAuth, Meta review |
 | 4 | Accounts: MongoDB Atlas, Cloudflare R2, Inngest, Vercel, Resend, Sentry | F10.4 staging |
 | 5 | Meta developer app + business verification | F9 |
+| 6 | Approve the [M2 design](M2_DESIGN.md) and answer Q1 (Gemini key for the web app) and Q2 (daily cap for idea AI calls) | M2 |
+
+### Known small issues (from QA, cosmetic)
+
+| # | Issue | Plan |
+|---|---|---|
+| K1 | `/projects/{unknown or someone else's id}` answers HTTP 200 with not-found content (`notFound()` runs inside the streamed part) — nothing leaks, but it should be a real 404 | Fixed in F2.1 |
+| K2 | An onboarded user who opens `/welcome` sees a spinner, then an in-page redirect to the Library | Fix when Welcome is next touched |
+| K3 | An unverified user opening `/library` briefly sees "Loading your videos…" before `/verify-email` | Fix when the Library or proxy is next touched |
 
 ---
 
@@ -241,3 +252,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | F1.13 review fixes: `consumeUsage` no longer uses the duplicate-key error as "limit reached" (inside a transaction it aborted the transaction, so the request hung or failed instead of answering 429). It first makes sure the day's document exists, then increments without upsert. Amounts must be positive whole numbers; a stored counter that isn't a number is an error, not "limit reached". Design note and DB §7.5 note updated. |
 | 2026-10-17 | **F1.14 done** — cross-user security tests ([design note](features/F1.14-cross-user-security.md)): 33 tests prove another signed-in user can't read, change, delete, restore or copy someone else's videos, profile or usage through any `/api/v1` route, and gets the same `404` as for an id that doesn't exist; a coverage check makes every new route add its case. No leaks found. Also: the Welcome redirect (F1.12) now happens in the proxy, so first-time users no longer see the Library's "Loading your videos…" flash first. Summary counts corrected. Next: F2.1. |
 | 2026-10-17 | F1.12 / F1.14 review fixes: the proxy's Welcome check reads the database only until it knows a session doesn't need Welcome, then remembers that in an httpOnly cookie bound to the session (proxy also runs for every prefetch). The cross-user suite now checks every exported method of every route (each must be a 405 or have a case), snapshots every user-data collection with a scheduled post and queued render for A, and compares resource headers (ETag, Location, Allow, Retry-After, RateLimit-*) with an unknown id's. |
+| 2026-10-17 | **M2 design written** ([M2_DESIGN.md](M2_DESIGN.md)), waiting for your approval: build order for Idea Studio + Storyboard, F2.1 in detail (idea autosave API, autosave hook, two-tab conflict bar, first working Idea step), how the AI features and storyboard generation will work, and 2 questions (Gemini key for the web app; a daily cap for idea AI calls). New row F2.8 (brief edits, title from brief). QA's small cosmetic leftovers listed under Known small issues; the project-page 404 is folded into F2.1. |
