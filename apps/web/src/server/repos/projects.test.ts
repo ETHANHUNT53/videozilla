@@ -25,6 +25,9 @@ vi.mock("../db/mongo", () => ({
   collections: {
     projects: () => state.db.collection("projects"),
     profiles: () => state.db.collection("profiles"),
+    pipelineRuns: () => state.db.collection("pipeline_runs"),
+    publishJobs: () => state.db.collection("publish_jobs"),
+    renderJobs: () => state.db.collection("render_jobs"),
     ideaSessions: () => {
       const real = state.db.collection("idea_sessions");
       if (!state.failIdeaInsert) return real;
@@ -36,8 +39,11 @@ const sessionUser = vi.hoisted(() => vi.fn());
 vi.mock("../api/session", () => ({ sessionUser }));
 
 import { DELETE, GET, POST } from "@/app/api/v1/projects/route";
+import * as one from "@/app/api/v1/projects/[id]/route";
+import * as duplicateRoute from "@/app/api/v1/projects/[id]/duplicate/route";
+import * as restoreRoute from "@/app/api/v1/projects/[id]/restore/route";
 import { ApiError } from "../api/errors";
-import { createProject, deleteAllForUser, duplicateProject, listProjects, normalizeSearch, purgeExpiredProjects, softDeleteProject } from "./projects";
+import { createProject, deleteAllForUser, deleteProject, duplicateProject, listProjects, normalizeSearch, purgeExpiredProjects, restoreProject, updateProject } from "./projects";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const CACHED_BINARY_DIR = path.join(ROOT, "apps/web/node_modules/.cache/mongodb-memory-server");
@@ -108,10 +114,19 @@ async function all(query: Parameters<typeof listProjects>[1]) {
   throw new Error("too many pages");
 }
 
+// One migrated database for the whole file (migrating builds 36 indexes, too slow to repeat per test); each test
+// starts from empty collections instead.
+const TOUCHED = ["projects", "idea_sessions", "profiles", "pipeline_runs", "publish_jobs", "render_jobs"];
+let migrated: Db | undefined;
+
 beforeEach(async () => {
-  state.db = client.db(`t_${new ObjectId().toHexString()}`);
+  if (!migrated) {
+    migrated = client.db(`t_${new ObjectId().toHexString()}`);
+    await runMigrations(migrated, { log: () => {} });
+  }
+  state.db = migrated;
+  await Promise.all(TOUCHED.map((name) => migrated!.collection(name).deleteMany({})));
   state.failIdeaInsert = false;
-  await runMigrations(state.db, { log: () => {} });
   sessionUser.mockReset().mockResolvedValue({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: true, image: null, createdAt: base });
   vi.stubEnv("BETTER_AUTH_URL", APP);
 });
@@ -341,7 +356,7 @@ describe("duplicateProject", () => {
     await state.db.collection("projects").updateOne({ _id: src._id }, { $set: { rev: 3, revisionCount: 4 } });
 
     const copyId = await duplicateProject(ME, src._id.toHexString());
-    const copy = await state.db.collection("projects").findOne({ _id: new ObjectId(copyId!) });
+    const copy = await state.db.collection("projects").findOne({ _id: copyId!._id });
     expect(copy).toMatchObject({ title: "Photosynthesis (copy)", language: "hi", voiceGender: "male", status: "idea_draft", duplicatedFrom: src._id, rev: 0, revisionCount: 0 });
     expect(await state.db.collection("idea_sessions").findOne({ projectId: copy!._id })).toMatchObject({ mode: "notes", notesText: "Chapter 6 notes", rev: 0 });
     expect(await state.db.collection("idea_sessions").findOne({ projectId: src._id })).toMatchObject({ notesText: "Chapter 6 notes", rev: 5 });
@@ -350,7 +365,7 @@ describe("duplicateProject", () => {
   it("gives an M1-draft project without an idea session an empty one, and drops failedStep", async () => {
     const [old] = await seed([project(1)]);
     const copyId = await duplicateProject(ME, old._id.toHexString());
-    const copy = await state.db.collection("projects").findOne({ _id: new ObjectId(copyId!) });
+    const copy = await state.db.collection("projects").findOne({ _id: copyId!._id });
     expect(copy).not.toHaveProperty("failedStep");
     expect(await state.db.collection("idea_sessions").countDocuments({ projectId: copy!._id })).toBe(1);
   });
@@ -358,7 +373,7 @@ describe("duplicateProject", () => {
   it("copies only the settings: no stray or later fields come along from the source", async () => {
     const [src] = await seed([project(1, { latestRenderId: new ObjectId(), permalink: "https://instagram.com/p/x", postedAt: base, status: "posted" })]);
     await state.db.collection("projects").updateOne({ _id: src._id }, { $set: { someFutureField: "keep out" } });
-    const copy = await state.db.collection("projects").findOne({ _id: new ObjectId((await duplicateProject(ME, src._id.toHexString()))!) });
+    const copy = await state.db.collection("projects").findOne({ _id: (await duplicateProject(ME, src._id.toHexString()))!._id });
     expect(copy).toMatchObject({ status: "idea_draft", latestRenderId: null, permalink: null, postedAt: null, title: "Video 1 (copy)" });
     expect(copy).not.toHaveProperty("someFutureField");
   });
@@ -369,14 +384,6 @@ describe("duplicateProject", () => {
   });
 });
 
-describe("softDeleteProject", () => {
-  it("follows the status rules: not while the video is being posted to Instagram", async () => {
-    const [publishing, draft] = await seed([project(1, { status: "publishing" }), project(2)]);
-    expect(await softDeleteProject(ME, publishing._id.toHexString())).toBe(false);
-    expect(await state.db.collection("projects").findOne({ _id: publishing._id })).toMatchObject({ deletedAt: null });
-    expect(await softDeleteProject(ME, draft._id.toHexString())).toBe(true);
-  });
-});
 
 describe("purgeExpiredProjects", () => {
   it("removes expired projects together with their idea sessions, and nothing else", async () => {
@@ -459,5 +466,194 @@ describe("POST /api/v1/projects", () => {
     sessionUser.mockResolvedValue({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: false, image: null, createdAt: base });
     expect((await post("{}")).status).toBe(403);
     expect(await state.db.collection("projects").countDocuments()).toBe(0);
+  });
+});
+
+describe("updateProject", () => {
+  const id = (p: ProjectDoc) => p._id.toHexString();
+
+  it("renames in any status that allows it and bumps rev", async () => {
+    const [posted] = await seed([project(1, { status: "posted", rev: 2 })]);
+    const res = await updateProject(ME, id(posted), { title: "  New title  " });
+    expect(res).toMatchObject({ ok: true, requiresRegeneration: false, project: { title: "New title", rev: 3 } });
+  });
+
+  it("renames even while the video is being posted (title is editable in every status, DB Design §5.2)", async () => {
+    const [p] = await seed([project(1, { status: "publishing" })]);
+    expect(await updateProject(ME, id(p), { title: "Still fine" })).toMatchObject({ ok: true, project: { title: "Still fine" } });
+  });
+
+  it("changes script settings only before the build, and says a regeneration is needed on a storyboard", async () => {
+    const [draft, ready, built] = await seed([project(1), project(2, { status: "storyboard_ready" }), project(3, { status: "preview_ready" })]);
+    expect(await updateProject(ME, id(draft), { language: "hi", lengthPreset: 90 })).toMatchObject({ ok: true, requiresRegeneration: false, project: { language: "hi", lengthPreset: 90 } });
+    expect(await updateProject(ME, id(ready), { audience: "kids" })).toMatchObject({ ok: true, requiresRegeneration: true });
+    expect(await updateProject(ME, id(built), { language: "hi" })).toMatchObject({ ok: false, reason: "invalid_state", fields: ["language"] });
+  });
+
+  it("changes voice / captions only once there is a storyboard, and marks a built video's export outdated", async () => {
+    const [draft, built] = await seed([project(1), project(2, { status: "exported" })]);
+    expect(await updateProject(ME, id(draft), { voiceGender: "male" })).toMatchObject({ ok: false, reason: "invalid_state", fields: ["voiceGender"] });
+    expect(await updateProject(ME, id(built), { captionsEnabled: true })).toMatchObject({ ok: true, project: { captionsEnabled: true, exportOutdated: true } });
+  });
+
+  it("treats unchanged values as no change (no rev bump, no status check)", async () => {
+    const [p] = await seed([project(1, { status: "posted", rev: 4 })]);
+    expect(await updateProject(ME, id(p), { language: "en", title: "Video 1" })).toMatchObject({ ok: true, project: { rev: 4 } });
+  });
+
+  it("applies If-Match: the right rev updates, a stale rev returns the current project", async () => {
+    const [p] = await seed([project(1, { rev: 5 })]);
+    expect(await updateProject(ME, id(p), { title: "A" }, 5)).toMatchObject({ ok: true, project: { title: "A", rev: 6 } });
+    expect(await updateProject(ME, id(p), { title: "B" }, 5)).toMatchObject({ ok: false, reason: "precondition_failed", current: { title: "A", rev: 6 } });
+  });
+
+  it("can't touch another user's, a deleted or a malformed project", async () => {
+    const [theirs, deleted] = await seed([project(1, { userId: OTHER }), project(2, { deletedAt: base, purgeAt: base })]);
+    for (const target of [id(theirs), id(deleted), "nope"]) expect(await updateProject(ME, target, { title: "X" })).toEqual({ ok: false, reason: "not_found" });
+  });
+});
+
+describe("deleteProject", () => {
+  const job = (projectId: ObjectId, over: Record<string, unknown>) => ({ projectId, userId: ME, createdAt: base, updatedAt: base, ...over });
+
+  it("soft-deletes for 30 days and cancels active runs, scheduled posts and queued renders, in one go", async () => {
+    const [p] = await seed([project(1, { status: "scheduled" })]);
+    const pid = p._id;
+    await state.db.collection("pipeline_runs").insertMany([
+      job(pid, { kind: "build", status: "running", active: true, trigger: { by: "user" }, idempotencyKey: "r1", steps: [] }),
+      job(pid, { kind: "storyboard", status: "succeeded", active: false, trigger: { by: "user" }, idempotencyKey: "r2", steps: [] }),
+    ]);
+    await state.db.collection("publish_jobs").insertOne(
+      job(pid, { renderId: new ObjectId(), igAccountId: new ObjectId(), caption: "Sky", shareToFeed: true, mode: "scheduled", scheduledAt: base, waitForNewExport: false, status: "scheduled", attempts: 0, idempotencyKey: "p1", active: true, rev: 0 }),
+    );
+    await state.db.collection("render_jobs").insertOne(job(pid, { renderId: new ObjectId(), timelineKey: "k", status: "queued", priority: 0, attempt: 0, progress: 0 }));
+
+    const res = await deleteProject(ME, pid.toHexString());
+    expect(res).toMatchObject({ ok: true, cancelled: { runs: 1, scheduledPosts: 1 } });
+    const days = ((res as { restoreUntil: Date }).restoreUntil.getTime() - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(29.9);
+    expect(await state.db.collection("projects").findOne({ _id: pid })).toMatchObject({ deletedAt: expect.any(Date), purgeAt: expect.any(Date), rev: 1 });
+    expect(await state.db.collection("pipeline_runs").countDocuments({ projectId: pid, active: true })).toBe(0);
+    expect(await state.db.collection("publish_jobs").findOne({ projectId: pid })).toMatchObject({ status: "cancelled", active: false });
+    expect(await state.db.collection("render_jobs").findOne({ projectId: pid })).toMatchObject({ status: "cancelled" });
+  });
+
+  it("is idempotent: deleting again returns the same restore date and cancels nothing", async () => {
+    const [p] = await seed([project(1)]);
+    const first = await deleteProject(ME, p._id.toHexString());
+    const second = await deleteProject(ME, p._id.toHexString());
+    expect(second).toEqual({ ok: true, restoreUntil: (first as { restoreUntil: Date }).restoreUntil, cancelled: { runs: 0, scheduledPosts: 0 } });
+  });
+
+  it("refuses while the video is being posted, and changes nothing", async () => {
+    const [p] = await seed([project(1, { status: "publishing" })]);
+    expect(await deleteProject(ME, p._id.toHexString())).toEqual({ ok: false, reason: "publish_in_progress" });
+    expect(await state.db.collection("projects").findOne({ _id: p._id })).toMatchObject({ deletedAt: null, rev: 0 });
+  });
+
+  it("can't delete another user's project", async () => {
+    const [theirs] = await seed([project(1, { userId: OTHER })]);
+    expect(await deleteProject(ME, theirs._id.toHexString())).toEqual({ ok: false, reason: "not_found" });
+  });
+});
+
+describe("restoreProject", () => {
+  it("brings a deleted project back", async () => {
+    const [p] = await seed([project(1)]);
+    await deleteProject(ME, p._id.toHexString());
+    expect(await restoreProject(ME, p._id.toHexString())).toMatchObject({ deletedAt: null, purgeAt: null, status: "idea_draft", rev: 2 });
+  });
+
+  it.each([
+    ["building", "storyboard_ready"],
+    ["rendering", "preview_ready"],
+    ["scheduled", "exported"],
+    ["storyboard_generating", "idea_draft"],
+    ["exported", "exported"],
+  ] as const)("returns a project deleted while %s to %s (the cancelled work isn't revived)", async (from, to) => {
+    const [p] = await seed([project(1, { status: from })]);
+    await deleteProject(ME, p._id.toHexString());
+    expect((await restoreProject(ME, p._id.toHexString()))!.status).toBe(to);
+  });
+
+  it("is gone after its purge date, and harmless on a project that isn't deleted", async () => {
+    const [expired, live] = await seed([project(1, { deletedAt: base, purgeAt: new Date(Date.now() - 1000) }), project(2, { rev: 7 })]);
+    expect(await restoreProject(ME, expired._id.toHexString())).toBeNull();
+    expect(await restoreProject(ME, live._id.toHexString())).toMatchObject({ rev: 7 });
+  });
+});
+
+describe("/api/v1/projects/{id} endpoints", () => {
+  const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+  const req = (method: string, init: { body?: unknown; headers?: Record<string, string> } = {}) =>
+    new Request(`${APP}/api/v1/projects/x`, {
+      method,
+      headers: { ...(method !== "GET" && { origin: APP }), ...(init.body !== undefined && { "content-type": "application/json" }), ...init.headers },
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+
+  it("GET returns the project with an ETag, and 404 for unknown, foreign or malformed ids", async () => {
+    const [mine, theirs] = await seed([project(1, { rev: 3 }), project(2, { userId: OTHER })]);
+    const res = await one.GET(req("GET"), ctx(mine._id.toHexString()));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("etag")).toBe('"3"');
+    expect((await res.json()).allowedActions).toContain("rename");
+    for (const target of [theirs._id.toHexString(), new ObjectId().toHexString(), "not-an-id"]) expect((await one.GET(req("GET"), ctx(target))).status).toBe(404);
+  });
+
+  it("PATCH renames with If-Match and answers a stale one with 412 and the current project", async () => {
+    const [p] = await seed([project(1, { rev: 1 })]);
+    const ok = await one.PATCH(req("PATCH", { body: { title: "Renamed" }, headers: { "if-match": '"1"' } }), ctx(p._id.toHexString()));
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("etag")).toBe('"2"');
+    expect(await ok.json()).toMatchObject({ title: "Renamed", rev: 2, requiresRegeneration: false });
+
+    const stale = await one.PATCH(req("PATCH", { body: { title: "Again" }, headers: { "if-match": '"1"' } }), ctx(p._id.toHexString()));
+    expect(stale.status).toBe(412);
+    const error = (await stale.json()).error;
+    expect(error.code).toBe("PRECONDITION_FAILED");
+    expect(error.details[0].current).toMatchObject({ title: "Renamed", rev: 2 });
+  });
+
+  it("PATCH rejects bad input and says why a setting is locked", async () => {
+    const [built] = await seed([project(1, { status: "preview_ready" })]);
+    const target = ctx(built._id.toHexString());
+    for (const body of [{}, { lengthPreset: 45 }, { status: "posted" }, { title: "" }]) expect((await one.PATCH(req("PATCH", { body }), target)).status, JSON.stringify(body)).toBe(400);
+    expect((await one.PATCH(req("PATCH", { body: { title: "x" }, headers: { "if-match": "abc" } }), target)).status).toBe(400);
+    const locked = await one.PATCH(req("PATCH", { body: { language: "hi" } }), target);
+    expect(locked.status).toBe(409);
+    expect((await locked.json()).error).toMatchObject({ code: "INVALID_STATE", details: [{ field: "language", current: "preview_ready" }] });
+  });
+
+  it("DELETE then restore round-trips; delete while posting is 409", async () => {
+    const [p, posting] = await seed([project(1), project(2, { status: "publishing" })]);
+    const del = await one.DELETE(req("DELETE"), ctx(p._id.toHexString()));
+    expect(await del.json()).toMatchObject({ ok: true, restoreUntil: expect.any(String), cancelled: { runs: 0, scheduledPosts: 0 } });
+    expect((await one.GET(req("GET"), ctx(p._id.toHexString()))).status).toBe(404);
+
+    const restored = await restoreRoute.POST(req("POST"), ctx(p._id.toHexString()));
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({ id: p._id.toHexString(), status: "idea_draft" });
+
+    const blocked = await one.DELETE(req("DELETE"), ctx(posting._id.toHexString()));
+    expect(blocked.status).toBe(409);
+    expect((await blocked.json()).error.code).toBe("PUBLISH_IN_PROGRESS");
+  });
+
+  it("duplicate returns 201 with the copy, and 404 for someone else's project", async () => {
+    const [p, theirs] = await seed([project(1, { status: "posted" }), project(2, { userId: OTHER })]);
+    const res = await duplicateRoute.POST(req("POST"), ctx(p._id.toHexString()));
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(res.headers.get("location")).toBe(`/api/v1/projects/${body.id}`);
+    expect(body).toMatchObject({ title: "Video 1 (copy)", status: "idea_draft" });
+    expect((await duplicateRoute.POST(req("POST"), ctx(theirs._id.toHexString()))).status).toBe(404);
+  });
+
+  it("writes need our Origin", async () => {
+    const [p] = await seed([project(1)]);
+    const res = await one.DELETE(req("DELETE", { headers: { origin: "https://evil.example" } }), ctx(p._id.toHexString()));
+    expect(res.status).toBe(403);
+    expect(await state.db.collection("projects").findOne({ _id: p._id })).toMatchObject({ deletedAt: null });
   });
 });

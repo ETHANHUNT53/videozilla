@@ -68,3 +68,17 @@ export function parseWith<T>(schema: ZodType<T>, value: unknown, where: "body" |
   });
   throw new ApiError("VALIDATION_FAILED", { details });
 }
+
+/**
+ * Optimistic concurrency (API Design §8): `If-Match: "<rev>"` → the revision the client last saw. `undefined` when the
+ * header is absent or `*` (last write wins); a malformed value is `400`, so a typo never silently disables the check.
+ */
+export function ifMatchRev(header: string | null): number | undefined {
+  if (header === null || header.trim() === "*") return undefined;
+  const m = header.trim().match(/^(?:W\/)?"?(\d{1,9})"?$/);
+  if (!m) throw new ApiError("VALIDATION_FAILED", { details: [{ field: "If-Match", issue: 'must be the ETag you received, e.g. "3"' }] });
+  return Number(m[1]);
+}
+
+/** The `ETag` for a resource revision (§8). */
+export const etag = (rev: number) => `"${rev}"`;

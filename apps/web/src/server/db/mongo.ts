@@ -35,6 +35,10 @@ export const collections = {
   projects: () => db().collection<ProjectDoc>(COLLECTIONS.projects),
   profiles: () => db().collection<ProfileDoc>(COLLECTIONS.profiles),
   ideaSessions: () => db().collection<IdeaSessionDoc>(COLLECTIONS.ideaSessions),
+  // Job collections: written by later features (M2–M6); deleting a project already cancels their active entries (§6.6).
+  pipelineRuns: () => db().collection(COLLECTIONS.pipelineRuns),
+  publishJobs: () => db().collection(COLLECTIONS.publishJobs),
+  renderJobs: () => db().collection(COLLECTIONS.renderJobs),
 };
 
 /**

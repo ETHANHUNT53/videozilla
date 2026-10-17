@@ -3,39 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/server/dal";
-import { duplicateProject, renameProject, restoreProject, softDeleteProject } from "@/server/repos/projects";
 import { updateProfile } from "@/server/repos/profiles";
 
-/* Server actions are public endpoints: each one checks the user itself (Next.js auth guide). */
-
-export async function renameProjectAction(id: string, title: string): Promise<{ ok: boolean }> {
-  const user = await requireUser();
-  const ok = await renameProject(user.id, id, title);
-  revalidatePath("/library");
-  revalidatePath(`/projects/${id}`);
-  return { ok };
-}
-
-export async function deleteProjectAction(id: string): Promise<{ ok: boolean }> {
-  const user = await requireUser();
-  const ok = await softDeleteProject(user.id, id);
-  revalidatePath("/library");
-  return { ok };
-}
-
-export async function restoreProjectAction(id: string): Promise<{ ok: boolean }> {
-  const user = await requireUser();
-  const ok = await restoreProject(user.id, id);
-  revalidatePath("/library");
-  return { ok };
-}
-
-export async function duplicateProjectAction(id: string): Promise<{ id: string | null }> {
-  const user = await requireUser();
-  const newId = await duplicateProject(user.id, id);
-  revalidatePath("/library");
-  return { id: newId };
-}
+/*
+ * Server actions are public endpoints: each one checks the user itself (Next.js auth guide). Project actions (create,
+ * rename, delete, restore, duplicate) use the /api/v1 endpoints instead.
+ */
 
 const ProfileForm = z.object({
   displayName: z.string().trim().max(60),

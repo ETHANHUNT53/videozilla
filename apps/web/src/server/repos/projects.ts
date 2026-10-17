@@ -4,7 +4,19 @@ import { ObjectId, type Filter } from "mongodb";
 import { collections, ensureMigrated, withTransaction } from "../db/mongo";
 import { afterCursorDesc, decodeCursor, DEFAULT_LIMIT, toPage, type Page } from "../api/pagination";
 import { statusesAllowing } from "../rules/project-actions";
-import { STATUS_GROUPS, type IdeaSessionDoc, type Language, type ProfileDoc, type ProjectDoc, type ProjectFilter, type ProjectSummary, type VoiceGender } from "../db/types";
+import {
+  STATUS_GROUPS,
+  type Audience,
+  type BoardOrExam,
+  type IdeaSessionDoc,
+  type Language,
+  type ProfileDoc,
+  type ProjectDoc,
+  type ProjectFilter,
+  type ProjectStatus,
+  type ProjectSummary,
+  type VoiceGender,
+} from "../db/types";
 
 /**
  * Project repository. Every function takes the signed-in user's id and adds it to the query filter, so one user can
@@ -186,41 +198,166 @@ function emptyIdea(projectId: ObjectId, userId: string, now: Date): IdeaSessionD
   };
 }
 
-export async function renameProject(userId: string, id: string, title: string): Promise<boolean> {
-  const _id = toObjectId(id);
-  const clean = truncateChars(title.trim(), 80);
-  if (!_id || !clean) return false;
-  const res = await collections.projects().updateOne(
-    { _id, userId, deletedAt: null, status: { $in: statusesAllowing("rename") } },
-    { $set: { title: clean, updatedAt: new Date() }, $inc: { rev: 1 } },
-  );
-  return res.matchedCount === 1;
+/** Settings a user can change on a project (API Design §13.2 `PATCH /projects/{id}`). */
+export interface ProjectUpdate {
+  title?: string;
+  language?: Language;
+  lengthPreset?: 60 | 90;
+  audience?: Audience;
+  boardOrExam?: BoardOrExam | null;
+  voiceGender?: VoiceGender;
+  captionsEnabled?: boolean;
 }
 
 /**
- * Soft delete: hidden at once, purged with its files after 30 days (PRD F1-FR10). Only in statuses that allow it
- * (DB Design §5.2), so not while an Instagram post is going out. The check is part of the update, so it can't race.
+ * Which statuses each setting can change in (API Design §13.2). `title` works in every status that allows "rename".
+ * Script settings only before the video is built; voice / captions once there is a storyboard.
  */
-export async function softDeleteProject(userId: string, id: string): Promise<boolean> {
+const SCRIPT_FIELDS = ["language", "lengthPreset", "audience", "boardOrExam"] as const;
+const MEDIA_FIELDS = ["voiceGender", "captionsEnabled"] as const;
+const SCRIPT_STATUSES: ProjectStatus[] = ["idea_draft", "storyboard_ready"];
+const MEDIA_STATUSES: ProjectStatus[] = ["storyboard_ready", "preview_ready", "exported"];
+
+export type UpdateResult =
+  | { ok: true; project: ProjectDoc; requiresRegeneration: boolean }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "precondition_failed" | "invalid_state"; current: ProjectDoc; fields?: string[] };
+
+/**
+ * Updates project settings (API Design §13.2, §8). With `ifMatchRev` the update only applies to that revision
+ * (`412` otherwise, with the current project); without it, last write wins. Only fields that actually change are
+ * checked against the status rules, so re-sending an unchanged value never fails. The status and revision are part
+ * of the write's filter, so a concurrent change can't slip between the check and the write.
+ */
+export async function updateProject(userId: string, id: string, update: ProjectUpdate, ifMatchRev?: number): Promise<UpdateResult> {
   const _id = toObjectId(id);
-  if (!_id) return false;
-  const now = new Date();
-  const purgeAt = new Date(now.getTime() + PURGE_AFTER_DAYS * 24 * 3600 * 1000);
-  const res = await collections.projects().updateOne(
-    { _id, userId, deletedAt: null, status: { $in: statusesAllowing("delete") } },
-    { $set: { deletedAt: now, purgeAt }, $inc: { rev: 1 } },
-  );
-  return res.matchedCount === 1;
+  if (!_id) return { ok: false, reason: "not_found" };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await collections.projects().findOne({ _id, userId, deletedAt: null });
+    if (!current) return { ok: false, reason: "not_found" };
+    if (ifMatchRev !== undefined && current.rev !== ifMatchRev) return { ok: false, reason: "precondition_failed", current };
+
+    const changes: Partial<ProjectDoc> = {};
+    if (update.title !== undefined) {
+      const title = truncateChars(update.title.trim(), 80);
+      if (title && title !== current.title) changes.title = title;
+    }
+    for (const field of [...SCRIPT_FIELDS, ...MEDIA_FIELDS]) {
+      const value = update[field];
+      const before = field === "boardOrExam" ? (current.boardOrExam ?? null) : field === "captionsEnabled" ? (current.captionsEnabled ?? false) : current[field];
+      if (value !== undefined && value !== before) Object.assign(changes, { [field]: value });
+    }
+    if (!Object.keys(changes).length) return { ok: true, project: current, requiresRegeneration: false };
+
+    const blocked = [
+      ...(changes.title !== undefined && !statusesAllowing("rename").includes(current.status) ? ["title"] : []),
+      ...SCRIPT_FIELDS.filter((f) => f in changes && !SCRIPT_STATUSES.includes(current.status)),
+      ...MEDIA_FIELDS.filter((f) => f in changes && !MEDIA_STATUSES.includes(current.status)),
+    ];
+    if (blocked.length) return { ok: false, reason: "invalid_state", current, fields: blocked };
+
+    const mediaChanged = MEDIA_FIELDS.some((f) => f in changes);
+    if (mediaChanged && (current.status === "preview_ready" || current.status === "exported")) changes.exportOutdated = true;
+
+    const res = await collections.projects().findOneAndUpdate(
+      { _id, userId, deletedAt: null, rev: current.rev, status: current.status },
+      { $set: { ...changes, updatedAt: new Date() }, $inc: { rev: 1 } },
+      { returnDocument: "after" },
+    );
+    if (res) {
+      const requiresRegeneration = current.status === "storyboard_ready" && SCRIPT_FIELDS.some((f) => f in changes);
+      return { ok: true, project: res, requiresRegeneration };
+    }
+    // Changed meanwhile: with If-Match that's a conflict; without, read again and re-check (last write wins).
+    if (ifMatchRev !== undefined) {
+      const latest = await collections.projects().findOne({ _id, userId, deletedAt: null });
+      return latest ? { ok: false, reason: "precondition_failed", current: latest } : { ok: false, reason: "not_found" };
+    }
+  }
+  throw new Error("Project kept changing while being updated");
 }
 
-export async function restoreProject(userId: string, id: string): Promise<boolean> {
+export type DeleteResult =
+  | { ok: true; restoreUntil: Date; cancelled: { runs: number; scheduledPosts: number } }
+  | { ok: false; reason: "not_found" | "publish_in_progress" };
+
+/**
+ * Soft delete (DB Design §6.6, API §13.2): the project is hidden at once and purged with its files after 30 days.
+ * In the same transaction, its active pipeline runs, scheduled Instagram posts and queued render jobs are cancelled.
+ * Not allowed while a post is going out (§5.2). Deleting an already-deleted project returns the same success.
+ */
+export async function deleteProject(userId: string, id: string): Promise<DeleteResult> {
   const _id = toObjectId(id);
-  if (!_id) return false;
-  const res = await collections.projects().updateOne(
-    { _id, userId, deletedAt: { $ne: null } },
-    { $set: { deletedAt: null, purgeAt: null, updatedAt: new Date() }, $inc: { rev: 1 } },
+  if (!_id) return { ok: false, reason: "not_found" };
+  return withTransaction(async (session): Promise<DeleteResult> => {
+    const project = await collections.projects().findOne({ _id, userId }, { session });
+    if (!project || (project.purgeAt && project.purgeAt <= new Date())) return { ok: false, reason: "not_found" };
+    if (project.deletedAt) return { ok: true, restoreUntil: project.purgeAt!, cancelled: { runs: 0, scheduledPosts: 0 } };
+
+    const now = new Date();
+    const purgeAt = new Date(now.getTime() + PURGE_AFTER_DAYS * 24 * 3600 * 1000);
+    const res = await collections.projects().updateOne(
+      { _id, userId, deletedAt: null, status: { $in: statusesAllowing("delete") } },
+      { $set: { deletedAt: now, purgeAt }, $inc: { rev: 1 } },
+      { session },
+    );
+    if (!res.matchedCount) return { ok: false, reason: "publish_in_progress" };
+
+    const runs = await collections.pipelineRuns().updateMany(
+      { projectId: _id, userId, active: true },
+      { $set: { status: "cancelled", active: false, finishedAt: now, updatedAt: now } },
+      { session },
+    );
+    const posts = await collections.publishJobs().updateMany(
+      { projectId: _id, userId, status: "scheduled" },
+      { $set: { status: "cancelled", active: false, cancelledAt: now, updatedAt: now }, $inc: { rev: 1 } },
+      { session },
+    );
+    await collections.renderJobs().updateMany({ projectId: _id, userId, status: "queued" }, { $set: { status: "cancelled", finishedAt: now, updatedAt: now } }, { session });
+    return { ok: true, restoreUntil: purgeAt, cancelled: { runs: runs.modifiedCount, scheduledPosts: posts.modifiedCount } };
+  });
+}
+
+/**
+ * The status a restored project returns to (DB Design §6.7). Work that was cancelled by the delete is not revived, so
+ * a project caught mid-way goes back to its last stable status.
+ */
+function restoredStatus(p: ProjectDoc): ProjectStatus {
+  switch (p.status) {
+    case "storyboard_generating":
+      return p.currentStoryboardVersion ? "storyboard_ready" : "idea_draft";
+    case "building":
+      return "storyboard_ready";
+    case "rendering":
+      return "preview_ready";
+    case "scheduled":
+      return "exported"; // its scheduled post was cancelled
+    default:
+      return p.status;
+  }
+}
+
+/**
+ * Undo delete (DB Design §6.7, API §13.2): works until `purgeAt`, then the project is gone (null → 404). Restoring a
+ * project that isn't deleted just returns it, so a repeated "Undo" is harmless.
+ */
+export async function restoreProject(userId: string, id: string): Promise<ProjectDoc | null> {
+  const _id = toObjectId(id);
+  if (!_id) return null;
+  const now = new Date();
+  const project = await collections.projects().findOne({ _id, userId });
+  if (!project) return null;
+  if (!project.deletedAt) return project;
+  if (!project.purgeAt || project.purgeAt <= now) return null;
+
+  const status = restoredStatus(project);
+  const res = await collections.projects().findOneAndUpdate(
+    { _id, userId, rev: project.rev, deletedAt: { $ne: null }, purgeAt: { $gt: now } },
+    { $set: { deletedAt: null, purgeAt: null, status, ...(status !== project.status && { statusChangedAt: now }), updatedAt: now }, $inc: { rev: 1 } },
+    { returnDocument: "after" },
   );
-  return res.matchedCount === 1;
+  // Restored by another request meanwhile: return the project as it is now.
+  return res ?? collections.projects().findOne({ _id, userId, deletedAt: null });
 }
 
 /**
@@ -229,7 +366,7 @@ export async function restoreProject(userId: string, id: string): Promise<boolea
  * (freshProject); renders, timelines and publishing are not copied. Storyboards don't exist before M2; when they do
  * (F3), the current version will be copied as version 1 and the copy will start as `storyboard_ready`.
  */
-export async function duplicateProject(userId: string, id: string): Promise<string | null> {
+export async function duplicateProject(userId: string, id: string): Promise<ProjectDoc | null> {
   const _id = toObjectId(id);
   if (!_id) return null;
   return withTransaction(async (session) => {
@@ -250,7 +387,7 @@ export async function duplicateProject(userId: string, id: string): Promise<stri
       },
       { session },
     );
-    return copy._id.toHexString();
+    return copy;
   });
 }
 

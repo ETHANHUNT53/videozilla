@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { deleteProjectAction, duplicateProjectAction, renameProjectAction, restoreProjectAction } from "@/app/(app)/actions";
+import { ApiClientError, apiCall } from "@/lib/api-client";
 import { FILTERS, STATUS_DISPLAY, type ProjectStatus } from "@/lib/status";
 import { TimeAgo } from "./time-ago";
 import { Chip, cx, inputStyles } from "./ui";
@@ -15,6 +15,8 @@ interface Project {
   lengthPreset: 60 | 90;
   status: ProjectStatus;
   updatedAt: string;
+  /** Revision, sent back as If-Match when renaming (API Design §8). */
+  rev: number;
 }
 
 export function LibraryToolbar({ filter, q }: { filter: string; q: string }) {
@@ -166,6 +168,11 @@ export function LibraryGrid({
 }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  // The latest server copy of each card that changed here (rename, restore). A card that is hidden and shown again
+  // mounts afresh, so it must start from this, not from the first render's list.
+  const [latest, setLatest] = useState<Record<string, Project>>({});
+  const remember = (project: Project) => setLatest((l) => ({ ...l, [project.id]: project }));
   const router = useRouter();
 
   useEffect(() => {
@@ -174,7 +181,7 @@ export function LibraryGrid({
     return () => clearTimeout(t);
   }, [undo]);
 
-  const visible = projects.filter((p) => !hidden.has(p.id));
+  const visible = projects.filter((p) => !hidden.has(p.id)).map((p) => latest[p.id] ?? p);
 
   if (!visible.length && !undo) {
     if (searching) return <p className="py-10 text-center text-muted">No videos match.</p>;
@@ -190,9 +197,10 @@ export function LibraryGrid({
             project={p}
             renderedAt={renderedAt}
             timeZone={timeZone}
-            onDeleted={() => {
+            onSaved={remember}
+            onDeleted={(title) => {
               setHidden((h) => new Set(h).add(p.id));
-              setUndo({ id: p.id, title: p.title });
+              setUndo({ id: p.id, title });
             }}
             onDuplicated={(id) => router.push(`/projects/${id}`)}
           />
@@ -209,18 +217,29 @@ export function LibraryGrid({
               onClick={async () => {
                 const id = undo.id;
                 setUndo(null);
-                await restoreProjectAction(id);
-                setHidden((h) => {
-                  const n = new Set(h);
-                  n.delete(id);
-                  return n;
-                });
+                setUndoError(null);
+                try {
+                  const { data } = await apiCall<Project>(`/api/v1/projects/${id}/restore`, { method: "POST" });
+                  remember(data); // restore bumps rev (and may change the status), so the card must use the new copy
+                  setHidden((h) => {
+                    const n = new Set(h);
+                    n.delete(id);
+                    return n;
+                  });
+                } catch (err) {
+                  setUndoError(err instanceof ApiClientError ? err.message : "Couldn't undo. Please try again.");
+                }
               }}
             >
               Undo
             </button>
           </div>
         </div>
+      ) : null}
+      {undoError ? (
+        <p role="alert" className="self-center text-sm text-red">
+          {undoError}
+        </p>
       ) : null}
     </>
   );
@@ -230,32 +249,56 @@ function ProjectCard({
   project,
   renderedAt,
   timeZone,
+  onSaved,
   onDeleted,
   onDuplicated,
 }: {
   project: Project;
   renderedAt: number;
   timeZone: string;
-  onDeleted: () => void;
+  onSaved: (project: Project) => void;
+  onDeleted: (title: string) => void;
   onDuplicated: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(project.title);
+  // The title and revision last saved on the server (the props are only the first render's).
+  const [saved, setSaved] = useState({ title: project.title, rev: project.rev });
   const [menu, setMenu] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const router = useRouter();
   const status = STATUS_DISPLAY[project.status];
+
+  const fail = (err: unknown, fallback: string) => setNote(err instanceof ApiClientError ? err.message : fallback);
 
   const saveTitle = () => {
     setEditing(false);
     const clean = title.trim();
-    if (!clean || clean === project.title) {
-      setTitle(project.title);
+    if (!clean || clean === saved.title) {
+      setTitle(saved.title);
       return;
     }
+    setNote(null);
     start(async () => {
-      const { ok } = await renameProjectAction(project.id, clean);
-      if (!ok) setTitle(project.title);
+      try {
+        // If-Match: don't overwrite a change made in another tab meanwhile (412 → show the latest title).
+        const { data } = await apiCall<Project>(`/api/v1/projects/${project.id}`, { method: "PATCH", body: { title: clean }, headers: { "If-Match": `"${saved.rev}"` } });
+        setSaved({ title: data.title, rev: data.rev });
+        setTitle(data.title);
+        onSaved({ ...project, ...data });
+      } catch (err) {
+        const current = err instanceof ApiClientError && err.code === "PRECONDITION_FAILED" ? (err.details[0]?.current as Project | undefined) : undefined;
+        if (current) {
+          setSaved({ title: current.title, rev: current.rev });
+          setTitle(current.title);
+          onSaved({ ...project, ...current });
+          setNote("This video was changed in another tab, so your rename wasn't saved. Try again.");
+        } else {
+          setTitle(saved.title);
+          fail(err, "Couldn't rename this video. Please try again.");
+        }
+      }
     });
   };
 
@@ -320,9 +363,15 @@ function ProjectCard({
               <MenuItem
                 onClick={() => {
                   setMenu(false);
+                  setNote(null);
                   start(async () => {
-                    const { id } = await duplicateProjectAction(project.id);
-                    if (id) onDuplicated(id);
+                    try {
+                      const { data } = await apiCall<{ id: string }>(`/api/v1/projects/${project.id}/duplicate`, { method: "POST" });
+                      router.refresh(); // so Back shows the copy in the Library
+                      onDuplicated(data.id);
+                    } catch (err) {
+                      fail(err, "Couldn't duplicate this video. Please try again.");
+                    }
                   });
                 }}
               >
@@ -334,10 +383,13 @@ function ProjectCard({
                   setMenu(false);
                   setNote(null);
                   start(async () => {
-                    const { ok } = await deleteProjectAction(project.id);
-                    if (ok) onDeleted();
-                    // Refused by the status rules (DB Design §5.2), e.g. while it is being posted to Instagram.
-                    else setNote(project.status === "publishing" ? "Can't delete while it's being posted. Try again in a moment." : "Couldn't delete this video. Reload and try again.");
+                    try {
+                      await apiCall(`/api/v1/projects/${project.id}`, { method: "DELETE" });
+                      onDeleted(saved.title);
+                    } catch (err) {
+                      // e.g. 409 PUBLISH_IN_PROGRESS while it's being posted to Instagram (DB Design §5.2).
+                      fail(err, "Couldn't delete this video. Reload and try again.");
+                    }
                   });
                 }}
               >
