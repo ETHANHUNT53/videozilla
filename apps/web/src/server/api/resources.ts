@@ -46,6 +46,9 @@ export function toProfile(p: ProfileDoc) {
   };
 }
 
+/** The `Profile` resource's shape; client components import it as a type only. */
+export type ProfileResource = ReturnType<typeof toProfile>;
+
 export function toMeUser(u: SessionUser) {
   return {
     id: u.id,

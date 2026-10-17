@@ -38,10 +38,33 @@ export async function getOrCreateProfile(userId: string, displayName = ""): Prom
   return res!;
 }
 
+/** What a user can change on their profile (API Design §13.1 `PATCH /me/profile`). Never `role` or internal fields. */
 export type ProfileUpdate = Partial<
-  Pick<ProfileDoc, "displayName" | "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultStyleId" | "timezone" | "emailNotifications">
+  Pick<
+    ProfileDoc,
+    "displayName" | "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultAudience" | "defaultBoardOrExam" | "timezone" | "emailNotifications"
+  >
 >;
 
-export async function updateProfile(userId: string, update: ProfileUpdate): Promise<void> {
-  await collections.profiles().updateOne({ userId }, { $set: { ...update, updatedAt: new Date() } });
+/** True for a time zone name the runtime knows (IANA, e.g. "Asia/Kolkata"). */
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-IN", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Updates the user's profile defaults and returns the result. The profile is created first if it doesn't exist yet, so
+ * a save can never be lost. Last write wins (profiles have no revision; API Design §8 lists only projects, ideas and
+ * posts as concurrently edited).
+ */
+export async function updateProfile(userId: string, update: ProfileUpdate, displayNameFallback = ""): Promise<ProfileDoc> {
+  await getOrCreateProfile(userId, displayNameFallback);
+  const set: ProfileUpdate & { updatedAt: Date } = { ...update, updatedAt: new Date() };
+  if (update.displayName !== undefined) set.displayName = truncateChars(update.displayName.trim(), 60);
+  const res = await collections.profiles().findOneAndUpdate({ userId }, { $set: set }, { returnDocument: "after" });
+  return res!;
 }

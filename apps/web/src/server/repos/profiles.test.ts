@@ -1,0 +1,101 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../db/mongo", async () => (await import("../../../test/mongo")).mongoModule);
+const sessionUser = vi.hoisted(() => vi.fn());
+vi.mock("../api/session", () => ({ sessionUser }));
+
+import { GET as getMe } from "@/app/api/v1/me/route";
+import { GET, PATCH } from "@/app/api/v1/me/profile/route";
+import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
+import { getOrCreateProfile, isValidTimeZone, updateProfile } from "./profiles";
+
+const ME = "6ad20f12aa355a5a9f3db9cb";
+const APP = "http://localhost:3000";
+const user = (over: Record<string, unknown> = {}) => ({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: true, image: null, createdAt: new Date(), ...over });
+
+beforeAll(startTestMongo, 120_000);
+afterAll(stopTestMongo);
+beforeEach(async () => {
+  await clearCollections();
+  sessionUser.mockReset().mockResolvedValue(user());
+  vi.stubEnv("BETTER_AUTH_URL", APP);
+});
+
+const patch = (body: unknown, headers: Record<string, string> = {}) =>
+  PATCH(new Request(`${APP}/api/v1/me/profile`, { method: "PATCH", headers: { origin: APP, "content-type": "application/json", ...headers }, body: JSON.stringify(body) }));
+
+describe("updateProfile", () => {
+  it("changes the given fields, trims the name and returns the profile", async () => {
+    await getOrCreateProfile(ME, "Asha");
+    const p = await updateProfile(ME, { displayName: "  Asha Rao  ", defaultLanguage: "hi", defaultBoardOrExam: "cbse" });
+    expect(p).toMatchObject({ displayName: "Asha Rao", defaultLanguage: "hi", defaultBoardOrExam: "cbse", defaultLengthPreset: 60, role: "user" });
+  });
+
+  it("creates the profile first if it is missing, so the save isn't lost", async () => {
+    const p = await updateProfile(ME, { defaultVoiceGender: "male" }, "Asha");
+    expect(p).toMatchObject({ displayName: "Asha", defaultVoiceGender: "male", defaultAudience: "students" });
+  });
+
+  it("knows real time zones", () => {
+    expect(isValidTimeZone("Asia/Kolkata")).toBe(true);
+    expect(isValidTimeZone("Mars/Olympus")).toBe(false);
+  });
+});
+
+describe("PATCH /api/v1/me/profile", () => {
+  it("saves any subset of the defaults and returns the whole Profile", async () => {
+    const res = await patch({ defaultLanguage: "hi", defaultLengthPreset: 90, defaultAudience: "college", defaultBoardOrExam: "jee", timezone: "Asia/Dubai", emailNotifications: false });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(
+      ["defaultAudience", "defaultBoardOrExam", "defaultLanguage", "defaultLengthPreset", "defaultStyleId", "defaultVoiceGender", "displayName", "emailNotifications", "onboardingCompleted", "timezone", "updatedAt"].sort(),
+    );
+    expect(body).toMatchObject({ defaultLanguage: "hi", defaultLengthPreset: 90, defaultAudience: "college", defaultBoardOrExam: "jee", timezone: "Asia/Dubai", emailNotifications: false });
+  });
+
+  it("is what GET /api/v1/me shows afterwards, and new projects pick it up", async () => {
+    await patch({ defaultVoiceGender: "male", defaultBoardOrExam: null });
+    const me = await (await getMe(new Request(`${APP}/api/v1/me`))).json();
+    expect(me.profile).toMatchObject({ defaultVoiceGender: "male", defaultBoardOrExam: null });
+  });
+
+  it("allows an empty display name and counts emoji as one character", async () => {
+    expect((await patch({ displayName: "" })).status).toBe(200);
+    expect((await patch({ displayName: "🙂".repeat(60) })).status).toBe(200);
+    expect((await patch({ displayName: "x".repeat(61) })).status).toBe(400);
+  });
+
+  it.each([
+    [{}],
+    [{ defaultLanguage: "fr" }],
+    [{ defaultLengthPreset: 75 }],
+    [{ defaultVoiceGender: "robot" }],
+    [{ defaultAudience: "toddlers" }],
+    [{ defaultBoardOrExam: "sat" }],
+    [{ timezone: "Mars/Olympus" }],
+    [{ emailNotifications: "yes" }],
+    [{ role: "admin" }],
+    [{ defaultStyleId: "neon" }],
+  ])("rejects %j with 400 and changes nothing", async (body) => {
+    await getOrCreateProfile(ME, "Asha");
+    const res = await patch(body);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("VALIDATION_FAILED");
+    expect(await testMongo.db.collection("profiles").findOne({ userId: ME })).toMatchObject({ role: "user", defaultLanguage: "en", defaultStyleId: "midnight" });
+  });
+
+  it("is protected like every write: verified user and our Origin", async () => {
+    expect((await patch({ defaultLanguage: "hi" }, { origin: "https://evil.example" })).status).toBe(403);
+    sessionUser.mockResolvedValue(user({ emailVerified: false }));
+    expect((await patch({ defaultLanguage: "hi" })).status).toBe(403);
+    sessionUser.mockResolvedValue(null);
+    expect((await patch({ defaultLanguage: "hi" })).status).toBe(401);
+    expect(await testMongo.db.collection("profiles").countDocuments({ defaultLanguage: "hi" })).toBe(0);
+  });
+
+  it("answers GET with 405 (the profile comes with GET /api/v1/me)", async () => {
+    const res = await GET(new Request(`${APP}/api/v1/me/profile`));
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("PATCH");
+  });
+});

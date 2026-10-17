@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { DeleteAccount, ProfileSettingsForm } from "@/components/settings";
 import { Card, Chip, Eyebrow, Spinner } from "@/components/ui";
+import { toProfile } from "@/server/api/resources";
 import { requireUser } from "@/server/dal";
 import { getOrCreateProfile } from "@/server/repos/profiles";
 
@@ -29,16 +30,7 @@ async function SettingsContent() {
       <Card className="p-6">
         <h2 className="mb-1 text-lg font-semibold">Profile &amp; defaults</h2>
         <p className="mb-5 text-sm text-muted">New videos start with these settings.</p>
-        <ProfileSettingsForm
-          profile={{
-            displayName: profile.displayName,
-            defaultLanguage: profile.defaultLanguage,
-            defaultLengthPreset: profile.defaultLengthPreset,
-            defaultVoiceGender: profile.defaultVoiceGender,
-            timezone: profile.timezone,
-            emailNotifications: profile.emailNotifications,
-          }}
-        />
+        <ProfileSettingsForm profile={toProfile(profile)} />
       </Card>
 
       <Card className="flex flex-wrap items-center justify-between gap-4 p-6">
