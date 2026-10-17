@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft — waiting for your approval and answers to the questions in §7 |
+| **Status** | **Approved 2026-10-17** (answers in §7). F2.1 built |
 | **Date** | 2026-10-17 |
 | **Sources** | PRD F2 / F3 / F10-FR1 / §20.6, System Design §8 / §11, DB Design §4.4–4.6 / §6.3 / §7, API Design §8 / §13.3 / §13.4 / §13.7 |
 | **Milestone goal (PRD §22)** | End to end: idea → validated storyboard, in the web app |
@@ -146,4 +146,4 @@ F2.6 (the settings panel) was already built with F1.9. "F2.8" is a new row for P
 | **Q1** | **Gemini key for the web app.** Your key is in `m0/.env`, but the web app (`apps/web/.env.local`) has none. Do you want to add `GEMINI_API_KEY` there yourself, or let me copy it from `m0/.env` with a local script that never prints it? | Needed from F2.2 (the first AI feature). F2.1 doesn't need it. | Either works. Copying it locally is quickest; it stays in the git-ignored file. You stay on the free tier for now (System Design Q9: switch to paid before the beta). |
 | **Q2** | **A daily cap for idea AI calls?** PRD §20.6 caps storyboards (20), revisions, builds, renders and illustrations, but not idea suggestions, briefs or chat. | Each is a cheap `flash` call, but there's no ceiling against runaway use. | Add one shared counter, **`ideas`: 150 per day** (suggestions + briefs + chat messages), with the same `429` message and IST reset as the others. |
 
-Once you approve this document (and answer Q1–Q2, or accept the recommendations), I'll build F2.1 first.
+**Answers (2026-10-17):** approved as written. **Q1:** the engineer copies `GEMINI_API_KEY` from `m0/.env` into the git-ignored `apps/web/.env.local` with a local script that never prints it — done at the start of F2.2, the first feature that needs it. **Q2:** one shared `ideas` counter, **150 per day** (suggestions + briefs + chat messages), same `429 LIMIT_REACHED` message and IST reset as the other limits — added with F2.2.

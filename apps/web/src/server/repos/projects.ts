@@ -184,7 +184,7 @@ export async function createProject(userId: string, profile: ProfileDefaults, in
 }
 
 /** A new, empty idea session for a project (DB Design §4.4). */
-function emptyIdea(projectId: ObjectId, userId: string, now: Date): IdeaSessionDoc {
+export function emptyIdea(projectId: ObjectId, userId: string, now: Date): IdeaSessionDoc {
   return {
     _id: new ObjectId(),
     projectId,

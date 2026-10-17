@@ -17,7 +17,8 @@ import {
   stepIndex,
 } from "@/lib/project-options";
 import { STATUS_DISPLAY } from "@/lib/status";
-import type { ProjectResource } from "@/server/api/resources";
+import type { IdeaSessionResource, ProjectResource } from "@/server/api/resources";
+import { IdeaStep } from "./idea-step";
 import { Button, Card, Chip, Eyebrow, Select, cx, inputStyles } from "./ui";
 
 type Project = ProjectResource;
@@ -33,13 +34,9 @@ const settingsOf = (p: Project): Settings => ({
   captionsEnabled: p.captionsEnabled,
 });
 
-/** What each step's workspace will hold; placeholders until those milestones land. */
+/** What the later steps' workspaces will hold; placeholders until those milestones land. The idea step is IdeaStep. */
 const WORKSPACE = [
-  {
-    eyebrow: "idea studio",
-    title: "Plan your idea with AI",
-    body: "Find a topic, start from your own idea or paste notes — then generate the script and storyboard in one click. Arriving in the next milestone (M2).",
-  },
+  null,
   {
     eyebrow: "storyboard",
     title: "Review your scenes",
@@ -56,7 +53,7 @@ const WORKSPACE = [
  * The project page (PRD S4 shell, Stitch screen 07): title, status, the Idea → Storyboard → Video stepper, a
  * "needs attention" banner, the step's workspace and the settings panel. Reads and writes go through `/api/v1`.
  */
-export function ProjectView({ initial }: { initial: Project }) {
+export function ProjectView({ initial, idea }: { initial: Project; idea: IdeaSessionResource }) {
   const [project, setProject] = useState(initial);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
@@ -109,11 +106,15 @@ export function ProjectView({ initial }: { initial: Project }) {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
-          <Eyebrow accent="text-violet">{WORKSPACE[step].eyebrow}</Eyebrow>
-          <p className="text-balance text-2xl font-semibold">{WORKSPACE[step].title}</p>
-          <p className="max-w-md text-balance text-muted">{WORKSPACE[step].body}</p>
-        </Card>
+        {step === 0 ? (
+          <IdeaStep projectId={project.id} initial={idea} editable={project.allowedActions.includes("edit_idea")} />
+        ) : (
+          <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
+            <Eyebrow accent="text-violet">{WORKSPACE[step].eyebrow}</Eyebrow>
+            <p className="text-balance text-2xl font-semibold">{WORKSPACE[step].title}</p>
+            <p className="max-w-md text-balance text-muted">{WORKSPACE[step].body}</p>
+          </Card>
+        )}
         <SettingsPanel project={project} onSaved={saved} />
       </div>
     </div>

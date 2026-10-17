@@ -1,4 +1,4 @@
-import type { ProfileDoc, ProjectDoc } from "../db/types";
+import type { IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
 import { toSummary } from "../repos/projects";
 import { allowedActions } from "../rules/project-actions";
 import type { SessionUser } from "./session";
@@ -49,6 +49,26 @@ export function toProfile(p: ProfileDoc) {
 
 /** The `Profile` resource's shape; client components import it as a type only. */
 export type ProfileResource = ReturnType<typeof toProfile>;
+
+/** The `IdeaSession` resource (API Design §12, §13.3). */
+export function toIdeaSession(i: IdeaSessionDoc) {
+  return {
+    projectId: i.projectId.toHexString(),
+    mode: i.mode,
+    topicInput: i.topicInput ?? "",
+    ideaInput: i.ideaInput ?? "",
+    notesText: i.notesText ?? "",
+    suggestions: (i.suggestions ?? []).map(({ id, title, hook, angle, keyPoints }) => ({ id, title, hook, angle, keyPoints })),
+    brief: i.brief
+      ? { title: i.brief.title, hook: i.brief.hook, angle: i.brief.angle, audience: i.brief.audience, keyPoints: i.brief.keyPoints, outOfScope: i.brief.outOfScope }
+      : null,
+    rev: i.rev,
+    updatedAt: i.updatedAt.toISOString(),
+  };
+}
+
+/** The `IdeaSession` resource's shape; client components import it as a type only. */
+export type IdeaSessionResource = ReturnType<typeof toIdeaSession>;
 
 export function toMeUser(u: SessionUser) {
   return {

@@ -87,3 +87,8 @@ export const projectParams = z.strictObject({ id: z.string() });
 
 /** The `ETag` for a resource revision (§8). */
 export const etag = (rev: number) => `"${rev}"`;
+
+/** A text field that may be empty, of at most `max` characters (code points, like `textField`). */
+export function textUpTo(max: number) {
+  return z.string().refine((s) => Array.from(s).length <= max, `Must be at most ${max} characters`);
+}
