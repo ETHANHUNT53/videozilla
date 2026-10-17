@@ -2,24 +2,42 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runMigrations } from "@videozilla/db/migrate";
-import { MongoClient, ObjectId, type Db } from "mongodb";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoClient, ObjectId, type ClientSession, type Db } from "mongodb";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectDoc } from "../db/types";
 
-// The repository talks to a throwaway MongoDB with the real migrations (validators + indexes) applied.
-const state = vi.hoisted(() => ({ db: undefined as unknown as Db }));
+// The repository talks to a throwaway MongoDB (a one-node replica set, so transactions work) with the real
+// migrations (validators + indexes) applied. `failIdeaInsert` makes the idea-session insert fail, to test rollback.
+const state = vi.hoisted(() => ({ db: undefined as unknown as Db, client: undefined as unknown as MongoClient, failIdeaInsert: false }));
 vi.mock("../db/mongo", () => ({
   db: () => state.db,
+  mongoClient: () => state.client,
   ensureMigrated: async () => {},
-  collections: { projects: () => state.db.collection("projects"), profiles: () => state.db.collection("profiles") },
+  withTransaction: async <T>(fn: (session: ClientSession) => Promise<T>) => {
+    const session = state.client.startSession();
+    try {
+      return await session.withTransaction(fn);
+    } finally {
+      await session.endSession();
+    }
+  },
+  collections: {
+    projects: () => state.db.collection("projects"),
+    profiles: () => state.db.collection("profiles"),
+    ideaSessions: () => {
+      const real = state.db.collection("idea_sessions");
+      if (!state.failIdeaInsert) return real;
+      return Object.assign(Object.create(real), { insertOne: async () => Promise.reject(new Error("idea insert failed")) });
+    },
+  },
 }));
 const sessionUser = vi.hoisted(() => vi.fn());
 vi.mock("../api/session", () => ({ sessionUser }));
 
-import { GET } from "@/app/api/v1/projects/route";
+import { DELETE, GET, POST } from "@/app/api/v1/projects/route";
 import { ApiError } from "../api/errors";
-import { listProjects } from "./projects";
+import { createProject, duplicateProject, listProjects } from "./projects";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const CACHED_BINARY_DIR = path.join(ROOT, "apps/web/node_modules/.cache/mongodb-memory-server");
@@ -28,12 +46,16 @@ const ME = "6ad20f12aa355a5a9f3db9cb";
 const OTHER = "6ad2130caa355a5a9f3db9d6";
 const APP = "http://localhost:3000";
 
-let server: MongoMemoryServer;
+let server: MongoMemoryReplSet;
 let client: MongoClient;
 
 beforeAll(async () => {
-  server = await MongoMemoryServer.create(existsSync(CACHED_BINARY_DIR) ? { binary: { downloadDir: CACHED_BINARY_DIR } } : {});
+  server = await MongoMemoryReplSet.create({
+    replSet: { count: 1, storageEngine: "wiredTiger" },
+    ...(existsSync(CACHED_BINARY_DIR) ? { binary: { downloadDir: CACHED_BINARY_DIR } } : {}),
+  });
   client = await MongoClient.connect(server.getUri());
+  state.client = client;
 }, 120_000);
 
 afterAll(async () => {
@@ -88,6 +110,7 @@ async function all(query: Parameters<typeof listProjects>[1]) {
 
 beforeEach(async () => {
   state.db = client.db(`t_${new ObjectId().toHexString()}`);
+  state.failIdeaInsert = false;
   await runMigrations(state.db, { log: () => {} });
   sessionUser.mockReset().mockResolvedValue({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: true, image: null, createdAt: base });
   vi.stubEnv("BETTER_AUTH_URL", APP);
@@ -204,10 +227,141 @@ describe("GET /api/v1/projects", () => {
     expect((await call()).status).toBe(401);
   });
 
-  it("answers other methods with 405 until they exist", async () => {
-    const { POST } = await import("@/app/api/v1/projects/route");
-    const res = await POST(new Request(`${APP}/api/v1/projects`, { method: "POST", headers: { origin: APP } }));
+  it("answers other methods with 405", async () => {
+    const res = await DELETE(new Request(`${APP}/api/v1/projects`, { method: "DELETE", headers: { origin: APP } }));
     expect(res.status).toBe(405);
-    expect(res.headers.get("allow")).toBe("GET");
+    expect(res.headers.get("allow")).toBe("GET, POST");
+  });
+});
+
+const PROFILE = {
+  defaultLanguage: "hi" as const,
+  defaultLengthPreset: 90 as const,
+  defaultVoiceGender: "male" as const,
+  defaultStyleId: "midnight",
+  defaultAudience: "college" as const,
+  defaultBoardOrExam: "jee" as const,
+};
+
+describe("createProject", () => {
+  it("creates an idea draft with every field of DB Design §4.3, from the profile defaults", async () => {
+    const p = await createProject(ME, PROFILE);
+    const saved = await state.db.collection("projects").findOne({ _id: p._id });
+    expect(saved).toMatchObject({
+      userId: ME,
+      title: "Untitled video",
+      language: "hi",
+      lengthPreset: 90,
+      audience: "college",
+      boardOrExam: "jee",
+      styleId: "midnight",
+      voiceGender: "male",
+      captionsEnabled: false,
+      status: "idea_draft",
+      attention: null,
+      currentStoryboardVersion: null,
+      currentTimelineId: null,
+      latestRenderId: null,
+      exportOutdated: false,
+      postedAt: null,
+      permalink: null,
+      duplicatedFrom: null,
+      revisionCount: 0,
+      rev: 0,
+      deletedAt: null,
+      purgeAt: null,
+    });
+    expect(saved).not.toHaveProperty("failedStep");
+    expect(saved!.statusChangedAt).toEqual(saved!.createdAt);
+  });
+
+  it("creates the project's empty idea session with it", async () => {
+    const p = await createProject(ME, PROFILE);
+    const idea = await state.db.collection("idea_sessions").findOne({ projectId: p._id });
+    expect(idea).toMatchObject({ userId: ME, schemaVersion: 1, mode: "topic", topicInput: "", ideaInput: "", notesText: "", suggestions: [], brief: null, rev: 0 });
+  });
+
+  it("lets the request override title, language, length and voice", async () => {
+    const p = await createProject(ME, PROFILE, { title: "  Why is the sky blue?  ", language: "en", lengthPreset: 60, voiceGender: "female" });
+    expect(p).toMatchObject({ title: "Why is the sky blue?", language: "en", lengthPreset: 60, voiceGender: "female", audience: "college" });
+  });
+
+  it("saves nothing if the idea session can't be created (one transaction)", async () => {
+    state.failIdeaInsert = true;
+    await expect(createProject(ME, PROFILE)).rejects.toThrow("idea insert failed");
+    expect(await state.db.collection("projects").countDocuments()).toBe(0);
+    expect(await state.db.collection("idea_sessions").countDocuments()).toBe(0);
+  });
+});
+
+describe("duplicateProject", () => {
+  it("copies the settings and the idea, and starts the copy fresh", async () => {
+    const src = await createProject(ME, PROFILE, { title: "Photosynthesis" });
+    await state.db.collection("idea_sessions").updateOne({ projectId: src._id }, { $set: { mode: "notes", notesText: "Chapter 6 notes", rev: 5 } });
+    await state.db.collection("projects").updateOne({ _id: src._id }, { $set: { rev: 3, revisionCount: 4 } });
+
+    const copyId = await duplicateProject(ME, src._id.toHexString());
+    const copy = await state.db.collection("projects").findOne({ _id: new ObjectId(copyId!) });
+    expect(copy).toMatchObject({ title: "Photosynthesis (copy)", language: "hi", voiceGender: "male", status: "idea_draft", duplicatedFrom: src._id, rev: 0, revisionCount: 0 });
+    expect(await state.db.collection("idea_sessions").findOne({ projectId: copy!._id })).toMatchObject({ mode: "notes", notesText: "Chapter 6 notes", rev: 0 });
+    expect(await state.db.collection("idea_sessions").findOne({ projectId: src._id })).toMatchObject({ notesText: "Chapter 6 notes", rev: 5 });
+  });
+
+  it("gives an M1-draft project without an idea session an empty one, and drops failedStep", async () => {
+    const [old] = await seed([project(1)]);
+    const copyId = await duplicateProject(ME, old._id.toHexString());
+    const copy = await state.db.collection("projects").findOne({ _id: new ObjectId(copyId!) });
+    expect(copy).not.toHaveProperty("failedStep");
+    expect(await state.db.collection("idea_sessions").countDocuments({ projectId: copy!._id })).toBe(1);
+  });
+
+  it("can't copy another user's project", async () => {
+    const [theirs] = await seed([project(1, { userId: OTHER })]);
+    expect(await duplicateProject(ME, theirs._id.toHexString())).toBeNull();
+  });
+});
+
+describe("POST /api/v1/projects", () => {
+  const post = (body: string | undefined, headers: Record<string, string> = {}) =>
+    POST(new Request(`${APP}/api/v1/projects`, { method: "POST", headers: { origin: APP, "content-type": "application/json", ...headers }, body }));
+
+  it("creates a project from the profile defaults: 201, Location and the Project resource", async () => {
+    const res = await post("{}");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(res.headers.get("location")).toBe(`/api/v1/projects/${body.id}`);
+    expect(Object.keys(body).sort()).toEqual(
+      [
+        "activePublishJob", "allowedActions", "attention", "audience", "boardOrExam", "captionsEnabled", "coverUrl", "createdAt",
+        "currentStoryboardVersion", "exportOutdated", "id", "language", "latestRender", "lengthPreset", "permalink", "postedAt",
+        "rev", "revisionCount", "status", "styleId", "title", "updatedAt", "voiceGender",
+      ].sort(),
+    );
+    expect(body).toMatchObject({ title: "Untitled video", status: "idea_draft", language: "en", lengthPreset: 60, voiceGender: "female", audience: "students", rev: 0 });
+    expect(body.allowedActions).toEqual(["edit_idea", "generate", "rename", "delete", "duplicate"]);
+    expect(await state.db.collection("idea_sessions").countDocuments({ projectId: new ObjectId(body.id as string) })).toBe(1);
+  });
+
+  it("uses the values sent and shows the new project first in the list", async () => {
+    const body = await (await post(JSON.stringify({ title: "प्रकाश संश्लेषण", language: "hi", lengthPreset: 90, voiceGender: "male" }))).json();
+    expect(body).toMatchObject({ title: "प्रकाश संश्लेषण", language: "hi", lengthPreset: 90, voiceGender: "male" });
+    const list = await (await GET(new Request(`${APP}/api/v1/projects`))).json();
+    expect(list.items[0].id).toBe(body.id);
+  });
+
+  it("rejects invalid or unknown fields", async () => {
+    for (const bad of [{ lengthPreset: 70 }, { language: "fr" }, { voiceGender: "robot" }, { title: "" }, { title: "x".repeat(81) }, { status: "posted" }]) {
+      const res = await post(JSON.stringify(bad));
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(await state.db.collection("projects").countDocuments()).toBe(0);
+  });
+
+  it("is protected like every write: Origin, JSON and a verified user", async () => {
+    expect((await post("{}", { origin: "https://evil.example" })).status).toBe(403);
+    expect((await post("title=x", { "content-type": "application/x-www-form-urlencoded" })).status).toBe(415);
+    sessionUser.mockResolvedValue({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: false, image: null, createdAt: base });
+    expect((await post("{}")).status).toBe(403);
+    expect(await state.db.collection("projects").countDocuments()).toBe(0);
   });
 });

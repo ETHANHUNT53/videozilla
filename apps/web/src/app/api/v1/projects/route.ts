@@ -1,22 +1,42 @@
 import { z } from "zod";
-import { apiRoute, methodNotAllowed } from "@/server/api/handler";
+import { apiRoute, created, methodNotAllowed } from "@/server/api/handler";
 import { pageQuery } from "@/server/api/pagination";
+import { toProject } from "@/server/api/resources";
 import { PROJECT_FILTERS } from "@/server/db/types";
-import { listProjects } from "@/server/repos/projects";
+import { getOrCreateProfile } from "@/server/repos/profiles";
+import { createProject, listProjects } from "@/server/repos/projects";
 
 /**
  * `GET /api/v1/projects` (API Design §13.2): the library list.
  * `?filter=all|drafts|ready|scheduled|posted|attention` · `?q=` title search (1–80 chars) · `?limit=` / `?cursor=` (§6.1).
  * Response: `{ items: ProjectSummary[], nextCursor, hasMore }`, newest change first.
  */
-const query = z.strictObject({
+const listQuery = z.strictObject({
   filter: z.enum(PROJECT_FILTERS).default("all"),
   q: z.string().min(1).max(80).optional(),
   ...pageQuery,
 });
 
-export const GET = apiRoute({ query }, async ({ user, query }) => listProjects(user.id, query));
+export const GET = apiRoute({ query: listQuery }, async ({ user, query }) => listProjects(user.id, query));
 
-// POST /projects (create) moves here in F1.7; until then the Library uses its server action.
-const notAllowed = methodNotAllowed(["GET"]);
-export { notAllowed as DELETE, notAllowed as PATCH, notAllowed as POST, notAllowed as PUT };
+/**
+ * `POST /api/v1/projects` (API Design §13.2): a new idea draft, plus its idea session in the same transaction.
+ * Every field is optional; the rest comes from the user's profile defaults. Not idempotent on purpose (§9): a
+ * duplicate draft is harmless and can be deleted. Response: `201 Project` with `Location`.
+ */
+const createBody = z.strictObject({
+  title: z.string().min(1).max(80).optional(),
+  language: z.enum(["en", "hi"]).optional(),
+  lengthPreset: z.union([z.literal(60), z.literal(90)]).optional(),
+  voiceGender: z.enum(["female", "male"]).optional(),
+});
+
+export const POST = apiRoute({ body: createBody }, async ({ user, body }) => {
+  const profile = await getOrCreateProfile(user.id, user.name);
+  const project = await createProject(user.id, profile, body);
+  const id = project._id.toHexString();
+  return created(toProject(project), `/api/v1/projects/${id}`);
+});
+
+const notAllowed = methodNotAllowed(["GET", "POST"]);
+export { notAllowed as DELETE, notAllowed as PATCH, notAllowed as PUT };

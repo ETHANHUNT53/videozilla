@@ -16,6 +16,18 @@ export const STATUS_GROUPS = {
 } as const satisfies Record<string, readonly ProjectStatus[]>;
 export type StatusGroup = keyof typeof STATUS_GROUPS;
 
+export interface ProjectAttention {
+  kind: "storyboard" | "build" | "render" | "publish";
+  step: string;
+  errorCode: string;
+  message: string;
+  at: Date;
+}
+
+/**
+ * A project (DB Design §4.3). Projects created from F1.7 on have every field; the optional ones may be missing on
+ * drafts made by the M1 draft, so readers default them (`?? false`, `?? null`, `?? 0`).
+ */
 export interface ProjectDoc {
   _id: ObjectId;
   userId: string;
@@ -23,15 +35,25 @@ export interface ProjectDoc {
   language: Language;
   lengthPreset: 60 | 90;
   audience: string;
+  boardOrExam?: BoardOrExam | null;
   styleId: string;
   /** Only the two approved voices exist; this picks which one. */
   voiceGender: VoiceGender;
+  captionsEnabled?: boolean;
   status: ProjectStatus;
+  statusChangedAt?: Date;
+  /** Set iff status is needs_attention / publish_failed (replaces the draft's `failedStep`). */
+  attention?: ProjectAttention | null;
   currentStoryboardVersion: number | null;
-  failedStep: string | null;
-  /** DB Design §4.3; written by later features (export, publishing), so older drafts may not have them yet. */
+  currentTimelineId?: ObjectId | null;
+  latestRenderId?: ObjectId | null;
   exportOutdated?: boolean;
   postedAt?: Date | null;
+  permalink?: string | null;
+  duplicatedFrom?: ObjectId | null;
+  revisionCount?: number;
+  /** M1 draft only; superseded by `attention`. */
+  failedStep?: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -60,6 +82,24 @@ export interface ProfileDoc {
 }
 
 /** Public, serialisable shape handed to client components. */
+/** One per project, created with it (DB Design §4.4, §6.1). The Idea Studio (F2) fills it in. */
+export interface IdeaSessionDoc {
+  _id: ObjectId;
+  projectId: ObjectId;
+  userId: string;
+  schemaVersion: 1;
+  mode: "topic" | "idea" | "notes";
+  topicInput: string;
+  ideaInput: string;
+  notesText: string;
+  suggestions: { id: string; title: string; hook: string; angle: string; keyPoints: string[] }[];
+  brief: { title: string; hook: string; angle: string; audience: string; keyPoints: string[]; outOfScope: string[]; sourceNotesSummary?: string } | null;
+  briefUpdatedAt: Date | null;
+  rev: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** A library list item: the `ProjectSummary` resource of API Design §12. */
 export interface ProjectSummary {
   id: string;

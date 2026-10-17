@@ -1,8 +1,8 @@
 import "server-only";
 import { assertMigrated, COLLECTIONS, getMongoClient } from "@videozilla/db";
-import type { Db, MongoClient } from "mongodb";
+import type { ClientSession, Db, MongoClient } from "mongodb";
 import { env } from "../env";
-import type { ProfileDoc, ProjectDoc } from "./types";
+import type { IdeaSessionDoc, ProfileDoc, ProjectDoc } from "./types";
 
 /**
  * The web app's database handle. Collections, validators and indexes are created by migrations (packages/db,
@@ -34,4 +34,18 @@ export function ensureMigrated(): Promise<void> {
 export const collections = {
   projects: () => db().collection<ProjectDoc>(COLLECTIONS.projects),
   profiles: () => db().collection<ProfileDoc>(COLLECTIONS.profiles),
+  ideaSessions: () => db().collection<IdeaSessionDoc>(COLLECTIONS.ideaSessions),
 };
+
+/**
+ * Runs `fn` in one transaction (DB Design §6): snapshot reads, majority writes, and the driver's automatic retry on
+ * transient errors. Pass `session` to every read and write inside. No external calls (AI, voice, R2) in here.
+ */
+export async function withTransaction<T>(fn: (session: ClientSession) => Promise<T>): Promise<T> {
+  const session = mongoClient().startSession();
+  try {
+    return await session.withTransaction(fn, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
+  } finally {
+    await session.endSession();
+  }
+}

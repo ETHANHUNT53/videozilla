@@ -1,9 +1,9 @@
 import "server-only";
 import { truncateChars } from "@videozilla/db";
 import { ObjectId, type Filter } from "mongodb";
-import { collections, ensureMigrated } from "../db/mongo";
+import { collections, ensureMigrated, withTransaction } from "../db/mongo";
 import { afterCursorDesc, decodeCursor, DEFAULT_LIMIT, toPage, type Page } from "../api/pagination";
-import { STATUS_GROUPS, type ProfileDoc, type ProjectDoc, type ProjectFilter, type ProjectSummary } from "../db/types";
+import { STATUS_GROUPS, type IdeaSessionDoc, type Language, type ProfileDoc, type ProjectDoc, type ProjectFilter, type ProjectSummary, type VoiceGender } from "../db/types";
 
 /**
  * Project repository. Every function takes the signed-in user's id and adds it to the query filter, so one user can
@@ -67,30 +67,75 @@ export async function getProject(userId: string, id: string): Promise<ProjectDoc
   return collections.projects().findOne({ _id, userId, deletedAt: null });
 }
 
-/** New project starts as an idea draft with the user's defaults (PRD F1, F4). */
-export async function createProject(userId: string, profile: Pick<ProfileDoc, "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultStyleId">, title?: string): Promise<string> {
+export interface CreateProjectInput {
+  title?: string;
+  language?: Language;
+  lengthPreset?: 60 | 90;
+  voiceGender?: VoiceGender;
+}
+
+type ProfileDefaults = Pick<ProfileDoc, "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultStyleId" | "defaultAudience" | "defaultBoardOrExam">;
+
+/**
+ * Creates a project as an idea draft, with the user's profile defaults for anything not given, together with its
+ * empty idea session — both in one transaction, so a project never exists without one (DB Design §4.3, §4.4, §6.1).
+ */
+export async function createProject(userId: string, profile: ProfileDefaults, input: CreateProjectInput = {}): Promise<ProjectDoc> {
   await ensureMigrated();
   const now = new Date();
-  const doc: ProjectDoc = {
+  const project: ProjectDoc = {
     _id: new ObjectId(),
     userId,
-    title: truncateChars(title?.trim() || "Untitled video", 80),
-    language: profile.defaultLanguage,
-    lengthPreset: profile.defaultLengthPreset,
-    audience: "students",
+    title: truncateChars(input.title?.trim() || "Untitled video", 80),
+    language: input.language ?? profile.defaultLanguage,
+    lengthPreset: input.lengthPreset ?? profile.defaultLengthPreset,
+    audience: profile.defaultAudience,
+    boardOrExam: profile.defaultBoardOrExam ?? null,
     styleId: profile.defaultStyleId,
-    voiceGender: profile.defaultVoiceGender,
+    voiceGender: input.voiceGender ?? profile.defaultVoiceGender,
+    captionsEnabled: false,
     status: "idea_draft",
+    statusChangedAt: now,
+    attention: null,
     currentStoryboardVersion: null,
-    failedStep: null,
+    currentTimelineId: null,
+    latestRenderId: null,
+    exportOutdated: false,
+    postedAt: null,
+    permalink: null,
+    duplicatedFrom: null,
+    revisionCount: 0,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
     purgeAt: null,
     rev: 0,
   };
-  await collections.projects().insertOne(doc);
-  return doc._id.toHexString();
+  await withTransaction(async (session) => {
+    await collections.projects().insertOne(project, { session });
+    await collections.ideaSessions().insertOne(emptyIdea(project._id, userId, now), { session });
+  });
+  return project;
+}
+
+/** A new, empty idea session for a project (DB Design §4.4). */
+function emptyIdea(projectId: ObjectId, userId: string, now: Date): IdeaSessionDoc {
+  return {
+    _id: new ObjectId(),
+    projectId,
+    userId,
+    schemaVersion: 1,
+    mode: "topic",
+    topicInput: "",
+    ideaInput: "",
+    notesText: "",
+    suggestions: [],
+    brief: null,
+    briefUpdatedAt: null,
+    rev: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 export async function renameProject(userId: string, id: string, title: string): Promise<boolean> {
@@ -121,24 +166,53 @@ export async function restoreProject(userId: string, id: string): Promise<boolea
   return res.matchedCount === 1;
 }
 
-/** Copies settings (and later the idea + latest storyboard) into a fresh draft; renders and publishing are not copied. */
+/**
+ * Copies a project's settings and its idea session into a fresh draft, in one transaction (DB Design §6.13).
+ * Renders, timelines and publishing are not copied. Storyboards don't exist before M2; when they do (F3), the current
+ * version will be copied as version 1 and the copy will start as `storyboard_ready`.
+ */
 export async function duplicateProject(userId: string, id: string): Promise<string | null> {
   const src = await getProject(userId, id);
   if (!src) return null;
   const now = new Date();
+  const settings = { ...src };
+  delete settings.failedStep; // M1 draft field, superseded by `attention`
   const copy: ProjectDoc = {
-    ...src,
+    ...settings,
     _id: new ObjectId(),
     title: truncateChars(`${src.title} (copy)`, 80),
-    status: src.currentStoryboardVersion ? "storyboard_ready" : "idea_draft",
-    failedStep: null,
+    status: "idea_draft",
+    statusChangedAt: now,
+    attention: null,
+    currentStoryboardVersion: null,
+    currentTimelineId: null,
+    latestRenderId: null,
+    exportOutdated: false,
+    postedAt: null,
+    permalink: null,
+    duplicatedFrom: src._id,
+    revisionCount: 0,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
     purgeAt: null,
     rev: 0,
   };
-  await collections.projects().insertOne(copy);
+  await withTransaction(async (session) => {
+    const idea = await collections.ideaSessions().findOne({ projectId: src._id, userId }, { session });
+    await collections.projects().insertOne(copy, { session });
+    await collections.ideaSessions().insertOne(
+      {
+        ...(idea ?? emptyIdea(copy._id, userId, now)),
+        _id: new ObjectId(),
+        projectId: copy._id,
+        rev: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      { session },
+    );
+  });
   return copy._id.toHexString();
 }
 

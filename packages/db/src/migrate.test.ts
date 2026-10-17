@@ -90,6 +90,9 @@ const run = (projectId = new ObjectId(), over: Document = {}) => ({
   ...over,
 });
 
+/** Every migration file, in order (so these tests don't change when a migration is added). */
+const allMigrations = async () => (await listMigrations()).map((f) => f.name);
+
 describe("runMigrations", () => {
   beforeEach(() => {
     db = freshDb();
@@ -97,7 +100,8 @@ describe("runMigrations", () => {
 
   it("creates every collection and the whole index catalogue", async () => {
     const result = await runMigrations(db, quiet);
-    expect(result).toEqual({ applied: ["001_initial_schema", "002_profile_defaults"], alreadyApplied: [] });
+    expect(result).toEqual({ applied: await allMigrations(), alreadyApplied: [] });
+    expect(result.applied.slice(0, 2)).toEqual(["001_initial_schema", "002_profile_defaults"]);
 
     const names = (await db.listCollections().toArray()).map((c) => c.name).sort();
     expect(names).toEqual(Object.values(COLLECTIONS).sort());
@@ -115,8 +119,8 @@ describe("runMigrations", () => {
     const records = await db.collection(COLLECTIONS.migrations).find().sort({ name: 1 }).toArray();
     expect(records.map((r) => [r.name, r.checksum])).toEqual(files.map((f) => [f.name, f.checksum]));
 
-    expect(await runMigrations(db, quiet)).toEqual({ applied: [], alreadyApplied: ["001_initial_schema", "002_profile_defaults"] });
-    expect((await migrationStatus(db)).map((m) => m.state)).toEqual(["applied", "applied"]);
+    expect(await runMigrations(db, quiet)).toEqual({ applied: [], alreadyApplied: await allMigrations() });
+    expect((await migrationStatus(db)).map((m) => m.state)).toEqual(files.map(() => "applied"));
   });
 
   it("refuses to run when an applied migration was edited", async () => {
@@ -158,7 +162,7 @@ describe("runMigrations", () => {
     await expect(runMigrations(db, quiet)).rejects.toThrow("Another migration run is in progress");
 
     await db.collection(COLLECTIONS.migrations).updateOne({ name: "__lock__" }, { $set: { lockedAt: new Date(Date.now() - 60 * 60_000) } });
-    expect((await runMigrations(db, quiet)).applied).toHaveLength(2);
+    expect((await runMigrations(db, quiet)).applied).toEqual(await allMigrations());
     expect(await db.collection(COLLECTIONS.migrations).countDocuments({ name: "__lock__" })).toBe(0);
   });
 
@@ -183,10 +187,7 @@ describe("runMigrations", () => {
     await runMigrations(db, quiet);
     const dir = await mkdtemp(path.join(tmpdir(), "vz-migrations-"));
     try {
-      expect((await migrationStatus(db, { dir })).map((m) => [m.name, m.state])).toEqual([
-        ["001_initial_schema", "missing"],
-        ["002_profile_defaults", "missing"],
-      ]);
+      expect((await migrationStatus(db, { dir })).map((m) => [m.name, m.state])).toEqual((await allMigrations()).map((name) => [name, "missing"]));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -206,6 +207,18 @@ describe("runMigrations", () => {
     expect(await db.collection("profiles").findOne({ userId: USER })).toMatchObject({ defaultAudience: "students", role: "user" });
     const library = (await db.collection("projects").indexes()).find((i) => i.name === "library");
     expect(library?.key).toEqual({ userId: 1, deletedAt: 1, updatedAt: -1, _id: -1 });
+  });
+
+  it("gives every existing project (deleted ones too) exactly one empty idea session", async () => {
+    const live = (await db.collection("projects").insertOne(project())).insertedId;
+    const deleted = (await db.collection("projects").insertOne(project({ deletedAt: new Date(), purgeAt: new Date() }))).insertedId;
+    const hasOne = (await db.collection("projects").insertOne(project())).insertedId;
+    await db.collection("idea_sessions").insertOne({ projectId: hasOne, userId: USER, schemaVersion: 1, mode: "notes", notesText: "mine", rev: 4 });
+
+    await runMigrations(db, quiet);
+    for (const projectId of [live, deleted, hasOne]) expect(await db.collection("idea_sessions").countDocuments({ projectId })).toBe(1);
+    expect(await db.collection("idea_sessions").findOne({ projectId: live })).toMatchObject({ userId: USER, schemaVersion: 1, mode: "topic", rev: 0, brief: null, suggestions: [] });
+    expect(await db.collection("idea_sessions").findOne({ projectId: hasOne })).toMatchObject({ mode: "notes", notesText: "mine", rev: 4 });
   });
 });
 

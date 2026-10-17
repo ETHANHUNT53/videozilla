@@ -5,7 +5,7 @@ import { COLLECTIONS } from "./collections";
  * The newest migration this code needs. Update it with every new migration file (a test checks it is the last one).
  * Kept as a plain name so the web app can check it without reading the migrations folder.
  */
-export const LATEST_MIGRATION = "002_profile_defaults";
+export const LATEST_MIGRATION = "003_idea_sessions_backfill";
 
 /** Throws a clear error when the database is behind this code (migrations not run on this database yet). */
 export async function assertMigrated(db: Db): Promise<void> {

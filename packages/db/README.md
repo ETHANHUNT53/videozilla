@@ -22,6 +22,7 @@ Locally, `npm run db` applies them every time the database starts (settings come
 |---|---|
 | `migrations/001_initial_schema.ts` | All 19 app collections, database validators (§9) and the full index catalogue (§8) |
 | `migrations/002_profile_defaults.ts` | Backfills `defaultAudience` and `role` on profiles made by the M1 draft |
+| `migrations/003_idea_sessions_backfill.ts` | Gives every existing project (including soft-deleted ones) its empty idea session |
 
 **Adding a change:** create the next numbered file, e.g. `migrations/003_add_something.ts`, and set `LATEST_MIGRATION` in `src/schema-version.ts` to its name (a test checks this):
 

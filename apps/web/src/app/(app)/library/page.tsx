@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { createProjectAction } from "../actions";
 import { LibraryFeed, LibraryToolbar } from "@/components/library";
-import { Button, Eyebrow, Spinner } from "@/components/ui";
+import { CreateVideoButton } from "@/components/create-video-button";
+import { Eyebrow, Spinner } from "@/components/ui";
 import { requireUser } from "@/server/dal";
 import type { ProjectFilter } from "@/server/db/types";
 import { getOrCreateProfile } from "@/server/repos/profiles";
@@ -21,11 +21,7 @@ export default function LibraryPage({ searchParams }: PageProps<"/library">) {
           <Eyebrow>library</Eyebrow>
           <h1 className="text-3xl font-semibold tracking-tight">Your videos</h1>
         </div>
-        <form action={createProjectAction}>
-          <Button type="submit" className="px-5">
-            + Create video
-          </Button>
-        </form>
+        <CreateVideoButton />
       </div>
       <Suspense fallback={<Spinner label="Loading your videos…" />}>
         <LibraryContent searchParams={searchParams} />

@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-17 |
 | **Current phase** | Feature build — F1 accounts & library: moving the M1 draft onto the API and DB designs (F1.4 Google sign-in waits for your Google keys) |
-| **Next feature** | **F1.7 — Create video on the API**: `POST /api/v1/projects`, creating the project and its idea session in one transaction (API §13.2, DB §6.1) |
+| **Next feature** | **F1.8 — Rename / duplicate / delete / restore on the API**: `PATCH`, `DELETE`, `/restore`, `/duplicate` with `rev` / `If-Match` and the delete cascade (API §13.2, DB §6.6–6.7) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -79,8 +79,8 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F1.4 | Google sign-in + account linking | 🔵 | Waiting for your Google OAuth client ([guide §C](setup/AUTH_EMAIL_SETUP.md)) |
 | F1.5 | Profile created automatically with India-first defaults | ✅ | Now writes `defaultAudience` and `role` (DB Design §4.2), enforced by the database validator; existing profiles backfilled by migration 002 (F0.3) |
 | F1.6 | Library list: filters, search, pagination, needs-attention section | ✅ | Done 2026-10-17. `GET /api/v1/projects` (filter, q, limit, cursor) and the Library page share one list service; cursor pages sorted by last change then id (no gaps or repeats); "Load older videos" loads from the API. 14 integration tests on a throwaway MongoDB; checked in the browser with 28 videos |
-| F1.7 | Create video (new draft project) | 🟡 | Must also create the idea session in one transaction (DB §6.1) |
-| F1.8 | Rename / duplicate / delete with 10-second undo / restore | 🟡 | Works; needs `rev` / If-Match and the delete cascade (DB §6.6) |
+| F1.7 | Create video (new draft project) | ✅ | Done 2026-10-17. `POST /api/v1/projects` (optional title, language, length, voice; rest from the profile) creates the project with every DB §4.3 field and its idea session in one transaction; returns `201 Project` with `allowedActions` (DB §5.2). "+ Create video" calls it. Migration 003 gave the 7 existing projects their idea sessions |
+| F1.8 | Rename / duplicate / delete with 10-second undo / restore | 🟡 | Works. Duplicate now copies the idea session in one transaction (DB §6.13, done in F1.7); still to do: move to the API, `rev` / If-Match, delete cascade (DB §6.6) |
 | F1.9 | Project page shell with Idea → Storyboard → Video stepper | 🟡 | Placeholder content until F2 |
 | F1.10 | Settings: defaults (language, length, voice, time zone, notifications) | 🟡 | Works; move to `PATCH /api/v1/me/profile` |
 | F1.11 | Delete account (full data deletion job) | ⬜ | Draft deletes projects/profile only; needs the job in DB §6.12 |
@@ -223,3 +223,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | **F0.5 done — F0 foundation complete.** GitHub Actions CI runs typecheck, lint and all unit tests (188, incl. MongoDB tests on Linux) on every push and pull request, no secrets needed. Pinned Ubuntu 24.04 (`ubuntu-latest` moves to Ubuntu 26 on 2026-10-19) and current action versions (v4 used the deprecated Node 20). Web typecheck now runs `next typegen` first; new root `npm run lint`. |
 | 2026-10-17 | **F1.6 done** — Library on the API: new `GET /api/v1/projects` (filters all / drafts / ready / scheduled / posted / attention, title search incl. Hindi, cursor pages of 1–100, default 24) returning the API `ProjectSummary` shape; the Library page's first render uses the same service, and "Load older videos" fetches further pages from the endpoint (replaces the old `?before=` links). Paging is stable when many videos change at the same moment. |
 | 2026-10-17 | F0.5 review fixes: CI also builds the web app (`next build`); `npm run lint` now lints `packages/*` too (root `eslint.config.mjs`; three M0 files keep `any` for now, marked in the file); CI runs on pushes to `dev` / `main` and on pull requests, so a PR commit runs once; the MongoDB binary cache is keyed on the mongodb-memory-server version; Node 22 pinned in `.nvmrc` + `engines`; actions pinned to commit SHAs. Migrate-on-deploy noted under F10.4. |
+| 2026-10-17 | **F1.7 done** — Create video on the API: `POST /api/v1/projects` creates the project (all DB §4.3 fields, profile defaults) and its idea session in one MongoDB transaction and returns the `Project` resource with `allowedActions` from the DB §5.2 table; the Library button calls it (the old server action is gone). Duplicate also copies the idea session in a transaction. Migration `003_idea_sessions_backfill` gave existing projects an idea session. Web tests now use a one-node replica set for transactions. |

@@ -1,21 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/server/dal";
-import { createProject, duplicateProject, renameProject, restoreProject, softDeleteProject } from "@/server/repos/projects";
-import { getOrCreateProfile, updateProfile } from "@/server/repos/profiles";
+import { duplicateProject, renameProject, restoreProject, softDeleteProject } from "@/server/repos/projects";
+import { updateProfile } from "@/server/repos/profiles";
 
 /* Server actions are public endpoints: each one checks the user itself (Next.js auth guide). */
-
-export async function createProjectAction() {
-  const user = await requireUser();
-  const profile = await getOrCreateProfile(user.id, user.name);
-  const id = await createProject(user.id, profile);
-  revalidatePath("/library");
-  redirect(`/projects/${id}`);
-}
 
 export async function renameProjectAction(id: string, title: string): Promise<{ ok: boolean }> {
   const user = await requireUser();
