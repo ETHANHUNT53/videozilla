@@ -5,7 +5,7 @@ import { ApiError } from "./errors";
 const sessionUser = vi.hoisted(() => vi.fn());
 vi.mock("./session", () => ({ sessionUser }));
 
-import { apiRoute, created } from "./handler";
+import { apiRoute, created, methodNotAllowed } from "./handler";
 
 const APP = "http://localhost:3000";
 const USER = { id: "6ad20f12aa355a5a9f3db9cb", name: "Asha", email: "asha@example.com", emailVerified: true, image: null, createdAt: new Date() };
@@ -106,6 +106,50 @@ describe("apiRoute: authentication", () => {
     const res = await apiRoute({ auth: "public" }, async ({ user }) => ({ signedIn: user !== null }))(request("GET"));
     expect(await res.json()).toEqual({ signedIn: false });
   });
+
+  it("does not treat a failing session lookup as signed out on public routes", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    sessionUser.mockRejectedValue(new Error("connection refused"));
+    const res = await apiRoute({ auth: "public" }, async () => ({}))(request("GET"));
+    expect(res.status).toBe(500);
+    expect((await error(res)).code).toBe("INTERNAL");
+  });
+});
+
+describe("apiRoute: handler results", () => {
+  it("answers 204 with no body when the handler returns nothing", async () => {
+    const res = await apiRoute({}, async () => undefined)(request("DELETE"));
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("adds its headers to a returned Response even when that one's headers are read-only", async () => {
+    const res = await apiRoute({}, async () => Response.redirect("http://localhost:3000/library", 303))(request("GET"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/library");
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("stops reading a body without Content-Length once it passes the limit", async () => {
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += 1024;
+        if (sent > 1024 * 1024) controller.close();
+        else controller.enqueue(new Uint8Array(1024));
+      },
+    });
+    const req = new Request(`${APP}/api/v1/things`, {
+      method: "POST",
+      headers: { origin: APP, "content-type": "application/json" },
+      body: stream,
+      duplex: "half",
+    } as RequestInit);
+    const res = await apiRoute({ body: z.object({}), maxBodyBytes: 4096 }, async () => ({}))(req);
+    expect(res.status).toBe(413);
+    expect(sent).toBeLessThan(16 * 1024);
+  });
 });
 
 describe("apiRoute: CSRF origin check", () => {
@@ -175,5 +219,15 @@ describe("apiRoute: input validation", () => {
     sessionUser.mockResolvedValue(null);
     const res = await apiRoute({ body }, async () => ({}))(request("POST", "/x", { body: JSON.stringify({ wrong: 1 }) }));
     expect(res.status).toBe(401);
+  });
+});
+
+describe("methodNotAllowed", () => {
+  it("answers the standard 405 body with an Allow header", async () => {
+    const res = await methodNotAllowed(["GET"])(request("POST", "/api/v1/me", { body: "{}" }));
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("GET");
+    expect((await error(res)).code).toBe("METHOD_NOT_ALLOWED");
+    expect(res.headers.get("x-request-id")).toBeTruthy();
   });
 });

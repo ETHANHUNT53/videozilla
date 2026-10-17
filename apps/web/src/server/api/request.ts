@@ -7,11 +7,22 @@ export function requestIdFrom(header: string | null): string {
   return header && /^[A-Za-z0-9-]{1,64}$/.test(header) ? header : `req_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 }
 
-/** CSRF check for unsafe methods (API Design §3.2): the Origin header must be the app's own origin. */
-export function isAllowedOrigin(origin: string | null, appUrl: string): boolean {
+/**
+ * CSRF check for unsafe methods (API Design §3.2): the Origin header must be one of the app's own origins: the
+ * configured app URL, or the origin the request itself was sent to (so 127.0.0.1 in dev and preview deploys work).
+ * A cross-site page can't pass: the browser sets Origin to that page and the request URL to us.
+ */
+export function isAllowedOrigin(origin: string | null, allowed: string[]): boolean {
   if (!origin) return false;
   try {
-    return new URL(origin).origin === new URL(appUrl).origin;
+    const actual = new URL(origin).origin;
+    return allowed.some((url) => {
+      try {
+        return new URL(url).origin === actual;
+      } catch {
+        return false;
+      }
+    });
   } catch {
     return false;
   }

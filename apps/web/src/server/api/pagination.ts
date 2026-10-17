@@ -30,9 +30,19 @@ export interface Page<T> {
   hasMore: boolean;
 }
 
-/** Stable fingerprint of the filters a list was requested with. */
+/** JSON with object keys sorted at every level, so `{ a, b }` and `{ b, a }` give the same text. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    const entries = Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** Stable fingerprint of the filters a list was requested with (key order doesn't matter). */
 function scopeHash(scope: unknown): string {
-  return createHash("sha256").update(JSON.stringify(scope ?? null)).digest("base64url").slice(0, 10);
+  return createHash("sha256").update(canonicalJson(scope)).digest("base64url").slice(0, 10);
 }
 
 export function encodeCursor(cursor: Cursor, scope?: unknown): string {

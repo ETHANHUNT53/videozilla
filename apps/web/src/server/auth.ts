@@ -72,3 +72,8 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+/** The session for these request headers, checked against the database. Pages (dal.ts) and the API (api/session.ts) both use it. */
+export function readSession(headers: Headers) {
+  return auth.api.getSession({ headers });
+}

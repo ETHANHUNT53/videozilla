@@ -5,6 +5,7 @@ import { LibraryGrid, LibraryToolbar } from "@/components/library";
 import { Button, Eyebrow, Spinner } from "@/components/ui";
 import { requireUser } from "@/server/dal";
 import type { StatusGroup } from "@/server/db/types";
+import { getOrCreateProfile } from "@/server/repos/profiles";
 import { listProjects } from "@/server/repos/projects";
 
 export const metadata: Metadata = { title: "Library" };
@@ -45,10 +46,11 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
   const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
   const before = typeof params.before === "string" ? params.before : undefined;
 
-  const [{ items, nextCursor }, attention, renderedAt] = await Promise.all([
+  const [{ items, nextCursor }, attention, renderedAt, profile] = await Promise.all([
     listProjects(user.id, { group, q, before }),
     group === "all" && !q && !before ? listProjects(user.id, { group: "attention" }) : Promise.resolve({ items: [], nextCursor: null }),
     readTime(),
+    getOrCreateProfile(user.id, user.name), // its time zone dates older cards the same on the server and in the browser
   ]);
 
   return (
@@ -57,10 +59,10 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
       {attention.items.length ? (
         <section className="flex flex-col gap-3">
           <Eyebrow accent="text-red">needs attention</Eyebrow>
-          <LibraryGrid projects={attention.items} renderedAt={renderedAt} />
+          <LibraryGrid projects={attention.items} renderedAt={renderedAt} timeZone={profile.timezone} />
         </section>
       ) : null}
-      <LibraryGrid renderedAt={renderedAt} projects={items.filter((p) => !attention.items.some((a) => a.id === p.id))} empty={!q && group === "all" && !before} searching={Boolean(q) || group !== "all"} />
+      <LibraryGrid renderedAt={renderedAt} timeZone={profile.timezone} projects={items.filter((p) => !attention.items.some((a) => a.id === p.id))} empty={!q && group === "all" && !before} searching={Boolean(q) || group !== "all"} />
       {nextCursor ? (
         <a href={`/library?${new URLSearchParams({ ...(group !== "all" ? { filter: group } : {}), ...(q ? { q } : {}), before: nextCursor })}`} className="self-center font-mono text-sm text-cyan hover:underline">
           Load older videos →

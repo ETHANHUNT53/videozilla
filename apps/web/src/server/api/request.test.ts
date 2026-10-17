@@ -13,13 +13,23 @@ describe("requestIdFrom", () => {
 });
 
 describe("isAllowedOrigin", () => {
+  const APP = ["http://localhost:3000"];
+
   it("accepts only the app's own origin", () => {
-    expect(isAllowedOrigin("http://localhost:3000", "http://localhost:3000")).toBe(true);
-    expect(isAllowedOrigin("http://localhost:3000", "http://localhost:3000/some/path")).toBe(true);
-    expect(isAllowedOrigin("https://evil.example", "http://localhost:3000")).toBe(false);
-    expect(isAllowedOrigin("http://localhost:3001", "http://localhost:3000")).toBe(false);
-    expect(isAllowedOrigin(null, "http://localhost:3000")).toBe(false);
-    expect(isAllowedOrigin("null", "http://localhost:3000")).toBe(false);
+    expect(isAllowedOrigin("http://localhost:3000", APP)).toBe(true);
+    expect(isAllowedOrigin("http://localhost:3000", ["http://localhost:3000/some/path"])).toBe(true);
+    expect(isAllowedOrigin("https://evil.example", APP)).toBe(false);
+    expect(isAllowedOrigin("http://localhost:3001", APP)).toBe(false);
+    expect(isAllowedOrigin(null, APP)).toBe(false);
+    expect(isAllowedOrigin("null", APP)).toBe(false);
+  });
+
+  it("also accepts the origin the request was sent to (127.0.0.1 in dev, preview deploys)", () => {
+    const allowed = ["https://videozilla.in", "http://127.0.0.1:3000/api/v1/projects"];
+    expect(isAllowedOrigin("http://127.0.0.1:3000", allowed)).toBe(true);
+    expect(isAllowedOrigin("https://videozilla.in", allowed)).toBe(true);
+    expect(isAllowedOrigin("https://evil.example", allowed)).toBe(false);
+    expect(isAllowedOrigin("http://localhost:3000", ["not a url"])).toBe(false);
   });
 });
 

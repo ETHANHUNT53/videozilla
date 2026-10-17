@@ -43,8 +43,11 @@ export const FILTERS = [
   { id: "posted", label: "Posted" },
 ] as const;
 
-/** Relative time like "5 min ago" (UI only). */
-export function timeAgo(iso: string, now = Date.now()): string {
+/**
+ * Relative time like "5 min ago" (UI only). Older than 30 days it shows the date in `timeZone` (the user's profile
+ * time zone), never the runtime's own: the server runs in UTC and the browser doesn't, and both render this text.
+ */
+export function timeAgo(iso: string, now = Date.now(), timeZone = "Asia/Kolkata"): string {
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
   if (s < 60) return "just now";
   const m = Math.round(s / 60);
@@ -52,5 +55,11 @@ export function timeAgo(iso: string, now = Date.now()): string {
   const h = Math.round(m / 60);
   if (h < 24) return `${h} h ago`;
   const d = Math.round(h / 24);
-  return d < 30 ? `${d} d ago` : new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  if (d < 30) return `${d} d ago`;
+  const format = (tz: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: tz });
+  try {
+    return format(timeZone);
+  } catch {
+    return format("Asia/Kolkata"); // an unknown time zone name must not break the page
+  }
 }

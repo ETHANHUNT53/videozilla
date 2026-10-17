@@ -23,6 +23,11 @@ describe("cursors", () => {
     expect(decodeCursor(raw, { filter: "drafts", q: "sky" })).toEqual(cursor);
   });
 
+  it("don't depend on the order the filters were written in", () => {
+    const raw = encodeCursor(cursor, { filter: "drafts", q: "sky", nested: { b: 1, a: [1, 2] } });
+    expect(decodeCursor(raw, { nested: { a: [1, 2], b: 1 }, q: "sky", filter: "drafts" })).toEqual(cursor);
+  });
+
   it("are rejected with different filters, or when not made by us", () => {
     const raw = encodeCursor(cursor, { filter: "drafts" });
     expect(code(() => decodeCursor(raw, { filter: "ready" }))).toBe("INVALID_CURSOR");

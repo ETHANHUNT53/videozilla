@@ -60,7 +60,19 @@ export function LibraryToolbar({ filter, q }: { filter: string; q: string }) {
   );
 }
 
-export function LibraryGrid({ projects, renderedAt, empty = false, searching = false }: { projects: Project[]; renderedAt: number; empty?: boolean; searching?: boolean }) {
+export function LibraryGrid({
+  projects,
+  renderedAt,
+  timeZone,
+  empty = false,
+  searching = false,
+}: {
+  projects: Project[];
+  renderedAt: number;
+  timeZone: string;
+  empty?: boolean;
+  searching?: boolean;
+}) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
   const router = useRouter();
@@ -86,6 +98,7 @@ export function LibraryGrid({ projects, renderedAt, empty = false, searching = f
             key={p.id}
             project={p}
             renderedAt={renderedAt}
+            timeZone={timeZone}
             onDeleted={() => {
               setHidden((h) => new Set(h).add(p.id));
               setUndo({ id: p.id, title: p.title });
@@ -122,7 +135,19 @@ export function LibraryGrid({ projects, renderedAt, empty = false, searching = f
   );
 }
 
-function ProjectCard({ project, renderedAt, onDeleted, onDuplicated }: { project: Project; renderedAt: number; onDeleted: () => void; onDuplicated: (id: string) => void }) {
+function ProjectCard({
+  project,
+  renderedAt,
+  timeZone,
+  onDeleted,
+  onDuplicated,
+}: {
+  project: Project;
+  renderedAt: number;
+  timeZone: string;
+  onDeleted: () => void;
+  onDuplicated: (id: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(project.title);
   const [menu, setMenu] = useState(false);
@@ -178,7 +203,7 @@ function ProjectCard({ project, renderedAt, onDeleted, onDuplicated }: { project
           )}
           <div className="flex items-center gap-2">
             <Chip color={status.color}>{status.label}</Chip>
-            <TimeAgo iso={project.updatedAt} renderedAt={renderedAt} className="font-mono text-xs text-dim" />
+            <TimeAgo iso={project.updatedAt} renderedAt={renderedAt} timeZone={timeZone} className="font-mono text-xs text-dim" />
           </div>
         </div>
         <div className="relative">
