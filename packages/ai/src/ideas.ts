@@ -57,8 +57,11 @@ export interface IdeaSuggestionsInput {
   avoidTitles?: string[];
 }
 
-/** Keeps user text from closing our delimiters early. */
-const asData = (s: string) => s.replace(/<\/?(topic|creator_context|avoid_titles)>/gi, "");
+/**
+ * Keeps user text from opening or closing our delimiters: angle brackets become look-alike quotes, so no tag variant
+ * (`</topic >`, `< /topic>`, other casings) can end the data block early.
+ */
+const asData = (s: string) => s.replace(/</g, "\u2039").replace(/>/g, "\u203a");
 
 export function ideaSuggestionsSystemPrompt(language: IdeaLanguage): string {
   return [

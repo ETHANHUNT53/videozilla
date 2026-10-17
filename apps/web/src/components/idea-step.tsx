@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import type { AutosaveState } from "@/lib/autosave";
 import { clampChars, stripControlChars } from "@/lib/project-client";
@@ -181,7 +181,13 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
   const [error, setError] = useState<string | null>(null);
   const trimmed = topic.trim();
 
+  // Each request costs a Gemini call and a unit of the daily limit: a second click before the re-render must not send
+  // another.
+  const asking = useRef(false);
+
   const ask = async (kind: string, askTopic: string, avoid: Suggestion[]) => {
+    if (asking.current) return;
+    asking.current = true;
     setBusy(kind);
     setError(null);
     try {
@@ -193,6 +199,7 @@ function TopicIdeas({ projectId, topic, initial, editable }: { projectId: string
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Couldn't get ideas. Please try again.");
     } finally {
+      asking.current = false;
       setBusy(null);
     }
   };

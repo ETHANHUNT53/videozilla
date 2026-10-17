@@ -8,7 +8,7 @@ vi.mock("@google/genai", () => ({
   },
 }));
 
-import { AiBusyError, AiOutputError, generateJson, type AiCallLog } from "./generate-json";
+import { AiBlockedError, AiBusyError, AiOutputError, generateJson, type AiCallLog } from "./generate-json";
 
 const Shape = z.object({ items: z.array(z.string()).length(2) });
 const reply = (data: unknown, tokens = { promptTokenCount: 10, candidatesTokenCount: 5 }) => ({ text: typeof data === "string" ? data : JSON.stringify(data), usageMetadata: tokens });
@@ -96,6 +96,19 @@ describe("generateJson", () => {
     await expect(promise).resolves.toMatchObject({ data: { items: ["a", "b"] } });
     const contents = generateContent.mock.calls[1][0].contents as { role: string; parts: { text: string }[] }[];
     expect(contents.at(-1)!.parts[0].text).toMatch(/did not match the required shape: items/);
+  });
+
+  it("a blocked prompt or reply: AiBlockedError at once (no repair round, no retry, no fallback)", async () => {
+    for (const blocked of [
+      { text: undefined, promptFeedback: { blockReason: "SAFETY" }, candidates: [] },
+      { text: "", candidates: [{ finishReason: "PROHIBITED_CONTENT" }] },
+    ]) {
+      generateContent.mockReset().mockResolvedValueOnce(blocked);
+      const { promise, logs } = await run();
+      await expect(promise).rejects.toBeInstanceOf(AiBlockedError);
+      expect(generateContent).toHaveBeenCalledTimes(1);
+      expect(logs).toEqual([expect.objectContaining({ status: "failed", error: expect.stringMatching(/^blocked: /) })]);
+    }
   });
 
   it("invalid JSON twice: AiOutputError", async () => {

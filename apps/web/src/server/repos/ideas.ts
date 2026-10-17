@@ -101,11 +101,13 @@ export type Suggestion = IdeaSessionDoc["suggestions"][number];
  * The idea's `rev` doesn't change: it guards what the user types, and a suggestion run must never make the next
  * autosave look like a conflict. Null when the project is unknown, someone else's or deleted.
  */
-export async function addSuggestions(userId: string, projectId: string, cards: Omit<Suggestion, "id">[]): Promise<Suggestion[] | null> {
+export async function addSuggestions(userId: string, projectId: string, cards: Omit<Suggestion, "id">[]): Promise<Suggestion[] | null | "invalid_state"> {
   const _id = toObjectId(projectId);
   if (!_id) return null;
-  const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { projection: { _id: 1 } });
+  const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { projection: { status: 1 } });
   if (!project) return null;
+  // Checked again here: the video may have left the idea stage (e.g. a storyboard started) while Gemini was thinking.
+  if (!isAllowed(project.status, "edit_idea")) return "invalid_state";
   const now = new Date();
   const saved: Suggestion[] = cards.map((c) => ({ id: `sg_${randomBytes(6).toString("hex")}`, ...c }));
   // A project from before idea sessions existed gets its (empty) session here.

@@ -1,4 +1,4 @@
-import { AiBusyError, AiOutputError, suggestIdeas } from "@videozilla/ai";
+import { AiBlockedError, AiBusyError, AiOutputError, suggestIdeas } from "@videozilla/ai";
 import { AUDIENCES, truncateChars } from "@videozilla/db";
 import { z } from "zod";
 import { ApiError } from "@/server/api/errors";
@@ -8,7 +8,7 @@ import { collections } from "@/server/db/mongo";
 import { logAiCall } from "@/server/repos/ai-calls";
 import { addSuggestions, IDEA_LIMITS } from "@/server/repos/ideas";
 import { getProject } from "@/server/repos/projects";
-import { consumeUsage, rateLimitHeaders } from "@/server/repos/usage";
+import { consumeUsage, rateLimitHeaders, refundUsage } from "@/server/repos/usage";
 import { isAllowed } from "@/server/rules/project-actions";
 
 /**
@@ -53,6 +53,10 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
       (call) => logAiCall({ userId: user.id, projectId: project._id, task: "ideas", ...call }),
     );
   } catch (err) {
+    // Blocked by Gemini's safety filters: a refusal like the model's own, and it counts (it was real use).
+    if (err instanceof AiBlockedError) throw unsafe();
+    // Nothing was delivered: give the request back to the daily limit.
+    await refundUsage(user.id, usage);
     if (err instanceof AiBusyError || err instanceof AiOutputError) {
       if (err instanceof AiOutputError) console.warn(`[ideas] ${err.message}`);
       throw new ApiError("AI_BUSY", { retryAfterSec: BUSY_RETRY_SEC });
@@ -60,12 +64,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     throw err;
   }
 
-  if ("refused" in reply) {
-    throw new ApiError("UNSAFE_CONTENT", {
-      message: "We can't make a video about that topic. Try a different subject.",
-      details: [{ field: "topic", issue: truncateChars(reply.reason, 200) }],
-    });
-  }
+  if ("refused" in reply) throw unsafe(reply.reason);
 
   const suggestions = await addSuggestions(
     user.id,
@@ -78,8 +77,18 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     })),
   );
   if (!suggestions) throw new ApiError("NOT_FOUND"); // deleted while Gemini was thinking
+  if (suggestions === "invalid_state") {
+    throw new ApiError("INVALID_STATE", { message: "The video moved on to its storyboard while the ideas were being made, so they weren't saved." });
+  }
   return json({ suggestions }, { headers: rateLimitHeaders(usage) });
 });
+
+function unsafe(reason?: string) {
+  return new ApiError("UNSAFE_CONTENT", {
+    message: "We can't make a video about that topic. Try a different subject.",
+    details: [{ field: "topic", issue: reason ? truncateChars(reason, 200) : "blocked by the AI's safety filters" }],
+  });
+}
 
 const notAllowed = methodNotAllowed(["POST"]);
 export { notAllowed as GET, notAllowed as PUT, notAllowed as PATCH, notAllowed as DELETE };

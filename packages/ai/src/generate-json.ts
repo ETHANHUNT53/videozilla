@@ -38,6 +38,17 @@ export class AiBusyError extends Error {
   }
 }
 
+/**
+ * Gemini's own safety filters blocked the prompt or the reply (no text comes back). Not worth retrying: the same
+ * request is blocked again. The app answers it like a refusal (422 UNSAFE_CONTENT).
+ */
+export class AiBlockedError extends Error {
+  constructor(readonly reason: string) {
+    super(`Gemini blocked the request (${reason})`);
+    this.name = "AiBlockedError";
+  }
+}
+
 /** Gemini answered, but not with JSON of the right shape, even after the repair round. */
 export class AiOutputError extends Error {
   constructor(message: string) {
@@ -50,6 +61,17 @@ const BUSY = /\b(429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|DEADLINE_
 const isBusy = (err: unknown) => BUSY.test(String((err as Error)?.message ?? err)) || (err as Error)?.name === "AbortError" || (err as Error)?.name === "TimeoutError";
 const isTimeout = (err: unknown) => (err as Error)?.name === "TimeoutError" || (err as Error)?.name === "AbortError" || /timed? ?out|aborted/i.test(String((err as Error)?.message));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Finish reasons that mean Gemini's safety systems stopped the answer. */
+const BLOCKED_FINISH = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY"]);
+
+/** Why Gemini blocked this response, or null when it wasn't blocked. */
+function blockReason(res: { promptFeedback?: { blockReason?: unknown }; candidates?: { finishReason?: unknown }[] }): string | null {
+  const prompt = res.promptFeedback?.blockReason;
+  if (prompt) return `prompt ${String(prompt)}`;
+  const finish = res.candidates?.[0]?.finishReason;
+  return typeof finish === "string" && BLOCKED_FINISH.has(finish) ? `reply ${finish}` : null;
+}
 
 /**
  * Time kept back for the fallback model while the main one runs. Measured 2026-10-17 on the free tier, for 5 Hindi
@@ -110,6 +132,11 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
             timer = setTimeout(() => reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })), remaining);
           }),
         ]).finally(() => clearTimeout(timer));
+        const blocked = blockReason(res);
+        if (blocked) {
+          await log({ model, status: "failed", latencyMs: Date.now() - started, inputTokens: res.usageMetadata?.promptTokenCount ?? null, outputTokens: null, error: `blocked: ${blocked}` });
+          throw new AiBlockedError(blocked);
+        }
         await log({
           model,
           status: model === primary ? "ok" : "fallback",
@@ -119,6 +146,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         });
         return { text: res.text ?? "", model };
       } catch (err) {
+        if (err instanceof AiBlockedError) throw err;
         const busy = isBusy(err);
         await log({ model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: String((err as Error)?.message ?? err).slice(0, 300) });
         if (!busy) throw err;

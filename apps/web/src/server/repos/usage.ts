@@ -71,6 +71,9 @@ export interface UsageResult {
   used: number;
   limit: number | null;
   resetsAt: Date;
+  /** The IST day it was counted on, and how much (what `refundUsage` gives back). */
+  date?: string;
+  amount?: number;
 }
 
 /**
@@ -102,7 +105,7 @@ export async function consumeUsage(userId: string, counter: UsageCounter, opts: 
       { $inc: { [counter]: amount }, $set: { updatedAt: new Date() } },
       { returnDocument: "after", session },
     );
-    if (doc) return { counter, used: doc[counter] as number, limit, resetsAt };
+    if (doc) return { counter, used: doc[counter] as number, limit, resetsAt, date, amount };
   }
 
   const current = await collections.usageCounters().findOne({ userId, date }, { session });
@@ -117,6 +120,23 @@ export async function consumeUsage(userId: string, counter: UsageCounter, opts: 
     details: [{ field: counter, issue: `limit ${limit} per day reached`, counter, limit, used, resetsAt: resetsAt.toISOString() }],
     retryAfterSec: Math.max(1, Math.ceil((resetsAt.getTime() - (opts.now ?? new Date()).getTime()) / 1000)),
   });
+}
+
+/**
+ * Gives back what `consumeUsage` counted, when the work it paid for didn't happen (e.g. the AI was busy and nothing
+ * was delivered). On the same IST day it was counted, and never below zero. Never throws: a refund that fails only
+ * leaves the count a little high.
+ */
+export async function refundUsage(userId: string, usage: UsageResult): Promise<void> {
+  if (!usage.date || !usage.amount) return;
+  try {
+    await collections.usageCounters().updateOne(
+      { userId, date: usage.date, [usage.counter]: { $gte: usage.amount } },
+      { $inc: { [usage.counter]: -usage.amount }, $set: { updatedAt: new Date() } },
+    );
+  } catch (err) {
+    console.warn(`[usage] couldn't refund ${usage.counter} for ${userId}:`, err instanceof Error ? err.message : err);
+  }
 }
 
 /** `GET /api/v1/me/usage` (API Design §13.1): today's counts and limits. */
