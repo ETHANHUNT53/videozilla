@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteProjectAction, duplicateProjectAction, renameProjectAction, restoreProjectAction } from "@/app/(app)/actions";
-import { FILTERS, STATUS_DISPLAY, timeAgo, type ProjectStatus } from "@/lib/status";
+import { FILTERS, STATUS_DISPLAY, type ProjectStatus } from "@/lib/status";
+import { TimeAgo } from "./time-ago";
 import { Chip, cx, inputStyles } from "./ui";
 
 interface Project {
@@ -59,7 +60,7 @@ export function LibraryToolbar({ filter, q }: { filter: string; q: string }) {
   );
 }
 
-export function LibraryGrid({ projects, empty = false, searching = false }: { projects: Project[]; empty?: boolean; searching?: boolean }) {
+export function LibraryGrid({ projects, renderedAt, empty = false, searching = false }: { projects: Project[]; renderedAt: number; empty?: boolean; searching?: boolean }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
   const router = useRouter();
@@ -84,6 +85,7 @@ export function LibraryGrid({ projects, empty = false, searching = false }: { pr
           <ProjectCard
             key={p.id}
             project={p}
+            renderedAt={renderedAt}
             onDeleted={() => {
               setHidden((h) => new Set(h).add(p.id));
               setUndo({ id: p.id, title: p.title });
@@ -120,7 +122,7 @@ export function LibraryGrid({ projects, empty = false, searching = false }: { pr
   );
 }
 
-function ProjectCard({ project, onDeleted, onDuplicated }: { project: Project; onDeleted: () => void; onDuplicated: (id: string) => void }) {
+function ProjectCard({ project, renderedAt, onDeleted, onDuplicated }: { project: Project; renderedAt: number; onDeleted: () => void; onDuplicated: (id: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(project.title);
   const [menu, setMenu] = useState(false);
@@ -176,7 +178,7 @@ function ProjectCard({ project, onDeleted, onDuplicated }: { project: Project; o
           )}
           <div className="flex items-center gap-2">
             <Chip color={status.color}>{status.label}</Chip>
-            <span className="font-mono text-xs text-dim">{timeAgo(project.updatedAt)}</span>
+            <TimeAgo iso={project.updatedAt} renderedAt={renderedAt} className="font-mono text-xs text-dim" />
           </div>
         </div>
         <div className="relative">

@@ -32,6 +32,12 @@ export default function LibraryPage({ searchParams }: PageProps<"/library">) {
   );
 }
 
+// The time the list was read. The cards' "2 min ago" labels render from it on the server and again while hydrating,
+// so both sides produce the same text; the browser's clock takes over once the page is live.
+async function readTime() {
+  return Date.now();
+}
+
 async function LibraryContent({ searchParams }: { searchParams: PageProps<"/library">["searchParams"] }) {
   const user = await requireUser();
   const params = await searchParams;
@@ -39,9 +45,10 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
   const q = typeof params.q === "string" ? params.q.slice(0, 80) : "";
   const before = typeof params.before === "string" ? params.before : undefined;
 
-  const [{ items, nextCursor }, attention] = await Promise.all([
+  const [{ items, nextCursor }, attention, renderedAt] = await Promise.all([
     listProjects(user.id, { group, q, before }),
     group === "all" && !q && !before ? listProjects(user.id, { group: "attention" }) : Promise.resolve({ items: [], nextCursor: null }),
+    readTime(),
   ]);
 
   return (
@@ -50,10 +57,10 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
       {attention.items.length ? (
         <section className="flex flex-col gap-3">
           <Eyebrow accent="text-red">needs attention</Eyebrow>
-          <LibraryGrid projects={attention.items} />
+          <LibraryGrid projects={attention.items} renderedAt={renderedAt} />
         </section>
       ) : null}
-      <LibraryGrid projects={items.filter((p) => !attention.items.some((a) => a.id === p.id))} empty={!q && group === "all" && !before} searching={Boolean(q) || group !== "all"} />
+      <LibraryGrid renderedAt={renderedAt} projects={items.filter((p) => !attention.items.some((a) => a.id === p.id))} empty={!q && group === "all" && !before} searching={Boolean(q) || group !== "all"} />
       {nextCursor ? (
         <a href={`/library?${new URLSearchParams({ ...(group !== "all" ? { filter: group } : {}), ...(q ? { q } : {}), before: nextCursor })}`} className="self-center font-mono text-sm text-cyan hover:underline">
           Load older videos →
