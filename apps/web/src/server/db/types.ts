@@ -79,6 +79,8 @@ export interface ProfileDoc {
   /** "What do you teach or create about?" (onboarding, Settings), ≤ 200 characters; tailors idea suggestions (F2). */
   about?: string | null;
   role: ProfileRole;
+  /** Per-user daily limits set by an admin (DB Design §4.2, §4.17), e.g. `{ renders: 20 }`. */
+  limitsOverride?: Partial<Record<string, number>> | null;
   createdAt: Date;
   updatedAt: Date;
 }

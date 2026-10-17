@@ -57,5 +57,7 @@ export const mongoModule = {
     pipelineRuns: () => testMongo.db.collection("pipeline_runs"),
     publishJobs: () => testMongo.db.collection("publish_jobs"),
     renderJobs: () => testMongo.db.collection("render_jobs"),
+    usageCounters: () => testMongo.db.collection("usage_counters"),
+    config: () => testMongo.db.collection("config"),
   },
 };

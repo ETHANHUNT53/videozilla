@@ -620,6 +620,8 @@ updateOne(
 
 `matchedCount = 0` on an existing document → `429 LIMIT_REACHED`. Upsert races are resolved by the unique `{userId, date}` index with a single retry.
 
+**Implementation note (F1.13):** the counter filter must also accept a counter that is **missing** from the day's document (`$or: [{ [counter]: { $lte: limit - amount } }, { [counter]: { $exists: false } }]`). Otherwise the first use of one counter on a day that already has a document for another counter matches nothing, the upsert hits the unique index, and it looks like "limit reached". A duplicate-key error is retried once, then treated as the limit. See [F1.13 design note](features/F1.13-usage-limits.md).
+
 ### 7.6 Transactional outbox for Inngest events
 
 To avoid "DB says running, but the job was never sent", the event payload is written as `pipeline_runs.outbox = { name, data, sentAt: null }` inside the transaction. After commit, it's sent and `sentAt` is set. The watchdog re-sends any run with `active: true`, `outbox.sentAt: null` older than 30 s. Inngest de-duplicates by event `id` (= `idempotencyKey`).

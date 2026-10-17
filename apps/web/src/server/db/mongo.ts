@@ -39,6 +39,8 @@ export const collections = {
   pipelineRuns: () => db().collection(COLLECTIONS.pipelineRuns),
   publishJobs: () => db().collection(COLLECTIONS.publishJobs),
   renderJobs: () => db().collection(COLLECTIONS.renderJobs),
+  usageCounters: () => db().collection(COLLECTIONS.usageCounters),
+  config: () => db().collection(COLLECTIONS.config),
 };
 
 /**
