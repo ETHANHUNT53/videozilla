@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { ApiClientError, apiCall } from "@/lib/api-client";
 import { Button } from "./ui";
 
 /** "+ Create video": `POST /api/v1/projects` (a new idea draft with the profile defaults), then opens the project. */
@@ -18,23 +19,13 @@ export function CreateVideoButton() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: "{}",
-      });
-      if (res.status === 401) {
-        // Signed out meanwhile (e.g. a password reset elsewhere): sign in again and come back to the Library.
-        router.push(`/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-        return;
-      }
-      const body = await res.json().catch(() => null);
-      if (!res.ok || typeof body?.id !== "string") throw new Error(body?.error?.message ?? "Couldn't create the video. Please try again.");
+      // apiCall sends a signed-out user to sign-in (401) and turns API errors into a message safe to show.
+      const { data } = await apiCall<{ id: string }>("/api/v1/projects", { method: "POST", body: {} });
       // Drop the cached Library so Back shows the new draft, then open it.
       router.refresh();
-      router.push(`/projects/${body.id}`);
+      router.push(`/projects/${data.id}`);
     } catch (err) {
-      setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't create the video. Check your connection and try again.");
+      setError(err instanceof ApiClientError ? err.message : "Couldn't create the video. Please try again.");
       setBusy(false);
       inFlight.current = false;
     }

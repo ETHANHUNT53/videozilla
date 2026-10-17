@@ -1,13 +1,10 @@
 import { z } from "zod";
 import { ApiError } from "@/server/api/errors";
 import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
-import { etag, ifMatchRev, textField } from "@/server/api/request";
+import { etag, ifMatchRev, projectParams as params, textField } from "@/server/api/request";
 import { toProject } from "@/server/api/resources";
 import { AUDIENCES, BOARDS_OR_EXAMS } from "@videozilla/db";
 import { deleteProject, getProject, updateProject } from "@/server/repos/projects";
-
-/** Any string: an id that isn't a valid project id is simply "not found" (404), like another user's project. */
-const params = z.strictObject({ id: z.string() });
 
 /** `GET /api/v1/projects/{id}` (API Design §13.2): `200 Project` with `ETag: "<rev>"`. */
 export const GET = apiRoute({ params }, async ({ user, params }) => {
@@ -17,7 +14,7 @@ export const GET = apiRoute({ params }, async ({ user, params }) => {
 });
 
 /**
- * `PATCH /api/v1/projects/{id}` (API Design §13.2): change settings. Title in any status (except while posting);
+ * `PATCH /api/v1/projects/{id}` (API Design §13.2): change settings. Title in any status;
  * language / length / audience / board only in `idea_draft` or `storyboard_ready` (there the response says
  * `requiresRegeneration: true`); voice / captions in `storyboard_ready`, `preview_ready` or `exported` (on the last two
  * the video needs a rebuild or re-export, so `exportOutdated` becomes true).

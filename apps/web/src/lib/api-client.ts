@@ -26,6 +26,14 @@ export async function apiCall<T>(path: string, init: { method?: string; body?: u
   } catch {
     throw new ApiClientError(0, "NETWORK", "Couldn't reach Videozilla. Check your connection and try again.");
   }
+  if (res.status === 401) {
+    // Signed out meanwhile (e.g. a password reset elsewhere): sign in again and come back to this page. Callers still
+    // get an error so they stop; the page is already navigating away.
+    // A full page load on purpose: this helper has no router, and a lost session should reset all client state.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(`/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    throw new ApiClientError(401, "UNAUTHENTICATED", "Please sign in to continue.");
+  }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const error = body?.error;

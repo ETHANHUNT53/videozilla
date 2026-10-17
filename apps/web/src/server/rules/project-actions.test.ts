@@ -22,6 +22,9 @@ describe("allowedActions (DB Design §5.2)", () => {
 
   it.each([
     ["edit_idea", ["idea_draft", "storyboard_ready"]],
+    // API Design §13.2 PATCH: language / length / audience / board, and voice / captions.
+    ["edit_script_settings", ["idea_draft", "storyboard_ready"]],
+    ["edit_media_settings", ["storyboard_ready", "preview_ready", "exported"]],
     ["generate", ["idea_draft", "storyboard_ready"]],
     ["approve", ["storyboard_ready", "preview_ready", "exported"]],
     ["export", ["preview_ready", "exported"]],

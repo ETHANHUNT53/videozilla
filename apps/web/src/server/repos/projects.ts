@@ -3,7 +3,7 @@ import { truncateChars } from "@videozilla/db";
 import { ObjectId, type Filter } from "mongodb";
 import { collections, ensureMigrated, withTransaction } from "../db/mongo";
 import { afterCursorDesc, decodeCursor, DEFAULT_LIMIT, toPage, type Page } from "../api/pagination";
-import { statusesAllowing } from "../rules/project-actions";
+import { isAllowed, statusesAllowing } from "../rules/project-actions";
 import {
   STATUS_GROUPS,
   type Audience,
@@ -215,8 +215,6 @@ export interface ProjectUpdate {
  */
 const SCRIPT_FIELDS = ["language", "lengthPreset", "audience", "boardOrExam"] as const;
 const MEDIA_FIELDS = ["voiceGender", "captionsEnabled"] as const;
-const SCRIPT_STATUSES: ProjectStatus[] = ["idea_draft", "storyboard_ready"];
-const MEDIA_STATUSES: ProjectStatus[] = ["storyboard_ready", "preview_ready", "exported"];
 
 export type UpdateResult =
   | { ok: true; project: ProjectDoc; requiresRegeneration: boolean }
@@ -251,8 +249,8 @@ export async function updateProject(userId: string, id: string, update: ProjectU
 
     const blocked = [
       ...(changes.title !== undefined && !statusesAllowing("rename").includes(current.status) ? ["title"] : []),
-      ...SCRIPT_FIELDS.filter((f) => f in changes && !SCRIPT_STATUSES.includes(current.status)),
-      ...MEDIA_FIELDS.filter((f) => f in changes && !MEDIA_STATUSES.includes(current.status)),
+      ...SCRIPT_FIELDS.filter((f) => f in changes && !isAllowed(current.status, "edit_script_settings")),
+      ...MEDIA_FIELDS.filter((f) => f in changes && !isAllowed(current.status, "edit_media_settings")),
     ];
     if (blocked.length) return { ok: false, reason: "invalid_state", current, fields: blocked };
 

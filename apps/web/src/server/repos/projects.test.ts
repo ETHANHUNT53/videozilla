@@ -434,7 +434,7 @@ describe("POST /api/v1/projects", () => {
       ].sort(),
     );
     expect(body).toMatchObject({ title: "Untitled video", status: "idea_draft", language: "en", lengthPreset: 60, voiceGender: "female", audience: "students", rev: 0 });
-    expect(body.allowedActions).toEqual(["edit_idea", "generate", "rename", "delete", "duplicate"]);
+    expect(body.allowedActions).toEqual(["edit_idea", "edit_script_settings", "generate", "rename", "delete", "duplicate"]);
     expect(await state.db.collection("idea_sessions").countDocuments({ projectId: new ObjectId(body.id as string) })).toBe(1);
   });
 
@@ -619,7 +619,10 @@ describe("/api/v1/projects/{id} endpoints", () => {
     const [built] = await seed([project(1, { status: "preview_ready" })]);
     const target = ctx(built._id.toHexString());
     for (const body of [{}, { lengthPreset: 45 }, { status: "posted" }, { title: "" }]) expect((await one.PATCH(req("PATCH", { body }), target)).status, JSON.stringify(body)).toBe(400);
-    expect((await one.PATCH(req("PATCH", { body: { title: "x" }, headers: { "if-match": "abc" } }), target)).status).toBe(400);
+    // If-Match only in our strong form "<rev>": weak, bare or half-quoted values are 400, never a skipped check.
+    for (const ifMatch of ["abc", 'W/"1"', "1", '"1', '1"']) {
+      expect((await one.PATCH(req("PATCH", { body: { title: "x" }, headers: { "if-match": ifMatch } }), target)).status, ifMatch).toBe(400);
+    }
     const locked = await one.PATCH(req("PATCH", { body: { language: "hi" } }), target);
     expect(locked.status).toBe(409);
     expect((await locked.json()).error).toMatchObject({ code: "INVALID_STATE", details: [{ field: "language", current: "preview_ready" }] });

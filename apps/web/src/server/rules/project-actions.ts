@@ -6,6 +6,10 @@ import type { ProjectStatus } from "../db/types";
  */
 export const ALLOWED_ACTIONS = [
   "edit_idea",
+  /** PATCH language / lengthPreset / audience / boardOrExam (API Design §13.2). */
+  "edit_script_settings",
+  /** PATCH voiceGender / captionsEnabled (API Design §13.2). */
+  "edit_media_settings",
   "generate",
   "revise",
   "approve",
@@ -23,13 +27,13 @@ export type AllowedAction = (typeof ALLOWED_ACTIONS)[number];
 
 // "duplicate" works in every status, including posted (API §13.2); "rename" in every status too.
 const BY_STATUS: Record<ProjectStatus, AllowedAction[]> = {
-  idea_draft: ["edit_idea", "generate", "rename", "delete", "duplicate"],
+  idea_draft: ["edit_idea", "edit_script_settings", "generate", "rename", "delete", "duplicate"],
   storyboard_generating: ["rename", "delete", "duplicate"],
-  storyboard_ready: ["edit_idea", "generate", "revise", "approve", "rename", "delete", "duplicate"],
+  storyboard_ready: ["edit_idea", "edit_script_settings", "edit_media_settings", "generate", "revise", "approve", "rename", "delete", "duplicate"],
   building: ["revise", "rename", "delete", "duplicate"], // a revision is queued until the build ends
-  preview_ready: ["revise", "approve", "export", "rename", "delete", "duplicate"], // approve = rebuild after a voice change
+  preview_ready: ["edit_media_settings", "revise", "approve", "export", "rename", "delete", "duplicate"], // approve = rebuild after a voice change
   rendering: ["revise", "rename", "delete", "duplicate"],
-  exported: ["revise", "approve", "export", "publish", "schedule", "rename", "delete", "duplicate"],
+  exported: ["edit_media_settings", "revise", "approve", "export", "publish", "schedule", "rename", "delete", "duplicate"],
   scheduled: ["edit_schedule", "cancel_schedule", "rename", "delete", "duplicate"],
   publishing: ["rename", "duplicate"], // delete waits for the post attempt (409 PUBLISH_IN_PROGRESS)
   posted: ["rename", "delete", "duplicate"],

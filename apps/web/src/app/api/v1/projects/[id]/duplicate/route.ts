@@ -1,6 +1,6 @@
-import { z } from "zod";
 import { ApiError } from "@/server/api/errors";
 import { apiRoute, created, methodNotAllowed } from "@/server/api/handler";
+import { projectParams } from "@/server/api/request";
 import { toProject } from "@/server/api/resources";
 import { duplicateProject } from "@/server/repos/projects";
 
@@ -9,7 +9,7 @@ import { duplicateProject } from "@/server/repos/projects";
  * idea; renders and posts are not copied. Works in any status, including `posted` (to post the video again).
  * `201 Project` with `Location`.
  */
-export const POST = apiRoute({ params: z.strictObject({ id: z.string() }) }, async ({ user, params }) => {
+export const POST = apiRoute({ params: projectParams }, async ({ user, params }) => {
   const copy = await duplicateProject(user.id, params.id);
   if (!copy) throw new ApiError("NOT_FOUND");
   const id = copy._id.toHexString();

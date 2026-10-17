@@ -94,7 +94,6 @@ export function LibraryFeed({
   empty?: boolean;
   searching?: boolean;
 }) {
-  const router = useRouter();
   // Older pages loaded in the browser, and the cursor after the last of them (null: nothing loaded yet).
   const [older, setOlder] = useState<Project[]>([]);
   const [olderCursor, setOlderCursor] = useState<string | null | undefined>(undefined);
@@ -117,19 +116,11 @@ export function LibraryFeed({
       if (filter !== "all") params.set("filter", filter);
       if (q) params.set("q", q);
       if (excludeAttention) params.set("exclude", "attention");
-      const res = await fetch(`/api/v1/projects?${params}`, { headers: { Accept: "application/json" } });
-      if (res.status === 401) {
-        // Signed out meanwhile (e.g. a password reset elsewhere): sign in again and come back here.
-        router.push(`/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-        return;
-      }
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error?.message ?? "Couldn't load more videos. Please try again.");
-      const page = body as ProjectPage;
+      const { data: page } = await apiCall<ProjectPage>(`/api/v1/projects?${params}`);
       setOlder((prev) => [...prev, ...page.items.filter((n) => !prev.some((p) => p.id === n.id))]);
       setOlderCursor(page.nextCursor);
     } catch (err) {
-      setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't load more videos. Check your connection and try again.");
+      setError(err instanceof ApiClientError ? err.message : "Couldn't load more videos. Please try again.");
     } finally {
       inFlight.current = false;
       setLoading(false);
@@ -174,6 +165,8 @@ export function LibraryGrid({
   const [latest, setLatest] = useState<Record<string, Project>>({});
   const remember = (project: Project) => setLatest((l) => ({ ...l, [project.id]: project }));
   const router = useRouter();
+  // Re-render the Library (and drop cached pages) after a change here, so Back and the project page show it too.
+  const refresh = () => router.refresh();
 
   useEffect(() => {
     if (!undo) return;
@@ -181,7 +174,9 @@ export function LibraryGrid({
     return () => clearTimeout(t);
   }, [undo]);
 
-  const visible = projects.filter((p) => !hidden.has(p.id)).map((p) => latest[p.id] ?? p);
+  // Whichever copy is newer: the one remembered here after a change, or a fresher one from the server (a refresh, or a
+  // change made elsewhere). On equal revisions the server's copy wins.
+  const visible = projects.filter((p) => !hidden.has(p.id)).map((p) => (latest[p.id] && latest[p.id].rev > p.rev ? latest[p.id] : p));
 
   if (!visible.length && !undo) {
     if (searching) return <p className="py-10 text-center text-muted">No videos match.</p>;
@@ -197,10 +192,14 @@ export function LibraryGrid({
             project={p}
             renderedAt={renderedAt}
             timeZone={timeZone}
-            onSaved={remember}
+            onSaved={(project) => {
+              remember(project);
+              refresh();
+            }}
             onDeleted={(title) => {
               setHidden((h) => new Set(h).add(p.id));
               setUndo({ id: p.id, title });
+              refresh();
             }}
             onDuplicated={(id) => router.push(`/projects/${id}`)}
           />
@@ -226,6 +225,7 @@ export function LibraryGrid({
                     n.delete(id);
                     return n;
                   });
+                  refresh();
                 } catch (err) {
                   setUndoError(err instanceof ApiClientError ? err.message : "Couldn't undo. Please try again.");
                 }
@@ -262,8 +262,14 @@ function ProjectCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(project.title);
-  // The title and revision last saved on the server (the props are only the first render's).
+  // The title and revision last saved on the server.
   const [saved, setSaved] = useState({ title: project.title, rev: project.rev });
+  // A newer copy arrived from the server (a refresh, or a change in another tab): take it, so the next rename sends
+  // the current rev instead of failing with 412. Adjusting state during render, as React recommends for this.
+  if (project.rev > saved.rev) {
+    setSaved({ title: project.title, rev: project.rev });
+    if (!editing) setTitle(project.title);
+  }
   const [menu, setMenu] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
