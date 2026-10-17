@@ -23,6 +23,7 @@ import * as duplicate from "@/app/api/v1/projects/[id]/duplicate/route";
 import * as restore from "@/app/api/v1/projects/[id]/restore/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { needsWelcome } from "../onboarding";
+import { USER_DATA_COLLECTIONS } from "../repos/account";
 import { getOrCreateProfile, updateProfile } from "../repos/profiles";
 import { createProject, deleteProject, getProject } from "../repos/projects";
 import { consumeUsage } from "../repos/usage";
@@ -43,10 +44,13 @@ function req(method: string, url: string, init: { body?: unknown; headers?: Reco
   });
 }
 
+/** Response headers that carry information about a resource; a foreign id must not get any an unknown one doesn't. */
+const RESOURCE_HEADERS = ["etag", "location", "allow", "retry-after", "ratelimit-limit", "ratelimit-remaining", "ratelimit-reset", "cache-control", "content-type"];
+
 async function call(handler: Handler, method: string, url: string, params?: Record<string, string>, body?: unknown, headers?: Record<string, string>) {
   const res = await handler(req(method, url, { body, headers }), ctx(params));
   const json = await res.json().catch(() => null);
-  return { status: res.status, json };
+  return { status: res.status, json, headers: Object.fromEntries(RESOURCE_HEADERS.map((h) => [h, res.headers.get(h)])) };
 }
 
 /** What A owns, created through the same services the app uses. */
@@ -56,7 +60,7 @@ let bProject: string;
 beforeAll(startTestMongo, 120_000);
 afterAll(stopTestMongo);
 beforeEach(async () => {
-  await clearCollections(["projects", "idea_sessions", "profiles", "pipeline_runs", "publish_jobs", "render_jobs", "usage_counters", "config"]);
+  await clearCollections([...USER_DATA_COLLECTIONS, "config"]);
 
   const aProfile = await getOrCreateProfile(A.id, A.name);
   await updateProfile(A.id, { defaultLanguage: "hi", about: "A's private topic", onboardingCompleted: true });
@@ -71,6 +75,15 @@ beforeEach(async () => {
   await testMongo.db.collection("pipeline_runs").insertOne(
     { projectId: live._id, userId: A.id, kind: "build", status: "running", active: true, trigger: { by: "user" }, idempotencyKey: "a-run", steps: [], createdAt: new Date(), updatedAt: new Date() },
   );
+  // A's scheduled Instagram post and queued render: a DELETE cascade (by projectId) would cancel exactly these.
+  await testMongo.db.collection("publish_jobs").insertOne(
+    { projectId: live._id, userId: A.id, renderId: new ObjectId(), status: "scheduled", active: true, mode: "scheduled", idempotencyKey: "a-post", rev: 0, createdAt: new Date(), updatedAt: new Date() },
+    { bypassDocumentValidation: true },
+  );
+  await testMongo.db.collection("render_jobs").insertOne(
+    { renderId: new ObjectId(), projectId: live._id, userId: A.id, status: "queued", priority: 1, attempt: 0, progress: 0, createdAt: new Date(), updatedAt: new Date() },
+    { bypassDocumentValidation: true },
+  );
   await consumeUsage(A.id, "renders");
   await consumeUsage(A.id, "renders");
   a = { live: live._id.toHexString(), deleted: deleted._id.toHexString(), attention: attention._id.toHexString(), title: live.title };
@@ -82,17 +95,23 @@ beforeEach(async () => {
   as(B);
 });
 
-/** A snapshot of everything A owns, to prove nothing changed. */
+/** A snapshot of everything A owns, in every user-data collection (DB Design §1), to prove nothing changed. */
 async function snapshotA() {
-  const strip = (docs: Record<string, unknown>[]) => docs.map(({ _id, ...rest }) => ({ _id: String(_id), ...rest }));
-  return {
-    projects: strip(await testMongo.db.collection("projects").find({ userId: A.id }).sort({ _id: 1 }).toArray()),
-    ideas: strip(await testMongo.db.collection("idea_sessions").find({ userId: A.id }).sort({ _id: 1 }).toArray()),
-    profile: await testMongo.db.collection("profiles").findOne({ userId: A.id }, { projection: { _id: 0 } }),
-    runs: strip(await testMongo.db.collection("pipeline_runs").find({ userId: A.id }).toArray()),
-    usage: await testMongo.db.collection("usage_counters").findOne({ userId: A.id }, { projection: { _id: 0 } }),
-  };
+  const snapshot: Record<string, unknown[]> = {};
+  for (const name of USER_DATA_COLLECTIONS) {
+    const docs = await testMongo.db.collection(name).find({ userId: A.id }).sort({ _id: 1 }).toArray();
+    snapshot[name] = docs.map(({ _id, ...rest }) => ({ _id: String(_id), ...rest }));
+  }
+  return snapshot;
 }
+
+it("the snapshot really covers A's queued work (so a wrongful cancel would show)", async () => {
+  const snap = await snapshotA();
+  expect(snap.publish_jobs).toHaveLength(1);
+  expect(snap.render_jobs).toHaveLength(1);
+  expect(snap.pipeline_runs).toHaveLength(1);
+  expect(Object.keys(snap).sort()).toEqual([...USER_DATA_COLLECTIONS].sort());
+});
 
 /** Same status and error as an id that doesn't exist (requestId aside), so nothing leaks about A's ids. */
 async function expectLikeUnknown(handler: Handler, method: string, suffix: string, foreignId: string, body?: unknown) {
@@ -100,11 +119,12 @@ async function expectLikeUnknown(handler: Handler, method: string, suffix: strin
   const foreign = await call(handler, method, `/api/v1/projects/${foreignId}${suffix}`, { id: foreignId }, body);
   const missing = await call(handler, method, `/api/v1/projects/${unknown}${suffix}`, { id: unknown }, body);
   expect(foreign.status).toBe(404);
-  expect({ status: foreign.status, code: foreign.json?.error?.code, message: foreign.json?.error?.message, details: foreign.json?.error?.details }).toEqual({
+  expect({ status: foreign.status, code: foreign.json?.error?.code, message: foreign.json?.error?.message, details: foreign.json?.error?.details, headers: foreign.headers }).toEqual({
     status: missing.status,
     code: missing.json?.error?.code,
     message: missing.json?.error?.message,
     details: missing.json?.error?.details,
+    headers: missing.headers,
   });
 }
 
@@ -232,7 +252,34 @@ describe("every route needs a session, and a verified email", () => {
   });
 });
 
+/** Every route module, by its path under app/api/v1 (the walk below checks this list is complete). */
+const MODULES: Record<string, Record<string, unknown>> = {
+  "/[...path]": catchAll,
+  "/me": me,
+  "/me/profile": profile,
+  "/me/usage": usage,
+  "/projects": projects,
+  "/projects/[id]": one,
+  "/projects/[id]/duplicate": duplicate,
+  "/projects/[id]/restore": restore,
+};
+const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
+
 describe("coverage", () => {
+  it("every exported method of every route is either a 405 or has a cross-user case above", async () => {
+    const covered = new Set(HANDLERS.map(([label]) => label.replace("{id}", "[id]")));
+    for (const [route, mod] of Object.entries(MODULES)) {
+      if (route === "/[...path]") continue; // the 404 catch-all, checked separately
+      for (const method of METHODS.filter((m) => typeof mod[m] === "function")) {
+        const label = `${method} ${route}`;
+        if (covered.has(label)) continue;
+        const url = `/api/v1${route.replace("[id]", "x")}`;
+        const { status } = await call(mod[method] as Handler, method, url, route.includes("[id]") ? { id: "x" } : undefined, method === "GET" || method === "HEAD" ? undefined : {});
+        expect(status, `${label} is a real handler with no cross-user case: add one to HANDLERS and the tests above`).toBe(405);
+      }
+    }
+  });
+
   it("every /api/v1 route file is in this suite (add a cross-user case when you add a route)", () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../app/api/v1");
     const found: string[] = [];
@@ -244,7 +291,8 @@ describe("coverage", () => {
       }
     };
     walk(root, "");
-    const covered = new Set(["/[...path]", ...HANDLERS.map(([label]) => label.split(" ")[1].replace("{id}", "[id]"))]);
-    expect(found.sort()).toEqual([...covered].sort());
+    expect(found.sort()).toEqual(Object.keys(MODULES).sort());
+    const routesWithCases = new Set(["/[...path]", ...HANDLERS.map(([label]) => label.split(" ")[1].replace("{id}", "[id]"))]);
+    expect([...routesWithCases].sort()).toEqual(Object.keys(MODULES).sort());
   });
 });
