@@ -1,9 +1,10 @@
-import type { Audience, Language, ProfileRole, ProjectStatus, VoiceGender } from "@videozilla/db";
+import type { Audience, BOARDS_OR_EXAMS, Language, ProfileRole, ProjectStatus, VoiceGender } from "@videozilla/db";
 import type { ObjectId } from "mongodb";
 
 /** Project lifecycle (DB Design §5.1); the stored enums live in packages/db. */
 export { PROJECT_STATUSES } from "@videozilla/db";
 export type { Audience, Language, ProfileRole, ProjectStatus, VoiceGender };
+export type BoardOrExam = (typeof BOARDS_OR_EXAMS)[number];
 
 /** Library filter groups (PRD F1-FR7). */
 export const STATUS_GROUPS = {
@@ -46,8 +47,10 @@ export interface ProfileDoc {
   defaultVoiceGender: VoiceGender;
   defaultStyleId: string;
   defaultAudience: Audience;
+  defaultBoardOrExam?: BoardOrExam | null;
   timezone: string;
   emailNotifications: boolean;
+  onboardingCompletedAt?: Date | null;
   role: ProfileRole;
   createdAt: Date;
   updatedAt: Date;

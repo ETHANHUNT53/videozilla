@@ -23,6 +23,7 @@ Without `RESEND_API_KEY`, verification and password-reset emails are printed in 
 |---|---|
 | Sign up / sign in (email + password with verification, Google), password reset, account linking, delete account | `src/server/auth.ts`, `src/components/auth-forms.tsx`, `src/app/(auth)/*` |
 | Route protection (fast cookie check) | `src/proxy.ts` |
+| REST API foundation (`/api/v1`): `apiRoute()` adds request ids, the Origin check, session / verified-email checks, Zod input validation and the standard error format to every endpoint; cursor pagination helpers. First endpoint: `GET /api/v1/me` | `src/server/api/*`, `src/app/api/v1/*` |
 | Data access layer: every page and action re-checks the session | `src/server/dal.ts`, `src/app/(app)/actions.ts` |
 | User-scoped repositories (every query filtered by `userId`) | `src/server/repos/*` |
 | Library: create, rename, duplicate, delete with 10 s undo, filters, search, pagination, "needs attention" | `src/app/(app)/library`, `src/components/library.tsx` |

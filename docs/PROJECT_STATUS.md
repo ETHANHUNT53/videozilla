@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-17 |
 | **Current phase** | Feature build — F0 foundation (F1.4 Google sign-in waits for your Google keys) |
-| **Next feature** | **F0.4 — API foundation**: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination (API Design §2–§7) |
+| **Next feature** | **F0.5 — CI**: typecheck, lint and tests on every push (GitHub Actions) |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -64,7 +64,7 @@
 | F0.1 | Monorepo restructure: npm workspaces; move M0 into `packages/schema`, `pipeline`, `ai`, `voice`, `video` (no behaviour change) | ✅ | Done 2026-10-16. Verified: all 7 workspaces type-check; rebuilt EN + HI timelines/storyboards byte-identical to before; rendered frames pixel-identical; web production build OK; one React/zod version repo-wide. Azure adapter removed (approved-voices rule). |
 | F0.2 | Unit-test setup (Vitest) + tests for validator, cue sync, beats, duration fitting | ✅ | Done 2026-10-16. `npm test`: 97 tests over schema, pipeline (text, validator, cue sync, beats, captions, duration fitting), voice (approved voices only, no fallback, timings, mock) and ai (busy retry, fallback model, JSON/shape/length fixes). Checked that breaking a rule makes tests fail. Video rendering is covered later by visual-regression tests |
 | F0.3 | `packages/db`: MongoDB client, migration runner, validators + all indexes from DB Design §8 | ✅ | Done 2026-10-17. Migrations `001_initial_schema` (19 collections, 12 validators, 36 indexes) and `002_profile_defaults`; `npm run db:migrate` (`-- --status` to list); `npm run db` applies them on start. Web app uses the shared client; start-up index creation removed. 40 integration tests on a throwaway MongoDB |
-| F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ⬜ | API Design §2–§7 |
+| F0.4 | API foundation: `/api/v1` route helpers, error format, request id, Zod validation, Origin check, cursor pagination | ✅ | Done 2026-10-17. `apiRoute()` wrapper in `apps/web/src/server/api/`; first endpoint `GET /api/v1/me`; unknown `/api/v1` paths return JSON 404. 35 tests; checked against the running app. Rate limits stay at the edge (F10) |
 | F0.5 | Commit history + CI (typecheck, lint, tests on every push) | 🔵 | Repo on GitHub with full history (2026-10-16); CI still to add |
 
 ### F1 — Accounts & project library
@@ -218,3 +218,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | **F0.3 done** — new `packages/db`: shared MongoDB client, collection names, stored enums, migration runner (checksums, lock, `npm run db:migrate`), migration 001 (all collections, database validators, full index catalogue) and 002 (profile backfill). Local database migrated with all data kept (5 projects, 4 profiles). Web app: start-up index creation removed; new profiles get `defaultAudience` + `role` (F1.5 ✅). Checked in the browser: sign-up, verify, create project, settings save, delete + undo. |
 | 2026-10-17 | Fixed a hydration error on the Library page: the cards' "just now" / "1 min ago" label was worked out separately on the server and in the browser and could differ. The server now passes its request time, both sides render from it, and the label switches to the browser clock (and keeps ticking) right after load. Looks the same. |
 | 2026-10-17 | F0.3 review fixes: the migration lock is renewed before each migration and a run only releases its own lock (a run that lost it stops); `--status` also lists applied migrations whose file is gone; the web app checks once per process that the latest migration ran and fails with a clear error otherwise (production needs `npm run db:migrate` on deploy); `npm run db` stops if migrations fail; scripts use their own short-lived Mongo client; titles and names are cut by characters, never mid-emoji. |
+| 2026-10-17 | **F0.4 done** — `/api/v1` foundation: one `apiRoute()` wrapper gives every endpoint a request id, the Origin (CSRF) check, session + verified-email checks, JSON/size/Zod input validation with trimming and NFC, the standard error body (full §7.2 catalogue) and `private, no-store` caching; cursor pagination helpers (filter-bound cursors). First endpoint `GET /api/v1/me`. Web server code is now covered by `npm test`. Decided: connect MongoDB Atlas at F10.4 (staging), not before — local dev already runs the same replica set + migrations. |
