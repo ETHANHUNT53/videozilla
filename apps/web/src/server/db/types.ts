@@ -76,6 +76,8 @@ export interface ProfileDoc {
   timezone: string;
   emailNotifications: boolean;
   onboardingCompletedAt?: Date | null;
+  /** "What do you teach or create about?" (onboarding, Settings), ≤ 200 characters; tailors idea suggestions (F2). */
+  about?: string | null;
   role: ProfileRole;
   createdAt: Date;
   updatedAt: Date;

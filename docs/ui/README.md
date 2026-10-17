@@ -26,7 +26,7 @@ The approved web-app look recreated in Google Stitch as a storyboard, plus the r
 | 13 | Publish dialog (caption, post now / schedule) | S8 / F9 | ✅ new — on the canvas | — |
 | 14 | Posted (success + failed state) | F9 | ✅ new — on the canvas | — |
 | 15 | Connect Instagram (eligibility modal) | F9 | ✅ new — on the canvas | — |
-| 16 | Welcome (onboarding) | S2 | ✅ new — on the canvas | — |
+| 16 | Welcome (onboarding) | S2 | ✅ new — on the canvas; built in F1.12 | [16-welcome.png](stitch/16-welcome.png) |
 | 17 | Notifications panel | S10 | ✅ new — on the canvas | — |
 | 18 | Forgot password (+ link-sent state) | S1 | ✅ new | [18-forgot-password.png](stitch/18-forgot-password.png) |
 

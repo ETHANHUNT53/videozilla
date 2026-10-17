@@ -141,7 +141,8 @@ Notation: **R** = required, `?` = optional / nullable. "Check" lists the constra
 | `defaultBoardOrExam` | string? | | null | `cbse` \| `icse` \| `state` \| `jee` \| `neet` \| `upsc` \| null |
 | `timezone` | string | R | `Asia/Kolkata` | valid IANA zone |
 | `emailNotifications` | bool | R | true | |
-| `onboardingCompletedAt` | Date? | | null | |
+| `onboardingCompletedAt` | Date? | | null | set when onboarding is completed or skipped (F1.12) |
+| `about` | string? | | null | "What do you teach or create about?", ≤ 200 chars; tailors idea suggestions (added in F1.12, PRD F1-FR4) |
 | `role` | string | R | `user` | `user` \| `admin` ✔︎V (admin view, M7) |
 | `limitsOverride` | object? | | null | per-counter overrides (§4.17) |
 | `createdAt`, `updatedAt` | Date | R | | |

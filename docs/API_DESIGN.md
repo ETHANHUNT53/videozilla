@@ -398,6 +398,7 @@ interface Profile {
   defaultBoardOrExam: "cbse" | "icse" | "state" | "jee" | "neet" | "upsc" | null;
   timezone: string;
   emailNotifications: boolean;
+  about: string | null;            // "What do you teach or create about?" (≤ 200 chars)
   onboardingCompleted: boolean;
   updatedAt: string;
 }
@@ -491,7 +492,7 @@ Every endpoint requires a session and a verified email unless marked otherwise. 
 | Method | Path | Request | Response |
 |---|---|---|---|
 | GET | `/me` | — | `200 Me` (works for unverified users) |
-| PATCH | `/me/profile` | partial `Profile` (editable fields) | `200 Profile` |
+| PATCH | `/me/profile` | partial `Profile` (editable fields, incl. `about`), plus `onboardingCompleted: true` to finish / skip onboarding (can't be undone) | `200 Profile` |
 | GET | `/me/usage` | — | `200 { date, resetsAt, counters: { storyboards: { used, limit }, revisions: {…}, builds: {…}, renders: {…}, illustrations: {…} } }` |
 | GET | `/config` | — | `200 Config` |
 

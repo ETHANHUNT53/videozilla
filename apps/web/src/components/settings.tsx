@@ -12,9 +12,9 @@ import { Button, Field, Input, Select } from "./ui";
 type Profile = ProfileResource;
 type Editable = Pick<
   Profile,
-  "displayName" | "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultAudience" | "defaultBoardOrExam" | "timezone" | "emailNotifications"
+  "displayName" | "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultAudience" | "defaultBoardOrExam" | "timezone" | "emailNotifications" | "about"
 >;
-const KEYS = ["displayName", "defaultLanguage", "defaultLengthPreset", "defaultVoiceGender", "defaultAudience", "defaultBoardOrExam", "timezone", "emailNotifications"] as const;
+const KEYS = ["displayName", "defaultLanguage", "defaultLengthPreset", "defaultVoiceGender", "defaultAudience", "defaultBoardOrExam", "timezone", "emailNotifications", "about"] as const;
 const editableOf = (p: Profile): Editable => Object.fromEntries(KEYS.map((k) => [k, p[k]])) as Editable;
 
 const TIMEZONES = ["Asia/Kolkata", "Asia/Kathmandu", "Asia/Dhaka", "Asia/Dubai", "Asia/Singapore", "Europe/London", "America/New_York", "America/Los_Angeles"];
@@ -63,6 +63,11 @@ export function ProfileSettingsForm({ profile }: { profile: Profile }) {
         <Field label="Display name">
           {/* 60 characters counted like the API (an emoji is one), not maxLength's UTF-16 units. */}
           <Input value={draft.displayName} onChange={(e) => set("displayName", clampChars(e.target.value, 60))} />
+        </Field>
+      </div>
+      <div className="sm:col-span-2">
+        <Field label="What do you teach or create about?" hint="Optional — helps the AI suggest ideas for your audience">
+          <Input value={draft.about ?? ""} onChange={(e) => set("about", e.target.value)} maxLength={200} placeholder="e.g. Class 9 science, personal finance, history" />
         </Field>
       </div>
       <Field label="Default language">

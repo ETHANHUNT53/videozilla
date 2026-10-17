@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { LibraryFeed, LibraryToolbar } from "@/components/library";
 import { CreateVideoButton } from "@/components/create-video-button";
@@ -54,6 +55,8 @@ async function LibraryContent({ searchParams }: { searchParams: PageProps<"/libr
     readTime(),
     getOrCreateProfile(user.id, user.name), // its time zone dates older cards the same on the server and in the browser
   ]);
+  // First visit: the Welcome screen once (F1.12). Only the Library sends there, so deep links are never interrupted.
+  if (!profile.onboardingCompletedAt) redirect("/welcome");
 
   return (
     <div className="flex flex-col gap-6">

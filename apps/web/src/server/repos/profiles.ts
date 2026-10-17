@@ -44,9 +44,15 @@ export async function getOrCreateProfile(userId: string, displayName = ""): Prom
 export type ProfileUpdate = Partial<
   Pick<
     ProfileDoc,
-    "displayName" | "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultAudience" | "defaultBoardOrExam" | "timezone" | "emailNotifications"
+    "displayName" | "defaultLanguage" | "defaultLengthPreset" | "defaultVoiceGender" | "defaultAudience" | "defaultBoardOrExam" | "timezone" | "emailNotifications" | "about"
   >
->;
+> & {
+  /** Onboarding finished or skipped (F1.12): records when. Only `true` — it can't be undone. */
+  onboardingCompleted?: true;
+};
+
+/** Longest "what do you teach or create about" answer, in characters. */
+export const ABOUT_MAX_CHARS = 200;
 
 // An IANA zone name as written in the tz database: "UTC" or Area/Location with capitalised parts ("Asia/Kolkata",
 // "America/Argentina/Buenos_Aires"). Offsets ("+05:30"), other casings ("utc") and Etc/ zones are not accepted.
@@ -75,8 +81,11 @@ export function isValidTimeZone(tz: string): boolean {
 export async function updateProfile(userId: string, update: ProfileUpdate, displayNameFallback = ""): Promise<ProfileDoc> {
   await ensureMigrated();
   const now = new Date();
-  const set: Record<string, unknown> = { ...update, updatedAt: now };
-  if (update.displayName !== undefined) set.displayName = truncateChars(update.displayName.trim(), 60);
+  const { onboardingCompleted, ...fields } = update;
+  const set: Record<string, unknown> = { ...fields, updatedAt: now };
+  if (fields.displayName !== undefined) set.displayName = truncateChars(fields.displayName.trim(), 60);
+  if (fields.about !== undefined) set.about = truncateChars(fields.about?.trim() ?? "", ABOUT_MAX_CHARS) || null;
+  if (onboardingCompleted) set.onboardingCompletedAt = now;
   // Defaults only for a new profile, and never for a field this update sets (MongoDB refuses both on one path).
   const onInsert = Object.fromEntries(Object.entries(newProfileFields(userId, displayNameFallback, now)).filter(([k]) => !(k in set)));
   const res = await collections.profiles().findOneAndUpdate({ userId }, { $set: set, $setOnInsert: onInsert }, { upsert: true, returnDocument: "after" });

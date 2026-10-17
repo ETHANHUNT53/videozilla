@@ -41,6 +41,7 @@ export function toProfile(p: ProfileDoc) {
     defaultBoardOrExam: p.defaultBoardOrExam ?? null,
     timezone: p.timezone,
     emailNotifications: p.emailNotifications,
+    about: p.about ?? null,
     onboardingCompleted: Boolean(p.onboardingCompletedAt),
     updatedAt: p.updatedAt.toISOString(),
   };

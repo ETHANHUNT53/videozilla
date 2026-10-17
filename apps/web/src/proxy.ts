@@ -9,7 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * reset or sign-out elsewhere), and redirecting on the cookie alone would loop /sign-in → /library → /sign-in.
  * The auth pages do that check against the database instead (redirectIfSignedIn).
  */
-const APP_PATHS = ["/library", "/projects", "/settings"];
+const APP_PATHS = ["/library", "/projects", "/settings", "/welcome"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

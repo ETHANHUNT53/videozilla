@@ -2,12 +2,13 @@ import { AUDIENCES, BOARDS_OR_EXAMS } from "@videozilla/db";
 import { z } from "zod";
 import { apiRoute, methodNotAllowed } from "@/server/api/handler";
 import { toProfile } from "@/server/api/resources";
-import { isValidTimeZone, updateProfile } from "@/server/repos/profiles";
+import { ABOUT_MAX_CHARS, isValidTimeZone, updateProfile } from "@/server/repos/profiles";
 
 /**
  * `PATCH /api/v1/me/profile` (API Design §13.1): change the defaults new videos start with, the display name, time
- * zone and email notifications. Any subset of the fields; the response is the whole `Profile`. Strict: `role` and other
- * internal fields can't be sent. (`GET /api/v1/me` returns the profile.)
+ * zone, email notifications and "what do you teach or create about", or mark onboarding done (F1.12). Any subset of
+ * the fields; the response is the whole `Profile`. Strict: `role` and other internal fields can't be sent.
+ * (`GET /api/v1/me` returns the profile.)
  */
 const body = z
   .strictObject({
@@ -20,6 +21,14 @@ const body = z
     defaultBoardOrExam: z.enum(BOARDS_OR_EXAMS).nullable().optional(),
     timezone: z.string().min(1).max(64).refine(isValidTimeZone, "Must be a time zone name like Asia/Kolkata").optional(),
     emailNotifications: z.boolean().optional(),
+    // "What do you teach or create about?" — optional; empty or null clears it.
+    about: z
+      .string()
+      .refine((s) => Array.from(s).length <= ABOUT_MAX_CHARS, `Must be at most ${ABOUT_MAX_CHARS} characters`)
+      .nullable()
+      .optional(),
+    // Onboarding finished or skipped (F1.12). Only true: it can't be undone.
+    onboardingCompleted: z.literal(true).optional(),
   })
   .refine((b) => Object.values(b).some((v) => v !== undefined), "Send at least one field to change");
 

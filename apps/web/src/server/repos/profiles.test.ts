@@ -62,7 +62,7 @@ describe("PATCH /api/v1/me/profile", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Object.keys(body).sort()).toEqual(
-      ["defaultAudience", "defaultBoardOrExam", "defaultLanguage", "defaultLengthPreset", "defaultStyleId", "defaultVoiceGender", "displayName", "emailNotifications", "onboardingCompleted", "timezone", "updatedAt"].sort(),
+      ["about", "defaultAudience", "defaultBoardOrExam", "defaultLanguage", "defaultLengthPreset", "defaultStyleId", "defaultVoiceGender", "displayName", "emailNotifications", "onboardingCompleted", "timezone", "updatedAt"].sort(),
     );
     expect(body).toMatchObject({ defaultLanguage: "hi", defaultLengthPreset: 90, defaultAudience: "college", defaultBoardOrExam: "jee", timezone: "Asia/Dubai", emailNotifications: false });
   });
@@ -113,5 +113,34 @@ describe("PATCH /api/v1/me/profile", () => {
     const res = await GET(new Request(`${APP}/api/v1/me/profile`));
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("PATCH");
+  });
+});
+
+describe("onboarding (F1.12)", () => {
+  it("starts not done, and onboardingCompleted: true records when", async () => {
+    const before = await (await getMe(new Request(`${APP}/api/v1/me`))).json();
+    expect(before.profile).toMatchObject({ onboardingCompleted: false, about: null });
+    const res = await patch({ onboardingCompleted: true });
+    expect(res.status).toBe(200);
+    expect((await res.json()).onboardingCompleted).toBe(true);
+    expect((await testMongo.db.collection("profiles").findOne({ userId: ME }))!.onboardingCompletedAt).toBeInstanceOf(Date);
+  });
+
+  it("saves the language and the 'what do you teach' answer with it (Start creating)", async () => {
+    const body = await (await patch({ defaultLanguage: "hi", about: "  Class 9 science  ", onboardingCompleted: true })).json();
+    expect(body).toMatchObject({ defaultLanguage: "hi", about: "Class 9 science", onboardingCompleted: true });
+  });
+
+  it("clears the answer with an empty string or null, and limits it to 200 characters (emoji count once)", async () => {
+    await patch({ about: "History" });
+    expect((await (await patch({ about: "" })).json()).about).toBeNull();
+    await patch({ about: "History" });
+    expect((await (await patch({ about: null })).json()).about).toBeNull();
+    expect((await patch({ about: "📚".repeat(200) })).status).toBe(200);
+    expect((await patch({ about: "x".repeat(201) })).status).toBe(400);
+  });
+
+  it("can't be undone or set to anything but true", async () => {
+    for (const value of [false, "yes", 1]) expect((await patch({ onboardingCompleted: value })).status, String(value)).toBe(400);
   });
 });
