@@ -170,6 +170,22 @@ describe("quota circuit breaker", () => {
     expect(quotaCooldownMs(new Error("429 RESOURCE_EXHAUSTED: Resource has been exhausted"))).toBeNull();
   });
 
+  it("a key out of prepaid credits (402) is skipped for 30 min on every model, without three failed calls per request", async () => {
+    const depleted = () => new Error('{"error":{"code":402,"message":"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing."}}');
+    expect(quotaCooldownMs(depleted())).toBe(30 * 60_000);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    generateContent.mockRejectedValue(depleted());
+    const first = await run();
+    await expect(first.promise).rejects.toBeInstanceOf(AiBusyError);
+    // Main model once (no second try), then the fallback once: both now cool down.
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/prepaid credits are used up/));
+    generateContent.mockClear();
+    const again = await run();
+    await expect(again.promise).rejects.toMatchObject({ name: "AiBusyError", retryAfterSec: 1800 });
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+
   it("a quota error goes straight to the fallback (no retry of the main model), with the fallback's full time", async () => {
     generateContent.mockRejectedValueOnce(quotaError()).mockResolvedValueOnce(reply({ items: ["a", "b"] }));
     const { promise, logs } = await run();

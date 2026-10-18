@@ -89,6 +89,9 @@ export function resetModelCooldowns(): void {
  */
 export function quotaCooldownMs(err: unknown): number | null {
   const msg = String((err as Error)?.message ?? err);
+  // Out of paid credits (402 "Your prepayment credits are depleted"): nothing works until billing is topped up, on any
+  // model of this key, so skip the calls for a while instead of spending three failed calls on every request.
+  if (BILLING.test(msg)) return BILLING_COOLDOWN_MS;
   if (!/exceeded your current quota|quota exceeded for metric/i.test(msg)) return null;
   const delay = msg.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/);
   const ms = delay ? Number(delay[1]) * 1000 : /PerDay/i.test(msg) ? 30 * 60_000 : 60_000;
@@ -96,6 +99,11 @@ export function quotaCooldownMs(err: unknown): number | null {
 }
 
 const coolingDown = (model: string) => (cooldownUntil.get(model) ?? 0) > Date.now();
+
+/** Gemini's "pay first" answers (the key's prepaid credits are used up). */
+const BILLING = /prepayment credits are depleted|"code"\s*:\s*402\b|\b402\b.*billing/i;
+/** How long to skip a model whose key is out of credits: a top-up is a manual step in AI Studio. */
+const BILLING_COOLDOWN_MS = 30 * 60_000;
 
 /** Why Gemini blocked this response, or null when it wasn't blocked. */
 function blockReason(res: { promptFeedback?: { blockReason?: unknown }; candidates?: { finishReason?: unknown }[] }): string | null {
@@ -194,11 +202,16 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         return { text: res.text ?? "", model };
       } catch (err) {
         if (err instanceof AiBlockedError) throw err;
-        const busy = isBusy(err);
+        // Out of quota or credits counts as busy (move on to the fallback, answer 503 with a refund), never as a bug.
+        const busy = isBusy(err) || quotaCooldownMs(err) !== null;
         await log({ model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: String((err as Error)?.message ?? err).slice(0, 300) });
         if (!busy) throw err;
         const cooldown = quotaCooldownMs(err);
         if (cooldown !== null) cooldownUntil.set(model, Date.now() + cooldown);
+        if (cooldown !== null && BILLING.test(String((err as Error)?.message ?? err))) {
+          // Needs a person: say so loudly in the server log (ai_calls has the full error too).
+          console.error(`[ai] Gemini says the API key's prepaid credits are used up (${model}); top up billing in Google AI Studio. Skipping it for 30 min.`);
+        }
         // Out of quota, or too slow: a second try won't help, go straight to the fallback. A quick "busy" gets one retry.
         if (model === primary && (cooldown !== null || isTimeout(err))) step = hasFallback ? plan.length - 2 : plan.length - 1;
         else if (step === 0) await sleep(1_000);
