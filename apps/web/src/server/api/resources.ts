@@ -66,6 +66,8 @@ export function toIdeaSession(i: IdeaSessionDoc) {
     suggestions: (i.suggestions ?? []).map(({ id, title, hook, angle, keyPoints }) => ({ id, title, hook, angle, keyPoints })),
     brief: i.brief ? toBrief(i.brief) : null,
     briefAlternatives: (i.briefAlternatives ?? []).map(toBrief),
+    /** When the brief last changed; "Use this angle" sends it back so a repeated request can't swap twice. */
+    briefUpdatedAt: i.briefUpdatedAt ? i.briefUpdatedAt.toISOString() : null,
     rev: i.rev,
     updatedAt: i.updatedAt.toISOString(),
   };

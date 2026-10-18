@@ -137,9 +137,16 @@ export async function saveBrief(userId: string, projectId: string, brief: IdeaBr
 /**
  * "Use this angle" (F2.3): alternative `index` becomes the brief and the brief takes its place, so the user can switch
  * back. No AI call. `no_alternative` when there is no brief or no angle at that index.
+ *
+ * A swap is relative to the current brief, so doing it twice undoes it. With `expectedBriefUpdatedAt` (the brief the
+ * user was looking at), a request whose brief has changed meanwhile (a retry, a second tab, a double send) doesn't swap
+ * again: it just returns the current brief.
  */
-export async function switchToAlternative(userId: string, projectId: string, index: number): Promise<SaveBriefResult | "no_alternative"> {
+export async function switchToAlternative(userId: string, projectId: string, index: number, expectedBriefUpdatedAt?: string): Promise<SaveBriefResult | "no_alternative"> {
   return inIdeaStage(userId, projectId, async (ctx) => {
+    if (expectedBriefUpdatedAt !== undefined && (ctx.idea.briefUpdatedAt?.toISOString() ?? null) !== expectedBriefUpdatedAt) {
+      return { idea: ctx.idea, project: ctx.project };
+    }
     const alternatives = ctx.idea.briefAlternatives ?? [];
     const chosen = alternatives[index];
     if (!ctx.idea.brief || !chosen) return "no_alternative" as const;

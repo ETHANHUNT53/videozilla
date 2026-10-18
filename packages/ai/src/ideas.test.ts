@@ -11,6 +11,12 @@ describe("refusalOr (the idea and brief reply schemas)", () => {
     expect(IdeaSuggestionsReply.parse({ refused: true })).toMatchObject({ category: "other" });
   });
 
+  it("a good result with a stray \"refused\": false is the result, not a broken refusal (no repair round)", () => {
+    const parsed = IdeaBriefReply.parse({ refused: false, brief, alternatives: [brief, brief] });
+    expect(parsed).not.toHaveProperty("refused");
+    expect(parsed).toMatchObject({ brief: { title: "Why leaves fall" } });
+  });
+
   it("reads the result, with defaults applied", () => {
     expect(IdeaBriefReply.parse({ brief, alternatives: [brief, brief] })).toEqual({ brief: { ...brief, outOfScope: [] }, alternatives: [{ ...brief, outOfScope: [] }, { ...brief, outOfScope: [] }] });
   });

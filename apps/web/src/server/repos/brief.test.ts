@@ -193,6 +193,24 @@ describe("POST …/idea/brief — from an idea card", () => {
 });
 
 describe("POST …/idea/brief — switching to another angle", () => {
+  it("a repeated 'Use this angle' for the brief the user saw swaps only once (retry, second tab, double send)", async () => {
+    generateContent.mockResolvedValueOnce(reply());
+    const first = await post({ from: "idea" });
+    const seen = first.json.briefUpdatedAt as string;
+    expect(seen).toMatch(/^\d{4}-\d\d-\d\dT/);
+
+    const once = await post({ from: "alternative", index: 1, briefUpdatedAt: seen });
+    expect(once.json.brief).toEqual(aBrief(3));
+    const again = await post({ from: "alternative", index: 1, briefUpdatedAt: seen }); // same request again
+    expect(again.status).toBe(200);
+    expect(again.json.brief).toEqual(aBrief(3)); // not swapped back
+    expect((await getIdea(ME.id, projectId))!.brief).toEqual(aBrief(3));
+
+    // With the new brief's time, switching back works as before.
+    const back = await post({ from: "alternative", index: 1, briefUpdatedAt: once.json.briefUpdatedAt });
+    expect(back.json.brief).toEqual(aBrief(1));
+  });
+
   it("swaps the angle in (the old brief takes its place) without an AI call or counting; switching back restores it", async () => {
     generateContent.mockResolvedValueOnce(reply());
     await post({ from: "idea" });

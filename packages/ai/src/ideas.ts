@@ -57,7 +57,9 @@ export type Refusal = z.infer<typeof Refusal>;
  */
 export function refusalOr<T extends z.ZodType>(result: T) {
   return z.unknown().transform((value, ctx): Refusal | z.output<T> => {
-    const isRefusal = typeof value === "object" && value !== null && "refused" in value;
+    // Only `refused: true` is a refusal: models sometimes add `"refused": false` to a good result, which must parse as
+    // the result (the stray key is dropped), not fail as a broken refusal.
+    const isRefusal = typeof value === "object" && value !== null && (value as { refused?: unknown }).refused === true;
     const parsed = (isRefusal ? Refusal : result).safeParse(value);
     if (parsed.success) return parsed.data as Refusal | z.output<T>;
     for (const issue of parsed.error.issues) ctx.addIssue({ code: "custom", message: issue.message, path: issue.path });

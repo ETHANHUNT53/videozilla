@@ -27,7 +27,8 @@ import { isAllowed } from "@/server/rules/project-actions";
 const body = z.discriminatedUnion("from", [
   z.strictObject({ from: z.literal("idea") }),
   z.strictObject({ from: z.literal("suggestion"), suggestionId: z.string().regex(/^sg_[0-9a-f]{12}$/) }),
-  z.strictObject({ from: z.literal("alternative"), index: z.union([z.literal(0), z.literal(1)]) }),
+  // `briefUpdatedAt`: the brief the user was looking at; if it has changed meanwhile, nothing is swapped (see switchToAlternative).
+  z.strictObject({ from: z.literal("alternative"), index: z.union([z.literal(0), z.literal(1)]), briefUpdatedAt: z.string().datetime().optional() }),
   z.strictObject({ from: z.literal("notes") }),
 ]);
 
@@ -49,7 +50,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   }
 
   if (body.from === "alternative") {
-    const result = await switchToAlternative(user.id, params.id, body.index);
+    const result = await switchToAlternative(user.id, params.id, body.index, body.briefUpdatedAt);
     if (result === "no_alternative") throw new ApiError("VALIDATION_FAILED", { details: [{ field: "index", issue: "there's no other angle at this index" }] });
     return respond(user.id, result);
   }
@@ -107,7 +108,12 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
   }
   const { idea, project } = result;
   return json(
-    { brief: toBrief(idea.brief!), alternatives: (idea.briefAlternatives ?? []).map(toBrief), project: toProject(project) },
+    {
+      brief: toBrief(idea.brief!),
+      alternatives: (idea.briefAlternatives ?? []).map(toBrief),
+      briefUpdatedAt: idea.briefUpdatedAt ? idea.briefUpdatedAt.toISOString() : null,
+      project: toProject(project),
+    },
     { headers: usage ? rateLimitHeaders(usage) : {} },
   );
 }

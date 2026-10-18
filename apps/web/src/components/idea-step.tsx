@@ -15,7 +15,7 @@ type Draft = Pick<Idea, "mode" | "topicInput" | "ideaInput" | "notesText">;
 type Suggestion = Idea["suggestions"][number];
 type Brief = NonNullable<Idea["brief"]>;
 /** `POST …/idea/brief` (F2.3). */
-type BriefReply = { brief: Brief; alternatives: Brief[]; project: ProjectResource };
+type BriefReply = { brief: Brief; alternatives: Brief[]; briefUpdatedAt: string | null; project: ProjectResource };
 
 /** Same limits as the API and the database (characters, so an emoji or a Hindi letter is one). */
 const LIMITS = { topicInput: 200, ideaInput: 500, notesText: 20_000 } as const;
@@ -41,7 +41,11 @@ export function IdeaStep(props: { projectId: string; initial: Idea; editable: bo
   const { projectId, initial, editable, onProject } = props;
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
   const [clipped, setClipped] = useState<keyof typeof LIMITS | null>(null);
-  const [brief, setBrief] = useState<{ brief: Brief | null; alternatives: Brief[] }>({ brief: initial.brief, alternatives: initial.briefAlternatives });
+  const [brief, setBrief] = useState<{ brief: Brief | null; alternatives: Brief[]; updatedAt: string | null }>({
+    brief: initial.brief,
+    alternatives: initial.briefAlternatives,
+    updatedAt: initial.briefUpdatedAt,
+  });
   const ai = useIdeaAi();
   const { state, queue } = useAutosave<Draft, Idea>({
     rev: initial.rev,
@@ -60,7 +64,7 @@ export function IdeaStep(props: { projectId: string; initial: Idea; editable: bo
       const problem = await before?.();
       if (problem) throw new Error(problem);
       const { data } = await apiCall<BriefReply>(`/api/v1/projects/${projectId}/idea/brief`, { method: "POST", body: request });
-      setBrief({ brief: data.brief, alternatives: data.alternatives });
+      setBrief({ brief: data.brief, alternatives: data.alternatives, updatedAt: data.briefUpdatedAt });
       onProject(data.project);
     });
 
@@ -222,7 +226,8 @@ export function IdeaStep(props: { projectId: string; initial: Idea; editable: bo
           alternatives={brief.alternatives}
           editable={editable}
           ai={ai}
-          onSwitch={(index) => makeBrief(`angle:${index}`, { from: "alternative", index })}
+          // The brief being looked at: a repeated or retried switch then can't swap back (the server keeps the current one).
+          onSwitch={(index) => makeBrief(`angle:${index}`, { from: "alternative", index, ...(brief.updatedAt && { briefUpdatedAt: brief.updatedAt }) })}
         />
       ) : null}
     </Card>
