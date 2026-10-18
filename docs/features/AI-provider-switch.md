@@ -1,0 +1,168 @@
+# AI provider switch — Groq + OpenRouter for development
+
+**Status:** design, waiting for your approval. Nothing is built yet.
+
+**Sources:** System Design §8.1 (models) and §8.2 (call wrapper), [F2.2](F2.2-topic-suggestions.md), [F2.3](F2.3-idea-brief.md). Model lists and limits were checked on 2026-10-18 on console.groq.com/docs and openrouter.ai/api/v1/models.
+
+## Why
+
+The Gemini key is out of free quota and out of prepaid credits, so "Find a topic" and briefs answer `503 AI_BUSY` every time. For development we switch to free providers:
+- **Groq** is the main provider.
+- An **OpenRouter `:free` model** is the backup.
+
+Gemini stays fully supported. Before launch we buy a paid Gemini plan and set `AI_PROVIDER=gemini` in the environment. No code change is needed for that.
+
+## What changes for you
+
+Nothing on screen. "Find a topic" and "Sharpen my idea" work again, and so do the errors you already know (`422 UNSAFE_CONTENT`, `503 AI_BUSY`, `429 LIMIT_REACHED`). Only the model that writes the text is different.
+
+## Models
+
+### Main: Groq — `openai/gpt-oss-120b`
+
+Groq's free plan now covers only three general chat models: `openai/gpt-oss-120b`, `openai/gpt-oss-20b` and `qwen/qwen3.8-27b`. The Llama models now need an Enterprise plan.
+
+| Model | Type | Free limits (per minute / per day) | Notes |
+|---|---|---|---|
+| **`openai/gpt-oss-120b`** ← proposed | production | 30 requests, 8K tokens / 1K requests, 200K tokens | Largest free model; strong multilingual; very fast on Groq; supports `json_object` and strict `json_schema` |
+| `qwen/qwen3.8-27b` | **preview** ("may be discontinued at short notice") | same | Qwen is often stronger in Hindi. In the live check I run the same Hindi topic on both and report which reads better |
+| `openai/gpt-oss-20b` | production | same | Smaller; not proposed |
+
+**What the limits mean for us:** one "Find a topic" call is about 2–3K tokens with reasoning set to `low`. So the free plan allows about 3 calls a minute and 60–80 a day. That's enough for development, not for users.
+
+### Backup: OpenRouter — `google/gemma-4-31b-it:free`
+
+| Model | `response_format` | Why |
+|---|---|---|
+| **`google/gemma-4-31b-it:free`** ← proposed | JSON mode ✅ | Gemma is trained on 140+ languages and writes good Hindi; dense 31B model |
+| `nvidia/nemotron-3-super-120b-a12b:free` | JSON mode + strict schema ✅ | Larger, but mostly English-tuned; second choice |
+
+OpenRouter has no free gpt-oss, Llama or Qwen model today.
+
+**Free limits:** 20 requests a minute, and **50 requests a day** while the account has never bought credits (1,000 a day after a one-time $10 purchase). The backup is only used when Groq is busy or out of quota, so 50 a day is fine for now.
+
+### Gemini (later, paid)
+
+Unchanged: `gemini-3.8-flash`, falling back to `gemini-3.5-flash-lite` (`GEMINI_FAST_MODEL`, `GEMINI_FALLBACK_MODEL`).
+
+## Settings (`apps/web/.env.local`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `AI_PROVIDER` | `groq` | `groq` = Groq main + OpenRouter backup. `gemini` = the Gemini path exactly as today. |
+| `GROQ_API_KEY` | — | Needed when `AI_PROVIDER=groq` |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Main model |
+| `OPENROUTER_API_KEY` | — | Optional: without it there's no backup, and Groq gets both tries |
+| `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` | Backup model. Leave the setting empty to turn the backup off |
+| `GEMINI_API_KEY`, `GEMINI_FAST_MODEL`, `GEMINI_FALLBACK_MODEL` | as today | Used only when `AI_PROVIDER=gemini` |
+
+Model names have defaults in code but always come from settings first, so a model that Groq retires can be swapped with no code change. An unknown `AI_PROVIDER` value is a clear start-up error ("AI_PROVIDER must be groq or gemini"). It never silently falls back to another provider.
+
+## Design
+
+### One wrapper, two kinds of backend
+
+`generateJson` keeps everything it does today. Only the "send one request" step moves behind a small interface:
+
+```
+generateJson (unchanged behaviour)
+ ├─ plan: [main, main, backup]           ← from AI_PROVIDER
+ ├─ deadline 15 s + fallback reserve
+ ├─ quota / billing circuit breakers     ← keyed by provider + model
+ ├─ JSON parse + Zod check + 1 repair round
+ └─ onCall → ai_calls (now with `provider`)
+        │
+        ├─ geminiBackend          (today's code, moved as is: block reasons, RECITATION, thinkingConfig)
+        └─ openAiCompatBackend    (new: one adapter for Groq and OpenRouter)
+```
+
+### The OpenAI-compatible adapter
+
+- **Plain `fetch` to `POST {baseUrl}/chat/completions`.** No new dependency: the request is small, and fetch is easy to mock in tests. The official `openai` SDK adds retries of its own, which would fight our retry and deadline logic.
+- **Base URLs:** `https://api.groq.com/openai/v1` and `https://openrouter.ai/api/v1`.
+- **Request:**
+  - `messages`: our system prompt plus the conversation (the repair round adds turns as it does today);
+  - `response_format: { type: "json_object" }`;
+  - `temperature`;
+  - `max_completion_tokens: 4096`;
+  - `AbortSignal` for the deadline.
+- **Why `json_object` and not a strict `json_schema`:** Groq's strict mode needs every field marked required and `additionalProperties: false`. Our Zod schemas have optional fields and `.catch()` defaults that don't convert cleanly. Our prompts already list every field, and Zod plus the repair round already catch a wrong shape.
+- **Per-model settings**, like today's `MODEL_CONFIG`:
+  - `gpt-oss-*`: `reasoning_effort: "low"` and `include_reasoning: false` (quicker, fewer tokens; reasoning isn't needed for these short creative tasks);
+  - `qwen/qwen3.8-*`: `reasoning_effort: "none"`.
+- **Groq "the model wrote invalid JSON" errors:** Groq answers JSON mode with a 400 when the generated text isn't valid JSON, and puts the text it generated in the error. That goes into the repair round as "not valid JSON", the same as a Gemini reply that doesn't parse.
+- **OpenRouter specifics:**
+  - `provider: { require_parameters: true }`, so it only routes to hosts that honour JSON mode;
+  - headers `HTTP-Referer: http://localhost:3000` and `X-OpenRouter-Title: Videozilla`;
+  - a `200` whose body holds `error` and no `choices` is treated as that error (OpenRouter documents this case).
+
+### Errors → existing behaviour
+
+| What the provider says | Treated as | Result |
+|---|---|---|
+| 429 rate limit (per-minute) | busy + **quota cooldown** for the `retry-after` time (at least 10 s) | next try / backup |
+| 429 daily cap (Groq "requests per day" / "tokens per day", OpenRouter free daily limit) | **quota cooldown** until the reset time the provider gives, else 30 min | backup; `503 AI_BUSY` with `Retry-After` when everything is cooling down |
+| 402 (OpenRouter: no credits / negative balance) | **billing cooldown**, 30 min, plus a loud server-log line ("top up at openrouter.ai") | backup / `503` |
+| 408, 5xx, 498, timeout, network error | busy | one retry, then the backup |
+| 400 invalid-JSON | unusable reply | repair round |
+| 401 / 403 (bad key) | a bug in setup: fails at once, logged | `500`, with "check GROQ_API_KEY" in the server log |
+| OpenRouter 403 moderation (`content_policy_violation`) | **blocked**, like Gemini's safety filters | `422 UNSAFE_CONTENT` |
+
+### Safety
+
+Groq and OpenRouter don't give Gemini-style block reasons. Safety relies on the prompt's existing `{"refused":true,"category":…}` path (F2.2 and F2.3), which already maps to `422 UNSAFE_CONTENT` with our own sentence. OpenRouter's moderation 403 is the one extra case (row above).
+
+### Logging
+
+- `ai_calls` rows gain a `provider` field: `"groq"`, `"openrouter"` or `"gemini"`. The collection has no validator, so no migration is needed.
+- `model` keeps the model id.
+- Token counts come from `usage.prompt_tokens` and `usage.completion_tokens`.
+- Wording that says "Gemini" in shared messages becomes "the AI".
+
+### Deadline and fallback reserve
+
+The 15 s deadline stays. The reserve kept for the backup becomes **per backend**:
+- 4 s for Gemini (measured);
+- **6 s for OpenRouter** (free hosts are slower), to be measured in the live check and tuned.
+
+Groq usually answers in 1–3 s, so the main model keeps most of the budget.
+
+### What does not change
+
+- The routes, the `ideas` limit, refunds and error codes.
+- `generateStoryboard` in `gemini.ts` (the M0 script; the storyboard work in F3 decides its provider).
+- The Gemini path when `AI_PROVIDER=gemini`.
+
+## Tests
+
+Mocked `fetch` for Groq and OpenRouter; the existing mocked `@google/genai` tests for Gemini.
+
+- `AI_PROVIDER` picks the backend. Default `groq`; unknown value → error; `gemini` → today's tests pass unchanged.
+- Groq happy path: request body (system message, JSON mode, model from `GROQ_MODEL`, reasoning settings), tokens logged with `provider: "groq"`.
+- Repair round: bad JSON, and a wrong shape → second call with the errors → success.
+- Groq 400 invalid-JSON → repair round.
+- 429 per-minute → retry/backup; 429 daily → cooldown, skipped on the next request; everything cooling down → `AiBusyError` with `retryAfterSec`.
+- OpenRouter 402 → billing cooldown; 200-with-error body → treated as that error; moderation 403 → `AiBlockedError`.
+- Busy main → backup used, logged as `fallback` with `provider: "openrouter"`; no `OPENROUTER_API_KEY` → no backup.
+- Deadline: a slow main model leaves the backup its reserve.
+- `{"refused":true}` passes through as today (covered by the ideas/brief tests).
+
+## After it's built
+
+1. `npx vitest run`, `npm run typecheck`, `npm run lint`.
+2. Live check (after you've added the keys), with a local test account only:
+   - one English and one Hindi "Find a topic";
+   - one brief.
+3. I compare the Hindi with the earlier Gemini output, honestly, and also try `qwen/qwen3.8-27b` on the same Hindi topic.
+
+## Docs updated
+
+- System Design §8.1: dev uses Groq + OpenRouter; Gemini later, on a paid plan.
+- M2 Design, where it says "Gemini".
+- PROJECT_STATUS: change-log line, plus the open item "paid Gemini plan before launch".
+
+## Questions for you
+
+1. **Main model:** `openai/gpt-oss-120b` (stable, production) — OK? Or start with `qwen/qwen3.8-27b` (often better Hindi, but preview, so Groq may remove it)? I can also decide after the live Hindi check, since it's a one-line setting.
+2. **Backup model:** `google/gemma-4-31b-it:free` — OK?
+3. **OpenRouter's 50 free requests a day:** fine for now? (A one-time $10 credit raises it to 1,000 a day. Not needed yet.)
