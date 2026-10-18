@@ -308,15 +308,22 @@ Timeline {
 | `llm.fast` | `gemini-3.8-flash` | Idea suggestions, briefs, idea chat, captions, accuracy check |
 | `llm.lite` | `gemini-3.5-flash-lite` | Small helpers; **fallback when other models are busy** (refined from M0) |
 
-In development every alias points to `gemini-3.8-flash` (free tier).
+**Development (since 2026-10-18):** the Gemini free tier and prepaid credits ran out, so development uses free providers instead, picked by the `AI_PROVIDER` setting ([AI provider switch](features/AI-provider-switch.md)):
+
+| `AI_PROVIDER` | Main | Backup |
+|---|---|---|
+| `groq` (development, default) | Groq `openai/gpt-oss-120b` (`GROQ_MODEL`) | OpenRouter `google/gemma-4-31b-it:free` (`OPENROUTER_MODEL`) |
+| `gemini` (launch, **paid plan**) | the aliases above | `gemini-3.5-flash-lite` |
+
+Switching back to Gemini is a setting (`AI_PROVIDER=gemini`), not a code change. The M0 storyboard script still calls Gemini directly; F3 decides the storyboard's provider.
 
 ### 8.2 Call wrapper
 
-All Gemini calls go through one wrapper in `packages/ai`:
+All AI calls go through one wrapper in `packages/ai` (`generateJson`), whichever provider answers (Gemini, or Groq / OpenRouter through one OpenAI-compatible adapter):
 1. **Structured JSON output** (`responseMimeType: application/json`), validated with Zod.
 2. **Busy handling:** retries for 429/5xx/"high demand" with 2, 4, 8, 16 s backoff, then the fallback model (seen repeatedly in M0).
 3. **Repair loop:** on schema errors, the errors are sent back and Gemini corrects them (max 2 repairs).
-4. **Logging:** model, tokens, latency and outcome go to `ai_calls`.
+4. **Logging:** provider, model, tokens, latency and outcome go to `ai_calls`.
 5. **Timeout:** 90 s per call; the storyboard step streams so Vercel doesn't time out.
 
 ### 8.3 Prompt structure (storyboard)

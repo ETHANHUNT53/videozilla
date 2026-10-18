@@ -384,7 +384,7 @@ Work queue for the render agent (System Design §10.3).
 
 ### 4.16 `ai_calls`
 
-`userId`, `projectId?`, `runId?`, `task` (`ideas` \| `brief` \| `idea_chat` \| `storyboard` \| `revision` \| `length_fix` \| `accuracy`), `model`, `inputTokens`, `outputTokens`, `latencyMs`, `status` (`ok` \| `retry` \| `failed` \| `fallback`), `error?`, `createdAt`. TTL 180 days.
+`userId`, `projectId?`, `runId?`, `task` (`ideas` \| `brief` \| `idea_chat` \| `storyboard` \| `revision` \| `length_fix` \| `accuracy`), `provider` (`gemini` \| `groq` \| `openrouter`; added 2026-10-18, older rows have none and are Gemini), `model`, `inputTokens`, `outputTokens`, `latencyMs`, `status` (`ok` \| `retry` \| `failed` \| `fallback`), `error?`, `createdAt`. TTL 180 days.
 
 ### 4.17 `usage_counters`
 

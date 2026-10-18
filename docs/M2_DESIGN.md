@@ -98,6 +98,7 @@ F2.6 (the settings panel) was already built with F1.9. "F2.8" is a new row for P
 ## 4. The AI features (F2.2–F2.5) — how they'll work
 
 - **Model:** `llm.fast` (`gemini-3.8-flash`) through the existing `packages/ai` wrapper: structured JSON validated with Zod, busy retries then `gemini-3.5-flash-lite`, up to 2 repair rounds, 15 s budget. Every call is logged to `ai_calls` (model, tokens, latency, outcome).
+  - **Update 2026-10-18:** in development the provider is Groq `openai/gpt-oss-120b` with an OpenRouter free backup, chosen by `AI_PROVIDER`; Gemini returns on the paid plan before launch ([AI provider switch](features/AI-provider-switch.md)).
 - **Inputs to the prompt:** the project's language, audience and board/exam, plus your profile's "what I teach or create about" (F1.12), so suggestions fit you.
 - **Pasted notes and your own text are data, never instructions.** They're wrapped in clear delimiters, and the prompt says to ignore instructions inside them (System Design §8.3).
 - **Safety:** prohibited topics (PRD §21.1) get `422 UNSAFE_CONTENT` with a plain message.

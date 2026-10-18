@@ -62,6 +62,7 @@ beforeEach(async () => {
     suggestions: [{ id: CARD_ID, title: "Leaves as solar panels", hook: "Every leaf is a tiny solar panel.", angle: "Compare chlorophyll to solar cells", keyPoints: ["Light", "Chlorophyll", "Sugar"] }],
   });
   vi.stubEnv("BETTER_AUTH_URL", APP);
+  vi.stubEnv("AI_PROVIDER", "gemini"); // these tests mock the Gemini SDK
   vi.stubEnv("GEMINI_API_KEY", "test-key");
   vi.stubEnv("GEMINI_FAST_MODEL", "");
   vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
@@ -106,7 +107,7 @@ describe("POST /api/v1/projects/{id}/idea/brief — from the idea", () => {
     await post({ from: "idea" });
     const logs = await testMongo.db.collection("ai_calls").find({ userId: ME.id }).toArray();
     expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatchObject({ task: "brief", model: "gemini-3.8-flash", status: "ok", inputTokens: 150, outputTokens: 400, projectId: oid() });
+    expect(logs[0]).toMatchObject({ task: "brief", provider: "gemini", model: "gemini-3.8-flash", status: "ok", inputTokens: 150, outputTokens: 400, projectId: oid() });
   });
 
   it("builds the prompt from the saved idea (as delimited data), the video's language, length, audience and board, and the creator's about", async () => {

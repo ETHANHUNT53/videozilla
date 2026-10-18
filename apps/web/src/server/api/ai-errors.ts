@@ -1,7 +1,7 @@
 import type { RefusalCategory } from "@videozilla/ai";
 import { ApiError } from "./errors";
 
-/** How long to suggest waiting after "the AI is busy" when Gemini gave no time of its own. */
+/** How long to suggest waiting after "the AI is busy" when the provider gave no time of its own. */
 export const BUSY_RETRY_SEC = 30;
 
 /** Our own words for each refusal category: the model's text is never shown (it can be steered or leak the prompt). */

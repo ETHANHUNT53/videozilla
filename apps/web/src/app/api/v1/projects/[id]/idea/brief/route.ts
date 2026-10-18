@@ -18,7 +18,7 @@ import { isAllowed } from "@/server/rules/project-actions";
  * `POST /api/v1/projects/{id}/idea/brief` (API Design §13.3, PRD F2-FR3): the brief for the video plus 2 other angles,
  * saved with the idea session; the video's title follows the brief title while the user hasn't named it (F2-FR11).
  * - `from: "idea"`: from the saved "I have an idea" text. `from: "suggestion"`: from one of the saved idea cards. Both
- *   are a synchronous Gemini call (≤ 15 s) that counts against the shared daily `ideas` limit.
+ *   are a synchronous AI call (≤ 15 s) that counts against the shared daily `ideas` limit.
  * - `from: "alternative"`: one of the 2 other angles becomes the brief (no AI call, not counted).
  * - `from: "notes"` is F2.4: `400 VALIDATION_FAILED` until then.
  * Errors: `409` outside `idea_draft` / `storyboard_ready`, `422 UNSAFE_CONTENT`, `429 LIMIT_REACHED`, `503 AI_BUSY`.
@@ -82,7 +82,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
       (call) => logAiCall({ userId: user.id, projectId: project._id, task: "brief", ...call }),
     );
   } catch (err) {
-    // Blocked by Gemini's safety filters: a refusal like the model's own, and it counts (it was real use).
+    // Blocked by the provider's safety systems (Gemini's filters, OpenRouter's moderation): a refusal like the model's own, and it counts (it was real use).
     if (err instanceof AiBlockedError) throw unsafeContent("blocked", "idea");
     // Nothing was delivered: give the request back to the daily limit.
     await refundUsage(user.id, usage);

@@ -15,7 +15,7 @@ import { isAllowed } from "@/server/rules/project-actions";
 /**
  * `POST /api/v1/projects/{id}/idea/suggestions` (API Design §13.3, PRD F2-FR2): 5 AI idea cards for a topic, saved
  * with the idea session. Synchronous, within 15 s. Counts against the shared daily `ideas` limit (429), before the
- * Gemini call. `avoidTitles` lists titles already shown ("Suggest 5 more", "More like this").
+ * AI call. `avoidTitles` lists titles already shown ("Suggest 5 more", "More like this").
  * Errors: `409` outside `idea_draft` / `storyboard_ready`, `422 UNSAFE_CONTENT`, `503 AI_BUSY`.
  * See docs/features/F2.2-topic-suggestions.md.
  */
@@ -51,7 +51,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
       (call) => logAiCall({ userId: user.id, projectId: project._id, task: "ideas", ...call }),
     );
   } catch (err) {
-    // Blocked by Gemini's safety filters: a refusal like the model's own, and it counts (it was real use).
+    // Blocked by the provider's safety systems (Gemini's filters, OpenRouter's moderation): a refusal like the model's own, and it counts (it was real use).
     if (err instanceof AiBlockedError) throw unsafe();
     // Nothing was delivered: give the request back to the daily limit.
     await refundUsage(user.id, usage);
@@ -76,7 +76,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   );
   // Nothing delivered from here on, so the request goes back to the daily limit.
   if (!suggestions || suggestions === "invalid_state") await refundUsage(user.id, usage);
-  if (!suggestions) throw new ApiError("NOT_FOUND"); // deleted while Gemini was thinking
+  if (!suggestions) throw new ApiError("NOT_FOUND"); // deleted while the AI was thinking
   if (suggestions === "invalid_state") {
     throw new ApiError("INVALID_STATE", { message: "The video moved on to its storyboard while the ideas were being made, so they weren't saved." });
   }

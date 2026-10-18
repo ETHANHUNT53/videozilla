@@ -28,7 +28,7 @@
 
 | Area | Done | Draft | Not started | Blocked |
 |---|---|---|---|---|
-| Planning & design | 9 | 0 | 0 | 0 |
+| Planning & design | 10 | 0 | 0 | 0 |
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 4 | 0 | 4 | 0 |
@@ -53,6 +53,7 @@
 | D6 | API design (approved) | ✅ | [API_DESIGN.md](API_DESIGN.md) |
 | D7 | UI design system + 18 screens in Google Stitch | ✅ | [ui/README.md](ui/README.md) |
 | D8 | Stitch prompts for every screen | ✅ | [ui/STITCH_PROMPTS.md](ui/STITCH_PROMPTS.md) |
+| D10 | AI provider switch for development: Groq + OpenRouter free (Gemini later, paid), chosen by `AI_PROVIDER` | ✅ | [features/AI-provider-switch.md](features/AI-provider-switch.md) — approved 2026-10-18 (main `openai/gpt-oss-120b`, backup `google/gemma-4-31b-it:free`; OpenRouter's 50 free requests/day is fine) |
 | D9 | M2 design: Idea Studio + Storyboard (build order, F2.1 details, AI and generate flows, 2 questions) | ✅ | [M2_DESIGN.md](M2_DESIGN.md) — approved 2026-10-17 (Q1: engineer copies the Gemini key; Q2: `ideas` limit 150/day) |
 
 ---
@@ -195,7 +196,8 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 3 | Domain + trademark check for "Videozilla" | Email sending, OAuth, Meta review |
 | 4 | Accounts: MongoDB Atlas, Cloudflare R2, Inngest, Vercel, Resend, Sentry | F10.4 staging |
 | 5 | Meta developer app + business verification | F9 |
-| 6 | **Gemini key out of credits:** since 2026-10-18 both models answer `402` "prepayment credits are depleted" (Google AI Studio → your project → billing). Until then every AI idea, brief or chat request answers "The AI is busy" (and isn't counted) | Live AI in F2.2 / F2.3 and everything after |
+| 6 | **Paid Gemini plan before launch.** The Gemini key is out of free quota and prepaid credits (`402` since 2026-10-18), so development now runs on Groq + OpenRouter free models ([AI provider switch](features/AI-provider-switch.md)). Before launch: a paid Gemini plan, then `AI_PROVIDER=gemini` (no code change) | Launch (F10.7); the storyboard (F3) may need it sooner |
+| 7 | `GROQ_API_KEY` and `OPENROUTER_API_KEY` in `apps/web/.env.local` (console.groq.com → API Keys; openrouter.ai → Keys) | Live AI in development |
 
 ### Known small issues (from QA, cosmetic)
 
@@ -268,3 +270,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-18 | **F2.3 done** — turn an idea into a brief ([design note](features/F2.3-idea-brief.md)): **Use this** on an idea card and **Sharpen my idea** now make the brief (title, hook, angle, audience, 3–5 key points, what's left out) plus 2 other angles you can switch to with one click (no AI call, not counted); the video's title follows the brief until you name it; **Generate storyboard** shows, disabled, for the next milestone. `POST /api/v1/projects/{id}/idea/brief` (API §13.3 and DB §4.4 updated: `from: "alternative"`, `project` in the response, `briefAlternatives`). QA notes on F2.2: limit lock seeded from `GET /me/usage` on load (with the message), small-text contrast 4.5:1, "illegal" refusal sentence fixed, unsafe-topic timing documented (split kept: a 9 s main-model cap would push most Hindi requests to the weaker fallback). Also: the AI reply schemas now give Gemini field-level errors in the repair round (a union only said "invalid input"). 505 tests pass. Browser: brief card, angle switching, title following, reload and the load-time lock checked on a local test account; a live Gemini brief couldn't run because the key's credits are used up (open item 6). **Stop point reached** (agreed scope). |
 | 2026-10-18 | F2.3 review fixes: "Use this angle" sends the brief's `briefUpdatedAt`, so a retried or repeated request can't swap the brief back; a reply with a stray `"refused": false` is read as the result, not a broken refusal. |
 | 2026-10-18 | F2.3 hand-over follow-up: briefAlternatives storage and the 4 s fallback reserve reviewed and kept (local timings fit); a Gemini key out of prepaid credits (402) now cools down for 30 min (no three failed calls per request) and logs a "top up billing" error. |
+| 2026-10-18 | **AI provider switch** ([design](features/AI-provider-switch.md), approved): development now uses **Groq** `openai/gpt-oss-120b` with an **OpenRouter** `google/gemma-4-31b-it:free` backup, chosen by the new `AI_PROVIDER` setting (`groq` default, `gemini` later on the paid plan, no code change). One OpenAI-compatible adapter (plain fetch, JSON mode) behind `generateJson`, which keeps its repair round, 15 s deadline + fallback reserve (6 s for OpenRouter), busy retry and quota/billing circuit breakers (Groq/OpenRouter 429 and 402 mapped in). Safety relies on the prompt's `{"refused":true}`; OpenRouter moderation → 422. `ai_calls` rows now record `provider`. Gemini path unchanged. 22 new tests (530 in total). Open item 6 is now "paid Gemini plan before launch". |

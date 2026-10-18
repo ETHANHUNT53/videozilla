@@ -38,6 +38,7 @@ beforeEach(async () => {
   const profile = await getOrCreateProfile(ME.id, ME.name);
   projectId = (await createProject(ME.id, profile, { title: "Plants" }))._id.toHexString();
   vi.stubEnv("BETTER_AUTH_URL", APP);
+  vi.stubEnv("AI_PROVIDER", "gemini"); // these tests mock the Gemini SDK
   vi.stubEnv("GEMINI_API_KEY", "test-key");
   vi.stubEnv("GEMINI_FAST_MODEL", "");
   vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
@@ -78,7 +79,7 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     await post({ topic: "Photosynthesis" });
     const logs = await testMongo.db.collection("ai_calls").find({ userId: ME.id }).toArray();
     expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatchObject({ task: "ideas", model: "gemini-3.8-flash", status: "ok", inputTokens: 120, outputTokens: 300, projectId: new ObjectId(projectId) });
+    expect(logs[0]).toMatchObject({ task: "ideas", provider: "gemini", model: "gemini-3.8-flash", status: "ok", inputTokens: 120, outputTokens: 300, projectId: new ObjectId(projectId) });
   });
 
   it("builds the prompt from the topic (as delimited data), the video's language, audience and board, and the creator's about", async () => {

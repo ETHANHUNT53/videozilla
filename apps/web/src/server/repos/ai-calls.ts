@@ -1,11 +1,13 @@
 import "server-only";
+import type { AiProvider } from "@videozilla/ai";
 import type { ObjectId } from "mongodb";
 import { collections } from "../db/mongo";
 
-/** One Gemini call, for cost and reliability tracking (DB Design §4.16; kept 180 days by a TTL index). */
+/** One AI call (Groq, OpenRouter or Gemini), for cost and reliability tracking (DB Design §4.16; kept 180 days by a TTL index). */
 export interface AiCallEntry {
   userId: string;
   projectId?: ObjectId;
+  provider: AiProvider;
   task: "ideas" | "brief" | "idea_chat" | "storyboard" | "revision" | "length_fix" | "accuracy";
   model: string;
   status: "ok" | "retry" | "failed" | "fallback";
@@ -20,6 +22,6 @@ export async function logAiCall(entry: AiCallEntry): Promise<void> {
   try {
     await collections.aiCalls().insertOne({ ...entry, createdAt: new Date() });
   } catch (err) {
-    console.warn("[ai_calls] couldn't log a Gemini call:", err instanceof Error ? err.message : err);
+    console.warn("[ai_calls] couldn't log an AI call:", err instanceof Error ? err.message : err);
   }
 }

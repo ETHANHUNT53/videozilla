@@ -1,6 +1,6 @@
 # AI provider switch — Groq + OpenRouter for development
 
-**Status:** design, waiting for your approval. Nothing is built yet.
+**Status:** approved 2026-10-18 (main `openai/gpt-oss-120b`, backup `google/gemma-4-31b-it:free`; OpenRouter's 50 free requests a day is fine) and built. The live check waits for the keys.
 
 **Sources:** System Design §8.1 (models) and §8.2 (call wrapper), [F2.2](F2.2-topic-suggestions.md), [F2.3](F2.3-idea-brief.md). Model lists and limits were checked on 2026-10-18 on console.groq.com/docs and openrouter.ai/api/v1/models.
 

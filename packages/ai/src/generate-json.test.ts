@@ -24,6 +24,7 @@ async function run(deadlineMs?: number) {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.stubEnv("AI_PROVIDER", "gemini");
   vi.stubEnv("GEMINI_API_KEY", "test-key");
   vi.stubEnv("GEMINI_FAST_MODEL", "");
   vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
@@ -36,11 +37,11 @@ describe("generateJson", () => {
   it("returns schema-valid JSON from the fast model, with the system prompt and JSON mode, and logs the call", async () => {
     generateContent.mockResolvedValueOnce(reply({ items: ["a", "b"] }));
     const { promise, logs } = await run();
-    await expect(promise).resolves.toEqual({ data: { items: ["a", "b"] }, model: "gemini-3.8-flash" });
+    await expect(promise).resolves.toEqual({ data: { items: ["a", "b"] }, model: "gemini-3.8-flash", provider: "gemini" });
     const req = generateContent.mock.calls[0][0];
     expect(req.model).toBe("gemini-3.8-flash");
     expect(req.config).toMatchObject({ systemInstruction: "sys", responseMimeType: "application/json" });
-    expect(logs).toEqual([{ model: "gemini-3.8-flash", status: "ok", latencyMs: expect.any(Number), inputTokens: 10, outputTokens: 5 }]);
+    expect(logs).toEqual([{ provider: "gemini", model: "gemini-3.8-flash", status: "ok", latencyMs: expect.any(Number), inputTokens: 10, outputTokens: 5 }]);
   });
 
   it("busy: retries the fast model once, then uses the fallback model", async () => {
