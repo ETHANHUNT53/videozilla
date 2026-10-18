@@ -1,6 +1,7 @@
-import { AiBlockedError, AiBusyError, AiOutputError, suggestIdeas, type RefusalCategory } from "@videozilla/ai";
+import { AiBlockedError, AiBusyError, AiOutputError, suggestIdeas } from "@videozilla/ai";
 import { AUDIENCES, truncateChars } from "@videozilla/db";
 import { z } from "zod";
+import { BUSY_RETRY_SEC, unsafeContent as unsafe } from "@/server/api/ai-errors";
 import { ApiError } from "@/server/api/errors";
 import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
 import { projectParams as params, textField } from "@/server/api/request";
@@ -23,9 +24,6 @@ const body = z.strictObject({
   audience: z.enum(AUDIENCES).optional(),
   avoidTitles: z.array(textField(120)).max(30).optional(),
 });
-
-/** How long to suggest waiting after "the AI is busy". */
-const BUSY_RETRY_SEC = 30;
 
 export const POST = apiRoute({ params, body }, async ({ user, params, body }) => {
   const project = await getProject(user.id, params.id);
@@ -84,28 +82,6 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   }
   return json({ suggestions }, { headers: rateLimitHeaders(usage) });
 });
-
-/** Our own words for each refusal category: the model's text is never shown (it can be steered or leak the prompt). */
-const REFUSAL_TEXT: Record<RefusalCategory | "blocked", string> = {
-  hate: "It targets people or groups with hate or harassment.",
-  sexual: "It asks for sexual content.",
-  violence: "It glorifies violence.",
-  self_harm: "It's about harming yourself.",
-  illegal: "It asks how to do something illegal or dangerous to make.",
-  dangerous: "It's a dangerous challenge or stunt.",
-  misinformation: "It would spread false or misleading claims.",
-  private_person: "It's about a real private person.",
-  impersonation: "It impersonates a real person or brand.",
-  other: "It isn't something we can make an educational video about.",
-  blocked: "The AI's safety filters stopped it.",
-};
-
-function unsafe(category: RefusalCategory | "blocked" = "blocked") {
-  return new ApiError("UNSAFE_CONTENT", {
-    message: "We can't make a video about that topic. Try a different subject.",
-    details: [{ field: "topic", issue: REFUSAL_TEXT[category], category }],
-  });
-}
 
 const notAllowed = methodNotAllowed(["POST"]);
 export { notAllowed as GET, notAllowed as PUT, notAllowed as PATCH, notAllowed as DELETE };

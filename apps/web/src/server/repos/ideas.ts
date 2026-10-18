@@ -1,10 +1,11 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { ObjectId } from "mongodb";
+import { truncateChars } from "@videozilla/db";
+import { ObjectId, type ClientSession } from "mongodb";
 import { collections, withTransaction } from "../db/mongo";
-import type { IdeaSessionDoc, ProjectStatus } from "../db/types";
+import type { IdeaBriefDoc, IdeaSessionDoc, ProjectDoc, ProjectStatus } from "../db/types";
 import { isAllowed } from "../rules/project-actions";
-import { emptyIdea } from "./projects";
+import { DEFAULT_TITLE, emptyIdea } from "./projects";
 
 /**
  * Idea session repository (DB Design §4.4, API Design §13.3): one per project, autosaved from the Idea Studio. Like
@@ -122,3 +123,81 @@ export async function addSuggestions(userId: string, projectId: string, cards: O
   );
   return saved;
 }
+
+export type SaveBriefResult = { idea: IdeaSessionDoc; project: ProjectDoc } | null | "invalid_state";
+
+/**
+ * Saves a new brief and its 2 other angles (F2.3), replacing the previous ones. Null when the project is unknown,
+ * someone else's or deleted; `invalid_state` when it left the Idea stage (e.g. while Gemini was thinking).
+ */
+export async function saveBrief(userId: string, projectId: string, brief: IdeaBriefDoc, alternatives: IdeaBriefDoc[]): Promise<SaveBriefResult> {
+  return inIdeaStage(userId, projectId, (ctx) => applyBrief(ctx, brief, alternatives));
+}
+
+/**
+ * "Use this angle" (F2.3): alternative `index` becomes the brief and the brief takes its place, so the user can switch
+ * back. No AI call. `no_alternative` when there is no brief or no angle at that index.
+ */
+export async function switchToAlternative(userId: string, projectId: string, index: number): Promise<SaveBriefResult | "no_alternative"> {
+  return inIdeaStage(userId, projectId, async (ctx) => {
+    const alternatives = ctx.idea.briefAlternatives ?? [];
+    const chosen = alternatives[index];
+    if (!ctx.idea.brief || !chosen) return "no_alternative" as const;
+    return applyBrief(ctx, chosen, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
+  });
+}
+
+interface BriefContext {
+  session: ClientSession;
+  project: ProjectDoc;
+  idea: IdeaSessionDoc;
+  now: Date;
+}
+
+/**
+ * One transaction on a project that allows `edit_idea`, with its idea session (created if missing), so a status change
+ * made meanwhile conflicts with the write instead of slipping between the check and the save.
+ */
+async function inIdeaStage<T>(userId: string, projectId: string, fn: (ctx: BriefContext) => Promise<T>): Promise<T | null | "invalid_state"> {
+  const _id = toObjectId(projectId);
+  if (!_id) return null;
+  return withTransaction(async (session) => {
+    const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { session });
+    if (!project) return null;
+    if (!isAllowed(project.status, "edit_idea")) return "invalid_state" as const;
+    const now = new Date();
+    let idea = await collections.ideaSessions().findOne({ projectId: _id, userId }, { session });
+    if (!idea) {
+      idea = emptyIdea(_id, userId, now);
+      await collections.ideaSessions().insertOne(idea, { session });
+    }
+    return fn({ session, project, idea, now });
+  });
+}
+
+/**
+ * Stores the brief and moves the project's "last changed" time (M2 D3). The idea's `rev` stays: it guards what the user
+ * types, so a brief never makes the next autosave look like a conflict. The video's title follows the brief title while
+ * the user hasn't named it (PRD F2-FR11): it's still the default, or still the title the previous brief gave it.
+ */
+async function applyBrief({ session, project, idea, now }: BriefContext, brief: IdeaBriefDoc, alternatives: IdeaBriefDoc[]) {
+  const saved = await collections.ideaSessions().findOneAndUpdate(
+    { _id: idea._id },
+    { $set: { brief, briefAlternatives: alternatives, briefUpdatedAt: now, updatedAt: now } },
+    { session, returnDocument: "after" },
+  );
+  if (!saved) throw new Error("Idea session vanished during its own transaction");
+  const unnamed = project.title === DEFAULT_TITLE || (idea.brief !== null && project.title === briefTitle(idea.brief));
+  const title = briefTitle(brief);
+  const renamed = unnamed && title && title !== project.title;
+  const updated = await collections.projects().findOneAndUpdate(
+    { _id: project._id, userId: project.userId },
+    renamed ? { $set: { title, updatedAt: now }, $inc: { rev: 1 } } : { $set: { updatedAt: now } },
+    { session, returnDocument: "after" },
+  );
+  if (!updated) throw new Error("Project vanished during its own transaction");
+  return { idea: saved, project: updated };
+}
+
+/** The title a brief gives the video (project titles are at most 80 characters). */
+const briefTitle = (b: IdeaBriefDoc) => truncateChars(b.title.trim(), 80);

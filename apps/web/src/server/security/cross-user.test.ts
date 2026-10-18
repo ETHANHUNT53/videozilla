@@ -21,6 +21,7 @@ import * as projects from "@/app/api/v1/projects/route";
 import * as one from "@/app/api/v1/projects/[id]/route";
 import * as duplicate from "@/app/api/v1/projects/[id]/duplicate/route";
 import * as idea from "@/app/api/v1/projects/[id]/idea/route";
+import * as brief from "@/app/api/v1/projects/[id]/idea/brief/route";
 import * as suggestions from "@/app/api/v1/projects/[id]/idea/suggestions/route";
 import * as restore from "@/app/api/v1/projects/[id]/restore/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
@@ -178,6 +179,22 @@ describe("B against A's projects (id routes)", () => {
     expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
   });
 
+  it("POST /projects/{id}/idea/brief: 404 like an unknown id for every source; no AI call, A's brief unchanged, B's limit untouched", async () => {
+    // A has a brief, 2 other angles and an idea card, so a wrongful brief or switch would show in the snapshot.
+    const aBrief = { title: "A's brief", hook: "h", angle: "a", audience: "students", keyPoints: ["1", "2", "3"], outOfScope: [] };
+    await testMongo.db.collection("idea_sessions").updateOne(
+      { projectId: new ObjectId(a.live) },
+      { $set: { ideaInput: "A's idea", brief: aBrief, briefAlternatives: [{ ...aBrief, title: "Alt 1" }, { ...aBrief, title: "Alt 2" }], suggestions: [{ id: "sg_0123456789ab", title: "t", hook: "h", angle: "a", keyPoints: ["1", "2", "3"] }] } },
+    );
+    const before = await snapshotA();
+    for (const body of [{ from: "idea" }, { from: "suggestion", suggestionId: "sg_0123456789ab" }, { from: "alternative", index: 0 }]) {
+      for (const id of [a.live, a.deleted, a.attention]) await expectLikeUnknown(brief.POST, "POST", "/idea/brief", id, body);
+    }
+    expect(await snapshotA()).toEqual(before);
+    expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: B.id })).toBe(0);
+    expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
+  });
+
   it("PUT /projects/{id}/idea: 404, with or without If-Match; A's idea and project are unchanged", async () => {
     const before = await snapshotA();
     for (const id of [a.live, a.deleted]) await expectLikeUnknown(idea.PUT, "PUT", "/idea", id, { mode: "idea", ideaInput: "B was here" });
@@ -261,6 +278,7 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["GET /projects/{id}/idea", idea.GET, "GET", "/api/v1/projects/x/idea", { id: "x" }],
   ["PUT /projects/{id}/idea", idea.PUT, "PUT", "/api/v1/projects/x/idea", { id: "x" }],
   ["POST /projects/{id}/idea/suggestions", suggestions.POST, "POST", "/api/v1/projects/x/idea/suggestions", { id: "x" }],
+  ["POST /projects/{id}/idea/brief", brief.POST, "POST", "/api/v1/projects/x/idea/brief", { id: "x" }],
 ];
 
 describe("every route needs a session, and a verified email", () => {
@@ -291,6 +309,7 @@ const MODULES: Record<string, Record<string, unknown>> = {
   "/projects/[id]/duplicate": duplicate,
   "/projects/[id]/idea": idea,
   "/projects/[id]/idea/suggestions": suggestions,
+  "/projects/[id]/idea/brief": brief,
   "/projects/[id]/restore": restore,
 };
 const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];

@@ -8,9 +8,9 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-10-17 |
+| **Last updated** | 2026-10-18 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **F2.3** — "I have an idea" → brief + 2 alternative angles (also makes "Use this" work). Starts when the workflow session says so |
+| **Next feature** | **None — stop point reached.** F2.3 is built; after its review and QA, nothing new starts until you say so (next in the M2 order would be F2.4 "Use my notes") |
 | **Agreed scope (2026-10-17, updated)** | Build feature by feature **up to F2.3**, then stop: after F2.3 is built, reviewed and QA'd, no further feature starts until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
@@ -31,7 +31,7 @@
 | Planning & design | 9 | 0 | 0 | 0 |
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
-| F2 Idea Studio | 3 | 0 | 5 | 0 |
+| F2 Idea Studio | 4 | 0 | 4 | 0 |
 | F3 Storyboard | 0 | 0 | 7 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
@@ -96,7 +96,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 |---|---|---|---|
 | F2.1 | Idea session autosave (`PUT /projects/{id}/idea`) | ✅ | Done 2026-10-17 ([design note](features/F2.1-idea-autosave.md)). `GET` / `PUT /api/v1/projects/{id}/idea` (strict, `If-Match` → `412` with the current idea, a no-op save keeps the rev, `409` outside `idea_draft` / `storyboard_ready`, limits counted in characters, 128 KB body); saving moves the video to the top of the Library. Idea step on the project page: 3 tabs with their own text and counters, autosave (800 ms, "Saving…" / "Saved" / "Offline — will save when reconnected"), "changed in another tab" bar with Load latest / Keep mine. Real HTTP 404 for unknown project pages (K1). 29 new tests + cross-user cases; checked in the browser |
 | F2.2 | "Find a topic" → 5 AI idea suggestions | ✅ | Done 2026-10-17 ([design note](features/F2.2-topic-suggestions.md)). `POST /api/v1/projects/{id}/idea/suggestions` → 5 cards (title, hook, angle, 3 key points) in the video's language, fitted to its audience and board and to your "what I teach"; saved with the video (newest 30); **Suggest 5 more** and **More like this** tell Gemini every title already shown so it picks new concepts; prohibited topics → `422`; Gemini busy → `503`; shared `ideas` limit 150/day (`429`); every call logged in `ai_calls`. Shared `generateJson` helper (15 s budget, fallback model, one repair). **Use this** waits for F2.3. Also QA's F2.1 points: label-only accessible names, conflict bar above the text box, proper disabled button style. Gemini key copied into the web app's local env file (not printed, not committed). Checked with real Gemini in Hindi. QA leftovers cleaned up ([cleanup](features/F2.2-topic-suggestions.md#cleanup-qa-leftovers)): recitation retry, quota circuit breaker, RateLimit headers on `429`, more refunds, refusal reason shown, "Use this" note, buttons locked after the daily limit |
-| F2.3 | "I have an idea" → brief + 2 alternative angles | ⬜ | |
+| F2.3 | "I have an idea" → brief + 2 alternative angles | ✅ | Done 2026-10-18 ([design note](features/F2.3-idea-brief.md)). `POST /api/v1/projects/{id}/idea/brief`: `from: "idea"` (the saved idea text) or `"suggestion"` (an idea card's **Use this**) → a brief (title, hook, angle, audience, 3–5 key points, what's left out) plus 2 other angles, saved with the video; `from: "alternative"` switches angle with no AI call and nothing counted; `from: "notes"` answers `400` until F2.4. Shared `ideas` limit, refunds, `422` / `503` and `ai_calls` (task `brief`) as in F2.2. The video's title follows the brief while you haven't named it. Brief card with "Use this angle" and a disabled "Generate storyboard" (next milestone). QA notes folded in: the limit lock is read on page load, small text uses the 4.5:1 colour, the "illegal" refusal sentence is fixed, the unsafe-topic timing is documented. Checked in the browser on a local test account; a live AI brief couldn't run because the Gemini key's credits are used up (open item 6) |
 | F2.4 | "Use my notes" (≤ 20,000 chars) → focused brief | ⬜ | Prompt-injection hygiene |
 | F2.5 | Idea chat to refine the brief | ⬜ | |
 | F2.6 | Video settings panel (language, length, audience, board/exam, voice, style) | ✅ | Built with F1.9: "// edit parameters" saves via `PATCH /api/v1/projects/{id}` with `If-Match`; fields lock by status from `allowedActions` (script settings before the build, voice / captions after the storyboard), with "regenerate" / "rebuild" notes. Only the two approved voices; style is Midnight only (V1) |
@@ -195,6 +195,7 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 3 | Domain + trademark check for "Videozilla" | Email sending, OAuth, Meta review |
 | 4 | Accounts: MongoDB Atlas, Cloudflare R2, Inngest, Vercel, Resend, Sentry | F10.4 staging |
 | 5 | Meta developer app + business verification | F9 |
+| 6 | **Gemini key out of credits:** since 2026-10-18 both models answer `402` "prepayment credits are depleted" (Google AI Studio → your project → billing). Until then every AI idea, brief or chat request answers "The AI is busy" (and isn't counted) | Live AI in F2.2 / F2.3 and everything after |
 
 ### Known small issues (from QA, cosmetic)
 
@@ -264,3 +265,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-17 | F2.2 cleanup (QA leftovers, [details](features/F2.2-topic-suggestions.md#cleanup-qa-leftovers)): Gemini's RECITATION stop gets one "use your own words" retry, then `503` with the request given back (no longer a safety refusal); a model that's out of quota (free tier: 20 gemini-3.8-flash requests a day) is skipped until Gemini's retry time, so once the quota ran out the next answer took 2.9 s instead of trying it first; `429 LIMIT_REACHED` sends RateLimit headers; the idea request is given back if the video left the idea stage or was deleted during the call; refusals show the AI's reason; a note explains "Use this"; after the daily limit the Suggest buttons stay off until midnight IST (checked in the browser); the prompt treats a reworded or translated title as the same idea. 464 tests pass. |
 | 2026-10-17 | Scope changed by you: build up to **F2.3**, then stop. F2.3 ("I have an idea" → brief + 2 angles) starts when the workflow session says so. |
 | 2026-10-17 | F2.2 cleanup review fixes: refusals show our own sentence per category (the model's text is never shown to users); the "limit reached" message clears when the limit resets; quota-cooldown skips are logged in ai_calls. |
+| 2026-10-18 | **F2.3 done** — turn an idea into a brief ([design note](features/F2.3-idea-brief.md)): **Use this** on an idea card and **Sharpen my idea** now make the brief (title, hook, angle, audience, 3–5 key points, what's left out) plus 2 other angles you can switch to with one click (no AI call, not counted); the video's title follows the brief until you name it; **Generate storyboard** shows, disabled, for the next milestone. `POST /api/v1/projects/{id}/idea/brief` (API §13.3 and DB §4.4 updated: `from: "alternative"`, `project` in the response, `briefAlternatives`). QA notes on F2.2: limit lock seeded from `GET /me/usage` on load (with the message), small-text contrast 4.5:1, "illegal" refusal sentence fixed, unsafe-topic timing documented (split kept: a 9 s main-model cap would push most Hindi requests to the weaker fallback). Also: the AI reply schemas now give Gemini field-level errors in the repair round (a union only said "invalid input"). 505 tests pass. Browser: brief card, angle switching, title following, reload and the load-time lock checked on a local test account; a live Gemini brief couldn't run because the key's credits are used up (open item 6). **Stop point reached** (agreed scope). |

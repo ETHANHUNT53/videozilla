@@ -198,6 +198,7 @@ One per project (unique `projectId`), autosaved.
 | `notesText` | string | | ≤ 20,000 (PRD F2-FR4) ✔︎V `maxLength` |
 | `suggestions` | array | | ≤ 30 items `{ id, title, hook, angle, keyPoints[] }` |
 | `brief` | object? | | `{ title, hook, angle, audience, keyPoints[1–5], outOfScope[], sourceNotesSummary? }` |
+| `briefAlternatives` | array? | | ≤ 2 briefs of the same shape: the other angles that came with the brief (F2.3). Missing on older sessions = none |
 | `briefUpdatedAt` | Date? | | |
 | `rev` | int | R | |
 | `createdAt`, `updatedAt` | Date | R | |

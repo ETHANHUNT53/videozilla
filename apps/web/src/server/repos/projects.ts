@@ -120,6 +120,9 @@ type ProfileDefaults = Pick<ProfileDoc, "defaultLanguage" | "defaultLengthPreset
 /** The settings a new project takes from the profile, the request, or the project it duplicates. */
 type ProjectSettings = Pick<ProjectDoc, "title" | "language" | "lengthPreset" | "audience" | "boardOrExam" | "styleId" | "voiceGender" | "captionsEnabled">;
 
+/** A new video's title until it's named, by the user or by its first brief (PRD F2-FR11). */
+export const DEFAULT_TITLE = "Untitled video";
+
 /**
  * A brand-new idea-draft project document with every DB Design §4.3 field. Only `settings` carry over; status,
  * progress, render and publishing fields always start fresh, so nothing else can leak in from a source project.
@@ -128,7 +131,7 @@ function freshProject(userId: string, settings: ProjectSettings, now: Date, dupl
   return {
     _id: new ObjectId(),
     userId,
-    title: truncateChars(settings.title.trim() || "Untitled video", 80),
+    title: truncateChars(settings.title.trim() || DEFAULT_TITLE, 80),
     language: settings.language,
     lengthPreset: settings.lengthPreset,
     audience: settings.audience,
@@ -196,6 +199,7 @@ export function emptyIdea(projectId: ObjectId, userId: string, now: Date): IdeaS
     notesText: "",
     suggestions: [],
     brief: null,
+    briefAlternatives: [],
     briefUpdatedAt: null,
     rev: 0,
     createdAt: now,

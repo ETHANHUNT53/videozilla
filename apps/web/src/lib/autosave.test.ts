@@ -225,4 +225,67 @@ describe("AutosaveQueue", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(calls).toHaveLength(0);
   });
+
+  describe("settle() (save now and wait, before an action that reads the saved copy)", () => {
+    const watch = (p: Promise<boolean>) => {
+      const out: { value?: boolean } = {};
+      void p.then((v) => (out.value = v));
+      return out;
+    };
+
+    it("is true at once when there is nothing to save", async () => {
+      const { queue, calls } = setup();
+      const done = watch(queue.settle());
+      await settle();
+      expect(done.value).toBe(true);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("sends pending typing without waiting for the debounce, and resolves once the server has it", async () => {
+      const { queue, calls } = setup();
+      queue.change("idea");
+      const done = watch(queue.settle());
+      expect(calls.map((c) => c.value)).toEqual(["idea"]);
+      await settle();
+      expect(done.value).toBeUndefined();
+      calls[0].resolve({ rev: 1, text: "idea" });
+      await settle();
+      expect(done.value).toBe(true);
+    });
+
+    it("waits for a save in flight and for the text typed meanwhile", async () => {
+      const { queue, calls } = setup();
+      queue.change("a");
+      await vi.advanceTimersByTimeAsync(800);
+      queue.change("ab");
+      const done = watch(queue.settle());
+      calls[0].resolve({ rev: 1, text: "a" });
+      await settle();
+      expect(done.value).toBeUndefined();
+      expect(calls.map((c) => c.value)).toEqual(["a", "ab"]);
+      calls[1].resolve({ rev: 2, text: "ab" });
+      await settle();
+      expect(done.value).toBe(true);
+    });
+
+    it("is false when the save can't get through (offline, or another tab changed the idea)", async () => {
+      const offline = setup();
+      offline.queue.change("x");
+      const a = watch(offline.queue.settle());
+      offline.calls[0].reject(new ApiClientError(0, "NETWORK", "Couldn't reach Videozilla."));
+      await settle();
+      expect(a.value).toBe(false);
+
+      const conflict = setup();
+      conflict.queue.change("mine");
+      const b = watch(conflict.queue.settle());
+      conflict.calls[0].reject(new ApiClientError(412, "PRECONDITION_FAILED", "Changed.", [{ issue: "x", current: { rev: 3, text: "theirs" } }]));
+      await settle();
+      expect(b.value).toBe(false);
+      // While the conflict is open nothing is sent, and settle() says so at once.
+      const c = watch(conflict.queue.settle());
+      await settle();
+      expect(c.value).toBe(false);
+    });
+  });
 });

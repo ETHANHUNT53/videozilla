@@ -50,6 +50,8 @@ export class AutosaveQueue<T, R extends { rev: number }> {
   private disposed = false;
   /** The next send must outlive the page (set by a keepalive flush, used once). */
   private keepalive = false;
+  /** Callers of `settle()` waiting for the saves to finish. */
+  private waiters: ((saved: boolean) => void)[] = [];
 
   private handlers: Pick<AutosaveOptions<T, R>, "save" | "onSaved">;
 
@@ -105,6 +107,18 @@ export class AutosaveQueue<T, R extends { rev: number }> {
     this.rev = rev;
     this.savedSeq = ++this.seq;
     this.set({ status: "saved" });
+  }
+
+  /**
+   * Save now and wait until the server has every change: true, or false when saving is stuck (offline, an error, a
+   * conflict with another tab). For actions that read the saved copy on the server (e.g. "Sharpen my idea").
+   */
+  settle(): Promise<boolean> {
+    this.flush();
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+      this.wake();
+    });
   }
 
   /** Whether leaving now would lose a change. */
@@ -197,5 +211,17 @@ export class AutosaveQueue<T, R extends { rev: number }> {
   private set(state: AutosaveState<R>): void {
     this.state = state;
     this.opts.onState(state);
+    this.wake();
+  }
+
+  /** Answers `settle()` callers once nothing is in flight: saved, or stuck. */
+  private wake(): void {
+    if (!this.waiters.length || this.inFlight) return;
+    const saved = this.seq === this.savedSeq;
+    const stuck = this.state.status === "offline" || this.state.status === "conflict" || this.state.status === "error" || this.disposed;
+    if (!saved && !stuck) return;
+    const waiters = this.waiters;
+    this.waiters = [];
+    for (const resolve of waiters) resolve(saved);
   }
 }

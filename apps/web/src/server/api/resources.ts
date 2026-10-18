@@ -1,4 +1,4 @@
-import type { IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
+import type { IdeaBriefDoc, IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
 import { toSummary } from "../repos/projects";
 import { allowedActions } from "../rules/project-actions";
 import type { SessionUser } from "./session";
@@ -50,6 +50,11 @@ export function toProfile(p: ProfileDoc) {
 /** The `Profile` resource's shape; client components import it as a type only. */
 export type ProfileResource = ReturnType<typeof toProfile>;
 
+/** A brief as the API shows it (API Design §12); `sourceNotesSummary` stays internal for now. */
+export function toBrief(b: IdeaBriefDoc) {
+  return { title: b.title, hook: b.hook, angle: b.angle, audience: b.audience, keyPoints: b.keyPoints, outOfScope: b.outOfScope ?? [] };
+}
+
 /** The `IdeaSession` resource (API Design §12, §13.3). */
 export function toIdeaSession(i: IdeaSessionDoc) {
   return {
@@ -59,9 +64,8 @@ export function toIdeaSession(i: IdeaSessionDoc) {
     ideaInput: i.ideaInput ?? "",
     notesText: i.notesText ?? "",
     suggestions: (i.suggestions ?? []).map(({ id, title, hook, angle, keyPoints }) => ({ id, title, hook, angle, keyPoints })),
-    brief: i.brief
-      ? { title: i.brief.title, hook: i.brief.hook, angle: i.brief.angle, audience: i.brief.audience, keyPoints: i.brief.keyPoints, outOfScope: i.brief.outOfScope }
-      : null,
+    brief: i.brief ? toBrief(i.brief) : null,
+    briefAlternatives: (i.briefAlternatives ?? []).map(toBrief),
     rev: i.rev,
     updatedAt: i.updatedAt.toISOString(),
   };

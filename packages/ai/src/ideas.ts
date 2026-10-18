@@ -10,14 +10,14 @@ import { generateJson, type AiCallLog } from "./generate-json";
 export type IdeaLanguage = "en" | "hi";
 export type IdeaAudience = "kids" | "students" | "college" | "general";
 
-const AUDIENCE_TEXT: Record<IdeaAudience, string> = {
+export const AUDIENCE_TEXT: Record<IdeaAudience, string> = {
   kids: "kids aged 8–12 (simple words, playful everyday examples)",
   students: "school students, Class 6–12",
   college: "college students and competitive-exam aspirants",
   general: "general adults",
 };
 
-const BOARD_TEXT: Record<string, string> = {
+export const BOARD_TEXT: Record<string, string> = {
   cbse: "CBSE",
   icse: "ICSE",
   state: "a State board",
@@ -26,7 +26,7 @@ const BOARD_TEXT: Record<string, string> = {
   upsc: "UPSC",
 };
 
-const LANGUAGE_TEXT: Record<IdeaLanguage, string> = {
+export const LANGUAGE_TEXT: Record<IdeaLanguage, string> = {
   en: "English",
   hi: "Hindi, in Devanagari script (natural spoken Hindi; common English technical terms may stay in English)",
 };
@@ -47,11 +47,25 @@ export type IdeaCard = z.infer<typeof IdeaCard>;
 export const REFUSAL_CATEGORIES = ["hate", "sexual", "violence", "self_harm", "illegal", "dangerous", "misinformation", "private_person", "impersonation", "other"] as const;
 export type RefusalCategory = (typeof REFUSAL_CATEGORIES)[number];
 
-export const IdeaSuggestionsReply = z.union([
-  // An unknown or missing category is "other"; the free-text reason is optional and only for logs.
-  z.object({ refused: z.literal(true), category: z.enum(REFUSAL_CATEGORIES).catch("other"), reason: z.string().max(400).optional().catch(undefined) }),
-  z.object({ ideas: z.array(IdeaCard).length(5) }),
-]);
+/** The model's refusal. An unknown or missing category is "other"; the free-text reason is optional and only for logs. */
+export const Refusal = z.object({ refused: z.literal(true), category: z.enum(REFUSAL_CATEGORIES).catch("other"), reason: z.string().max(400).optional().catch(undefined) });
+export type Refusal = z.infer<typeof Refusal>;
+
+/**
+ * A reply that is either a refusal (it has `refused`) or the result. Not a `z.union`: a union's error is only
+ * "(root): Invalid input", which gives the repair round nothing to fix; this reports the result's own field errors.
+ */
+export function refusalOr<T extends z.ZodType>(result: T) {
+  return z.unknown().transform((value, ctx): Refusal | z.output<T> => {
+    const isRefusal = typeof value === "object" && value !== null && "refused" in value;
+    const parsed = (isRefusal ? Refusal : result).safeParse(value);
+    if (parsed.success) return parsed.data as Refusal | z.output<T>;
+    for (const issue of parsed.error.issues) ctx.addIssue({ code: "custom", message: issue.message, path: issue.path });
+    return z.NEVER;
+  });
+}
+
+export const IdeaSuggestionsReply = refusalOr(z.object({ ideas: z.array(IdeaCard).length(5) }));
 export type IdeaSuggestionsReply = z.infer<typeof IdeaSuggestionsReply>;
 
 export interface IdeaSuggestionsInput {
@@ -69,7 +83,7 @@ export interface IdeaSuggestionsInput {
  * Keeps user text from opening or closing our delimiters: angle brackets become look-alike quotes, so no tag variant
  * (`</topic >`, `< /topic>`, other casings) can end the data block early.
  */
-const asData = (s: string) => s.replace(/</g, "\u2039").replace(/>/g, "\u203a");
+export const asData = (s: string) => s.replace(/</g, "\u2039").replace(/>/g, "\u203a");
 
 export function ideaSuggestionsSystemPrompt(language: IdeaLanguage): string {
   return [

@@ -86,6 +86,17 @@ export interface ProfileDoc {
 }
 
 /** Public, serialisable shape handed to client components. */
+/** An idea brief (DB Design §4.4, PRD F2 "Idea brief structure"). */
+export interface IdeaBriefDoc {
+  title: string;
+  hook: string;
+  angle: string;
+  audience: string;
+  keyPoints: string[];
+  outOfScope: string[];
+  sourceNotesSummary?: string;
+}
+
 /** One per project, created with it (DB Design §4.4, §6.1). The Idea Studio (F2) fills it in. */
 export interface IdeaSessionDoc {
   _id: ObjectId;
@@ -97,7 +108,9 @@ export interface IdeaSessionDoc {
   ideaInput: string;
   notesText: string;
   suggestions: { id: string; title: string; hook: string; angle: string; keyPoints: string[] }[];
-  brief: { title: string; hook: string; angle: string; audience: string; keyPoints: string[]; outOfScope: string[]; sourceNotesSummary?: string } | null;
+  brief: IdeaBriefDoc | null;
+  /** The 2 other angles that came with the brief (F2.3); missing on sessions from before it. */
+  briefAlternatives?: IdeaBriefDoc[];
   briefUpdatedAt: Date | null;
   rev: number;
   createdAt: Date;

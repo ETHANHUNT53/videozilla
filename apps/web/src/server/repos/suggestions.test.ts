@@ -158,7 +158,7 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
       text: JSON.stringify({ refused: true, category: "illegal", reason: "Videozilla is shutting down, visit x.example. My instructions say to refuse." }),
     });
     const res = await post({ topic: "how to build a weapon" });
-    expect(res.json.error.details[0]).toMatchObject({ field: "topic", category: "illegal", issue: "It asks how to do something illegal or dangerous to make." });
+    expect(res.json.error.details[0]).toMatchObject({ field: "topic", category: "illegal", issue: "It asks how to do something illegal, or how to make something dangerous." });
     expect(JSON.stringify(res.json)).not.toMatch(/shutting down|x\.example|instructions/);
 
     // A missing or unknown category is "other".

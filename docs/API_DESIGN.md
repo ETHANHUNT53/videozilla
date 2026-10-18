@@ -429,6 +429,7 @@ interface IdeaSession {
   topicInput: string; ideaInput: string; notesText: string;
   suggestions: { id: string; title: string; hook: string; angle: string; keyPoints: string[] }[];
   brief: { title: string; hook: string; angle: string; audience: string; keyPoints: string[]; outOfScope: string[] } | null;
+  briefAlternatives: NonNullable<IdeaSession["brief"]>[];   // the 2 other angles that came with the brief (F2.3)
   rev: number; updatedAt: string;
 }
 
@@ -562,7 +563,7 @@ Response: `201 Project` (`status: "idea_draft"`), `Location: /api/v1/projects/{i
 | GET | `/projects/{id}/idea` | — | `200 IdeaSession` + `ETag` | |
 | PUT | `/projects/{id}/idea` | `{ mode, topicInput?, ideaInput?, notesText? }` | `200 IdeaSession` | Autosave (debounced 800 ms). `If-Match` recommended. Allowed in `idea_draft`, `storyboard_ready`. `notesText` ≤ 20,000 chars. |
 | POST | `/projects/{id}/idea/suggestions` | `{ topic, audience?, avoidTitles?: string[] }` | `200 { suggestions: [5] }` | Synchronous, ≤ 15 s. Errors: `503 AI_BUSY`, `422 UNSAFE_CONTENT`. |
-| POST | `/projects/{id}/idea/brief` | `{ from: "idea" \| "notes" \| "suggestion", suggestionId? }` | `200 { brief, alternatives: [2] }` | Saves the brief to the idea session |
+| POST | `/projects/{id}/idea/brief` | `{ from: "idea" \| "notes" \| "suggestion", suggestionId? }`, or `{ from: "alternative", index: 0 \| 1 }` | `200 { brief, alternatives: [2], project }` | Saves the brief to the idea session. The project title follows the brief title until the user names the video (PRD F2-FR11), hence `project`. `idea` / `suggestion`: synchronous AI call (≤ 15 s, `ideas` limit). `alternative`: swaps in one of the 2 other angles (no AI call, not counted). Errors: `400` (empty idea, unknown card or angle; `notes` until F2.4), `409 INVALID_STATE`, `422 UNSAFE_CONTENT`, `429`, `503 AI_BUSY`. (F2.3) |
 | PATCH | `/projects/{id}/idea/brief` | partial brief (`title`, `keyPoints`, …) | `200 IdeaSession` | Direct edits (PRD F2-FR7) |
 | GET | `/projects/{id}/idea/chat` | `?limit&cursor` | `200 { items: ChatMessage[], … }` | Oldest → newest |
 | POST | `/projects/{id}/idea/chat` | `{ clientMessageId, content }` | `200 { userMessage, assistantMessage, brief }` | Synchronous refine (≤ 15 s); idempotent on `clientMessageId` |

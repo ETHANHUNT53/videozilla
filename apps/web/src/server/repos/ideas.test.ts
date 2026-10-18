@@ -48,7 +48,7 @@ describe("GET /api/v1/projects/{id}/idea", () => {
     const res = await get();
     expect(res.status).toBe(200);
     expect(res.etag).toBe('"0"');
-    expect(res.json).toEqual({ projectId, mode: "topic", topicInput: "", ideaInput: "", notesText: "", suggestions: [], brief: null, rev: 0, updatedAt: expect.any(String) });
+    expect(res.json).toEqual({ projectId, mode: "topic", topicInput: "", ideaInput: "", notesText: "", suggestions: [], brief: null, briefAlternatives: [], rev: 0, updatedAt: expect.any(String) });
   });
 
   it("is 404 for an unknown, malformed or deleted project", async () => {
