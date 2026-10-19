@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { generateJson, type AiCallLog } from "./generate-json";
+import { mockIdeas } from "./mock";
 
 /**
  * Idea Studio AI (PRD F2-FR2, System Design §8): "Find a topic" → 5 idea cards. Prompts follow §8.3: the creator's
@@ -127,6 +128,7 @@ export async function suggestIdeas(input: IdeaSuggestionsInput, onCall?: (log: A
     schema: IdeaSuggestionsReply,
     temperature: 0.9,
     onCall,
+    mock: () => mockIdeas(input),
   });
   return data;
 }

@@ -6,7 +6,7 @@ import { aiBackends } from "./providers";
  * One structured AI call for the interactive features (idea suggestions, briefs, idea chat — System Design §8.1,
  * §8.2): JSON output checked with a Zod schema (one repair round), a quick retry when the model is busy, then the
  * fallback model, all inside a deadline (15 s by default) so the request never hangs. Every call is reported through
- * `onCall` for the `ai_calls` log. The provider (Groq + OpenRouter, or Gemini) comes from `AI_PROVIDER` (providers.ts).
+ * `onCall` for the `ai_calls` log. The provider (Groq + OpenRouter, Gemini, or sample data) comes from `AI_PROVIDER` (providers.ts).
  */
 
 export { AiBlockedError, AiBusyError, AiOutputError, ProviderError, type AiProvider } from "./backend";
@@ -30,6 +30,8 @@ export interface GenerateJsonOptions<T> {
   deadlineMs?: number;
   temperature?: number;
   onCall?: (log: AiCallLog) => void | Promise<void>;
+  /** The sample reply for `AI_PROVIDER=mock` (mock.ts). Without it, mock mode fails for this task. */
+  mock?: () => unknown;
 }
 
 const BUSY = /\b(429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED|overloaded|high demand|timed? ?out|aborted/i;
@@ -87,6 +89,7 @@ const BILLING_HELP: Record<AiProvider, string> = {
   gemini: "top up billing in Google AI Studio",
   groq: "check billing at console.groq.com",
   openrouter: "add credits at openrouter.ai",
+  mock: "nothing to do (mock mode)",
 };
 
 export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ data: T; model: string; provider: AiProvider }> {
@@ -127,7 +130,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const res = await Promise.race([
-          backend.complete({ system: opts.system, turns, temperature: opts.temperature ?? 0.8, signal: AbortSignal.timeout(remaining) }),
+          backend.complete({ system: opts.system, turns, temperature: opts.temperature ?? 0.8, signal: AbortSignal.timeout(remaining), mock: opts.mock }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })), remaining);
           }),

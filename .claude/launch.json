@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/web", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "web-mock",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set AI_PROVIDER=mock&& npm --prefix apps/web run dev -- -p 3100"],
+      "port": 3100
     }
   ]
 }

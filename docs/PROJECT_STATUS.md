@@ -8,7 +8,7 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-10-18 |
+| **Last updated** | 2026-10-19 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
 | **Next feature** | **None — stop point reached.** F2.3 is built; after its review and QA, nothing new starts until you say so (next in the M2 order would be F2.4 "Use my notes") |
 | **Agreed scope (2026-10-17, updated)** | Build feature by feature **up to F2.3**, then stop: after F2.3 is built, reviewed and QA'd, no further feature starts until you say so |
@@ -271,3 +271,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-18 | F2.3 review fixes: "Use this angle" sends the brief's `briefUpdatedAt`, so a retried or repeated request can't swap the brief back; a reply with a stray `"refused": false` is read as the result, not a broken refusal. |
 | 2026-10-18 | F2.3 hand-over follow-up: briefAlternatives storage and the 4 s fallback reserve reviewed and kept (local timings fit); a Gemini key out of prepaid credits (402) now cools down for 30 min (no three failed calls per request) and logs a "top up billing" error. |
 | 2026-10-18 | **AI provider switch** ([design](features/AI-provider-switch.md), approved): development now uses **Groq** `openai/gpt-oss-120b` with an **OpenRouter** `google/gemma-4-31b-it:free` backup, chosen by the new `AI_PROVIDER` setting (`groq` default, `gemini` later on the paid plan, no code change). One OpenAI-compatible adapter (plain fetch, JSON mode) behind `generateJson`, which keeps its repair round, 15 s deadline + fallback reserve (6 s for OpenRouter), busy retry and quota/billing circuit breakers (Groq/OpenRouter 429 and 402 mapped in). Safety relies on the prompt's `{"refused":true}`; OpenRouter moderation → 422. `ai_calls` rows now record `provider`. Gemini path unchanged. 22 new tests (530 in total). Open item 6 is now "paid Gemini plan before launch". |
+| 2026-10-19 | **AI mock mode** (you asked: manual testing must not use up the free AI limits): `AI_PROVIDER=mock` answers Find a topic and briefs with sample data built from the typed topic, in English or Hindi, every hook marked `[Mock]`; no network, no key, no limit spent. Test triggers `[mock:refuse]` (→ 422) and `[mock:busy]` (→ 503) check the error paths without harmful topics. Refused in production. A `web-mock` launch entry runs a mock-mode dev server on port 3100 without touching `.env.local`. Automated tests and CI never used the keys (all mocked). 12 new tests (542 in total). [Mock mode](features/AI-provider-switch.md#mock-mode-added-2026-10-19) |

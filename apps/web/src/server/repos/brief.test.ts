@@ -418,3 +418,15 @@ describe("GET …/idea after a brief", () => {
     expect(json.briefAlternatives).toEqual([aBrief(2), aBrief(3)]);
   });
 });
+
+describe("AI_PROVIDER=mock (manual testing without spending the free AI limits)", () => {
+  it("answers with a sample brief and 2 other angles, saved like a real one, with no AI call", async () => {
+    vi.stubEnv("AI_PROVIDER", "mock");
+    const res = await post({ from: "idea" });
+    expect(res.status).toBe(200);
+    expect(res.json.brief.hook).toMatch(/^\[Mock\]/);
+    expect(res.json.alternatives).toHaveLength(2);
+    expect((await getIdea(ME.id, projectId))!.brief).toEqual(res.json.brief);
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+});

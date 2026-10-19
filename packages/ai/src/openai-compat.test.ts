@@ -64,7 +64,7 @@ describe("AI_PROVIDER", () => {
     vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
     expect(aiBackends().main).toMatchObject({ provider: "gemini", model: "gemini-3.8-flash" });
     vi.stubEnv("AI_PROVIDER", "openai");
-    expect(() => aiBackends()).toThrow(/AI_PROVIDER must be groq or gemini/);
+    expect(() => aiBackends()).toThrow(/AI_PROVIDER must be groq, gemini or mock/);
   });
 
   it("model names come from GROQ_MODEL / OPENROUTER_MODEL; an empty OPENROUTER_MODEL or no key turns the backup off", () => {

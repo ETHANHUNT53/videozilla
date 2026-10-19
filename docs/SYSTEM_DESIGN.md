@@ -314,6 +314,7 @@ Timeline {
 |---|---|---|
 | `groq` (development, default) | Groq `openai/gpt-oss-120b` (`GROQ_MODEL`) | OpenRouter `google/gemma-4-31b-it:free` (`OPENROUTER_MODEL`) |
 | `gemini` (launch, **paid plan**) | the aliases above | `gemini-3.5-flash-lite` |
+| `mock` (manual testing) | sample data, no network | — |
 
 Switching back to Gemini is a setting (`AI_PROVIDER=gemini`), not a code change. The M0 storyboard script still calls Gemini directly; F3 decides the storyboard's provider.
 

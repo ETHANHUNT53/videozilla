@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { generateJson, type AiCallLog } from "./generate-json";
+import { mockBrief } from "./mock";
 import { asData, AUDIENCE_TEXT, BOARD_TEXT, LANGUAGE_TEXT, REFUSAL_CATEGORIES, refusalOr, type IdeaAudience, type IdeaLanguage } from "./ideas";
 
 /**
@@ -92,6 +93,7 @@ export async function briefIdea(input: IdeaBriefInput, onCall?: (log: AiCallLog)
     schema: IdeaBriefReply,
     temperature: 0.8,
     onCall,
+    mock: () => mockBrief(input),
   });
   return data;
 }

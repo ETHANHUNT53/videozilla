@@ -4,7 +4,7 @@
  */
 
 /** Who answered a call (recorded in `ai_calls`). */
-export type AiProvider = "gemini" | "groq" | "openrouter";
+export type AiProvider = "gemini" | "groq" | "openrouter" | "mock";
 
 /** One turn of the conversation after the system prompt (the repair round adds model + user turns). */
 export interface ChatTurn {
@@ -25,7 +25,7 @@ export interface Backend {
   model: string;
   /** Time kept back for this backend when it's the fallback, while the main model runs. */
   reserveMs: number;
-  complete(req: { system: string; turns: ChatTurn[]; temperature: number; signal: AbortSignal }): Promise<BackendReply>;
+  complete(req: { system: string; turns: ChatTurn[]; temperature: number; signal: AbortSignal; mock?: () => unknown }): Promise<BackendReply>;
 }
 
 /** The AI stayed busy (or slow) past the deadline, on every model. Retry later. */

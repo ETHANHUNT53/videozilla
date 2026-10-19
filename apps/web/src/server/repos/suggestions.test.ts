@@ -277,3 +277,24 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     expect(res.status).toBe(405);
   });
 });
+
+describe("AI_PROVIDER=mock (manual testing without spending the free AI limits)", () => {
+  it("answers with 5 sample cards about the topic, logged as provider 'mock', with no AI call", async () => {
+    vi.stubEnv("AI_PROVIDER", "mock");
+    const res = await post({ topic: "Photosynthesis" });
+    expect(res.status).toBe(200);
+    expect(res.json.suggestions).toHaveLength(5);
+    expect(res.json.suggestions[0]).toMatchObject({ title: "Why Photosynthesis matters more than you think", hook: expect.stringMatching(/^\[Mock\]/) });
+    expect(generateContent).not.toHaveBeenCalled();
+    expect(await testMongo.db.collection("ai_calls").findOne({ userId: ME.id })).toMatchObject({ provider: "mock", model: "mock", status: "ok" });
+  });
+
+  it("[mock:refuse] → 422 UNSAFE_CONTENT; [mock:busy] → 503 AI_BUSY with the request given back", async () => {
+    vi.stubEnv("AI_PROVIDER", "mock");
+    expect((await post({ topic: "test [mock:refuse]" })).json.error.code).toBe("UNSAFE_CONTENT");
+    const busy = await post({ topic: "test [mock:busy]" });
+    expect(busy.status).toBe(503);
+    expect(busy.json.error.code).toBe("AI_BUSY");
+    expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME.id }))!.ideas).toBe(1); // only the refusal counts
+  });
+});

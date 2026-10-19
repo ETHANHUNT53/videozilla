@@ -133,6 +133,26 @@ Groq usually answers in 1–3 s, so the main model keeps most of the budget.
 - `generateStoryboard` in `gemini.ts` (the M0 script; the storyboard work in F3 decides its provider).
 - The Gemini path when `AI_PROVIDER=gemini`.
 
+## Mock mode (added 2026-10-19)
+
+Manual testing shouldn't use up the free limits (Groq about 60–80 calls a day, OpenRouter 50). So there's a third setting:
+
+| Setting | What answers |
+|---|---|
+| `AI_PROVIDER=mock` | Sample data built from the topic you type, in the video's language (English or Hindi). No network, no key, no free limit spent. |
+
+- **Every hook starts with `[Mock]`**, so sample text is never mistaken for real AI output.
+- **Find a topic:** 5 cards from 10 templates, such as "Why ⟨topic⟩ matters more than you think". **Suggest 5 more** gives the 5 not shown yet; after all 10, the titles get a round number.
+- **Briefs:** a brief (3 key points for 60 s, 4 for 90 s) plus 2 other angles. From an idea card, it keeps the card's title, hook and angle.
+- **Test triggers**, so error paths can be checked without typing a harmful topic:
+  - `[mock:refuse]` in the topic or idea → the refusal path (`422 UNSAFE_CONTENT`);
+  - `[mock:busy]` → the AI stays busy (`503 AI_BUSY`; the request is given back).
+- Replies take 0.8 s, so loading states show.
+- Everything else is real: saving, the `ideas` limit and `ai_calls` rows (`provider: "mock"`).
+- **Refused in production** (`NODE_ENV=production`), so sample data can never reach users.
+- **How to use it:** put `AI_PROVIDER=mock` in `apps/web/.env.local` and restart `npm run dev`. Or leave the file alone and start the `web-mock` entry in `.claude/launch.json` (port 3100, mock mode for that server only). Use `groq` only for a real-quality check.
+- **Automated tests never use the keys:** every test mocks `fetch` or the Gemini SDK with fake keys, and CI has no AI keys.
+
 ## Tests
 
 Mocked `fetch` for Groq and OpenRouter; the existing mocked `@google/genai` tests for Gemini.
