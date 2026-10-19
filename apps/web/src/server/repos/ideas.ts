@@ -3,7 +3,8 @@ import { randomBytes } from "node:crypto";
 import { truncateChars } from "@videozilla/db";
 import { ObjectId, type ClientSession } from "mongodb";
 import { collections, withTransaction } from "../db/mongo";
-import type { IdeaBriefDoc, IdeaSessionDoc, ProjectDoc, ProjectStatus } from "../db/types";
+import type { IdeaBrief } from "@videozilla/ai";
+import type { ChatMessageDoc, IdeaBriefDoc, IdeaSessionDoc, ProjectDoc, ProjectStatus } from "../db/types";
 import { isAllowed } from "../rules/project-actions";
 import { DEFAULT_TITLE, emptyIdea } from "./projects";
 
@@ -151,6 +152,65 @@ export async function switchToAlternative(userId: string, projectId: string, ind
     const chosen = alternatives[index];
     if (!ctx.idea.brief || !chosen) return "no_alternative" as const;
     return applyBrief(ctx, chosen, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
+  });
+}
+
+/**
+ * A brief as the AI returned it, cut to display lengths (DB Design §4.4); the AI's limits are looser so a slightly long
+ * field doesn't cost a repair round. A notes brief keeps up to 5 left-out topics and its notes summary; an idea brief
+ * leaves out at most 3 things.
+ */
+export function trimBrief(b: IdeaBrief, from: "idea" | "notes"): IdeaBriefDoc {
+  return {
+    title: truncateChars(b.title, 80),
+    hook: truncateChars(b.hook, 200),
+    angle: truncateChars(b.angle, 300),
+    audience: b.audience,
+    keyPoints: b.keyPoints.map((k) => truncateChars(k, 160)),
+    outOfScope: b.outOfScope.slice(0, from === "notes" ? 5 : 3).map((k) => truncateChars(k, 160)),
+    ...(from === "notes" && b.sourceNotesSummary ? { sourceNotesSummary: truncateChars(b.sourceNotesSummary, 200) } : {}),
+  };
+}
+
+export type ChatAnswerResult = { idea: IdeaSessionDoc; project: ProjectDoc; userMessage: ChatMessageDoc; assistantMessage: ChatMessageDoc } | null | "invalid_state" | "not_processing";
+
+/**
+ * Saves the answer to an idea-chat message (F2.5) in one transaction (DB Design §6): the new brief (when it changed;
+ * the other 2 angles stay as they are, and the title rule of F2.3 applies), the user message's status, and the
+ * assistant's reply. `not_processing` when the user message isn't being answered any more (another request finished
+ * it first). Null / `invalid_state` as for briefs.
+ */
+export async function saveChatAnswer(
+  userId: string,
+  projectId: string,
+  answer: { userMessageId: ObjectId; status: "applied" | "clarification" | "unsupported"; reply: string; brief: IdeaBriefDoc | null; changedFields: string[] },
+): Promise<ChatAnswerResult> {
+  return inIdeaStage(userId, projectId, async (ctx) => {
+    const { session, now } = ctx;
+    const userMessage = await collections.chatMessages().findOneAndUpdate(
+      { _id: answer.userMessageId, userId, status: "processing" },
+      { $set: { status: answer.status, updatedAt: now } },
+      { session, returnDocument: "after" },
+    );
+    if (!userMessage) return "not_processing" as const;
+    const saved = answer.brief ? await applyBrief(ctx, answer.brief, ctx.idea.briefAlternatives ?? []) : { idea: ctx.idea, project: ctx.project };
+    const assistantMessage: ChatMessageDoc = {
+      _id: new ObjectId(),
+      projectId: ctx.project._id,
+      userId,
+      thread: "idea",
+      role: "assistant",
+      content: answer.reply,
+      status: answer.status,
+      replyTo: userMessage._id,
+      changedFields: answer.changedFields,
+      briefAfter: saved.idea.brief,
+      // A moment after the user message, so the thread's order (createdAt, then id) never puts the answer first.
+      createdAt: new Date(Math.max(now.getTime(), userMessage.createdAt.getTime() + 1)),
+      updatedAt: now,
+    };
+    await collections.chatMessages().insertOne(assistantMessage, { session });
+    return { ...saved, userMessage, assistantMessage };
   });
 }
 

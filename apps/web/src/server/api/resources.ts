@@ -1,4 +1,4 @@
-import type { IdeaBriefDoc, IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
+import type { ChatMessageDoc, IdeaBriefDoc, IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
 import { toSummary } from "../repos/projects";
 import { allowedActions } from "../rules/project-actions";
 import type { SessionUser } from "./session";
@@ -83,6 +83,30 @@ export function toIdeaSession(i: IdeaSessionDoc) {
 
 /** The `IdeaSession` resource's shape; client components import it as a type only. */
 export type IdeaSessionResource = ReturnType<typeof toIdeaSession>;
+
+/**
+ * The `ChatMessage` resource (API Design §12). The idea chat (F2.5) adds `changedFields` (assistant answers that
+ * changed the brief); the revision fields stay empty until F7. A message still being answered shows as `pending`.
+ */
+export function toChatMessage(m: ChatMessageDoc) {
+  return {
+    id: m._id.toHexString(),
+    thread: m.thread,
+    role: m.role,
+    content: m.content,
+    status: m.status === "processing" ? ("pending" as const) : m.status,
+    clientMessageId: m.clientMessageId ?? null,
+    changedFields: m.changedFields ?? [],
+    scopeSceneId: null,
+    clarification: null,
+    changedSceneIds: [] as string[],
+    versionBefore: null,
+    versionAfter: null,
+    canUndo: false,
+    createdAt: m.createdAt.toISOString(),
+  };
+}
+export type ChatMessageResource = ReturnType<typeof toChatMessage>;
 
 export function toMeUser(u: SessionUser) {
   return {

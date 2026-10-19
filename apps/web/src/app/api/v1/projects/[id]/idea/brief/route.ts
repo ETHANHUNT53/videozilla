@@ -1,5 +1,5 @@
-import { AiBlockedError, AiBusyError, AiOutputError, briefIdea, NOTES_PROBLEM_TEXT, notesProblem, type IdeaBrief, type IdeaBriefInput } from "@videozilla/ai";
-import { AUDIENCES, truncateChars } from "@videozilla/db";
+import { AiBlockedError, AiBusyError, AiOutputError, briefIdea, NOTES_PROBLEM_TEXT, notesProblem, type IdeaBriefInput } from "@videozilla/ai";
+import { AUDIENCES } from "@videozilla/db";
 import { z } from "zod";
 import { aiBusy, unsafeContent } from "@/server/api/ai-errors";
 import { ApiError } from "@/server/api/errors";
@@ -7,9 +7,8 @@ import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
 import { projectParams as params } from "@/server/api/request";
 import { toBrief, toProject } from "@/server/api/resources";
 import { collections } from "@/server/db/mongo";
-import type { IdeaBriefDoc } from "@/server/db/types";
 import { logAiCall } from "@/server/repos/ai-calls";
-import { getIdea, saveBrief, switchToAlternative, type SaveBriefResult } from "@/server/repos/ideas";
+import { getIdea, saveBrief, switchToAlternative, trimBrief, type SaveBriefResult } from "@/server/repos/ideas";
 import { getProject } from "@/server/repos/projects";
 import { consumeUsage, rateLimitHeaders, refundUsage, type UsageResult } from "@/server/repos/usage";
 import { isAllowed } from "@/server/rules/project-actions";
@@ -126,20 +125,6 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
     },
     { headers: usage ? rateLimitHeaders(usage) : {} },
   );
-}
-
-/** Display lengths (DB Design §4.4); Gemini's limits are looser so a slightly long field doesn't cost a repair round. */
-function trimBrief(b: IdeaBrief, from: "idea" | "notes"): IdeaBriefDoc {
-  return {
-    title: truncateChars(b.title, 80),
-    hook: truncateChars(b.hook, 200),
-    angle: truncateChars(b.angle, 300),
-    audience: b.audience,
-    keyPoints: b.keyPoints.map((k) => truncateChars(k, 160)),
-    // A notes brief names up to 5 of the notes' other main topics; an idea brief leaves out at most 3 things.
-    outOfScope: b.outOfScope.slice(0, from === "notes" ? 5 : 3).map((k) => truncateChars(k, 160)),
-    ...(from === "notes" && b.sourceNotesSummary ? { sourceNotesSummary: truncateChars(b.sourceNotesSummary, 200) } : {}),
-  };
 }
 
 const notAllowed = methodNotAllowed(["POST"]);

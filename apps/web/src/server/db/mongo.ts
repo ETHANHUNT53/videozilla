@@ -2,7 +2,7 @@ import "server-only";
 import { assertMigrated, COLLECTIONS, getMongoClient } from "@videozilla/db";
 import type { ClientSession, Db, MongoClient } from "mongodb";
 import { env } from "../env";
-import type { IdeaSessionDoc, ProfileDoc, ProjectDoc } from "./types";
+import type { ChatMessageDoc, IdeaSessionDoc, ProfileDoc, ProjectDoc } from "./types";
 
 /**
  * The web app's database handle. Collections, validators and indexes are created by migrations (packages/db,
@@ -35,6 +35,7 @@ export const collections = {
   projects: () => db().collection<ProjectDoc>(COLLECTIONS.projects),
   profiles: () => db().collection<ProfileDoc>(COLLECTIONS.profiles),
   ideaSessions: () => db().collection<IdeaSessionDoc>(COLLECTIONS.ideaSessions),
+  chatMessages: () => db().collection<ChatMessageDoc>(COLLECTIONS.chatMessages),
   // Job collections: written by later features (M2–M6); deleting a project already cancels their active entries (§6.6).
   pipelineRuns: () => db().collection(COLLECTIONS.pipelineRuns),
   publishJobs: () => db().collection(COLLECTIONS.publishJobs),

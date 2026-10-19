@@ -1,5 +1,6 @@
 import { ProviderError } from "./backend";
 import type { IdeaBrief, IdeaBriefInput } from "./brief";
+import type { IdeaChatInput } from "./idea-chat";
 import type { IdeaCard, IdeaLanguage, IdeaSuggestionsInput } from "./ideas";
 
 /**
@@ -128,4 +129,28 @@ export function mockBrief(input: IdeaBriefInput): unknown {
       : make(IDEAS[input.language][1].title(t), IDEAS[input.language][1].angle, L.hook(t));
   const alternatives = L.altTitles(t).map((title, i) => make(title, L.altAngles[i], L.hook(t)));
   return { brief, alternatives };
+}
+
+const ASK = "[mock:ask]";
+
+/**
+ * A sample chat answer (F2.5): the hook is rewritten (so a change shows), and "kids" in the message sets the audience
+ * to kids. `[mock:ask]` gives a clarification question; `[mock:refuse]` / `[mock:busy]` as above.
+ */
+export function mockIdeaChat(input: IdeaChatInput): unknown {
+  const refusal = trigger(input.message);
+  if (refusal) return refusal;
+  const hi = input.language === "hi";
+  if (input.message.includes(ASK)) {
+    return { status: "clarification", reply: hi ? "[Mock] आप किस बिंदु की बात कर रहे हैं — पहला या दूसरा?" : "[Mock] Which point do you mean — the first or the second?" };
+  }
+  const kids = /\bkids?\b|बच्च/i.test(input.message);
+  const base = input.brief.hook.replace(/^\[Mock\]\s*/, "");
+  const brief: IdeaBrief = {
+    ...input.brief,
+    hook: `[Mock] ${hi ? "नया हुक:" : "New hook:"} ${base}`.slice(0, 300),
+    audience: kids ? "kids" : input.brief.audience,
+  };
+  const reply = hi ? `[Mock] मैंने हुक बदल दिया${kids ? " और दर्शक बच्चे कर दिए" : ""}।` : `[Mock] I rewrote the hook${kids ? " and set the audience to kids" : ""}.`;
+  return { status: "applied", reply, brief };
 }

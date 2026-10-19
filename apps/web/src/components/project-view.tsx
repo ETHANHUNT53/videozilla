@@ -17,7 +17,7 @@ import {
   stepIndex,
 } from "@/lib/project-options";
 import { STATUS_DISPLAY } from "@/lib/status";
-import type { IdeaSessionResource, ProjectResource } from "@/server/api/resources";
+import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { IdeaStep } from "./idea-step";
 import { Button, Card, Chip, Eyebrow, Select, cx, inputStyles } from "./ui";
 
@@ -53,7 +53,7 @@ const WORKSPACE = [
  * The project page (PRD S4 shell, Stitch screen 07): title, status, the Idea → Storyboard → Video stepper, a
  * "needs attention" banner, the step's workspace and the settings panel. Reads and writes go through `/api/v1`.
  */
-export function ProjectView({ initial, idea }: { initial: Project; idea: IdeaSessionResource }) {
+export function ProjectView({ initial, idea, chat }: { initial: Project; idea: IdeaSessionResource; chat: { items: ChatMessageResource[]; hasOlder: boolean } }) {
   const [project, setProject] = useState(initial);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
@@ -107,7 +107,7 @@ export function ProjectView({ initial, idea }: { initial: Project; idea: IdeaSes
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         {step === 0 ? (
-          <IdeaStep projectId={project.id} language={project.language} initial={idea} editable={project.allowedActions.includes("edit_idea")} onProject={saved} />
+          <IdeaStep projectId={project.id} language={project.language} initial={idea} initialChat={chat} editable={project.allowedActions.includes("edit_idea")} onProject={saved} />
         ) : (
           <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
             <Eyebrow accent="text-violet">{WORKSPACE[step].eyebrow}</Eyebrow>

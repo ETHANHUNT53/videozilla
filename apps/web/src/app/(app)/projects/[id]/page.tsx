@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ProjectView } from "@/components/project-view";
 import { toIdeaSession, toProject } from "@/server/api/resources";
 import { requireUser } from "@/server/dal";
+import { latestIdeaChat } from "@/server/repos/chat-messages";
 import { getIdea } from "@/server/repos/ideas";
 import { getProject } from "@/server/repos/projects";
 
@@ -25,7 +26,9 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
   const [project, idea] = await Promise.all([getProject(user.id, id), getIdea(user.id, id)]);
   // Unknown or someone else's project: 404, never a hint that it exists.
   if (!project || !idea) notFound();
+  // The newest page of the idea chat (F2.5), so the thread shows without a second request.
+  const chat = await latestIdeaChat(user.id, project._id, 50);
   // Keyed by id only, so a save keeps the page's state (and "Saved" message). A newer copy from a refresh replaces the
   // local one (higher rev wins); edits made in another tab meanwhile are caught by If-Match (412 → the latest copy).
-  return <ProjectView key={id} initial={toProject(project)} idea={toIdeaSession(idea)} />;
+  return <ProjectView key={id} initial={toProject(project)} idea={toIdeaSession(idea)} chat={chat} />;
 }

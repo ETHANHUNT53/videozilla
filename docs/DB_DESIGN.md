@@ -220,6 +220,12 @@ Both the Idea chat and the Revision chat (PRD F2-FR5, F7).
 | `versionBefore`, `versionAfter` | int? | | set when a revision created a version |
 | `undoneAt` | Date? | | |
 | `runId` | ObjectId? | | pipeline run that processed it |
+| `replyTo` | ObjectId? | | idea chat (F2.5): the user message an assistant message answers |
+| `changedFields` | string[]? | | idea chat: brief fields an `applied` answer changed (for the highlight) |
+| `briefAfter` | object? | | idea chat: the brief after this answer, so a resend returns exactly the first answer |
+| `refusedCategory` | string? | | idea chat: a refused user message's category, so a resend is refused again without an AI call |
+
+Idea-chat user messages go `processing → applied | clarification | unsupported | failed`; a failed one can be sent again (same `clientMessageId`), and one stuck in `processing` for 2 minutes (a request that died) can be taken over by a resend.
 | `createdAt`, `updatedAt` | Date | R | |
 
 ### 4.6 `storyboard_versions`

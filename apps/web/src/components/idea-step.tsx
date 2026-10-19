@@ -7,7 +7,8 @@ import type { AutosaveState } from "@/lib/autosave";
 import { clampChars, stripControlChars } from "@/lib/project-client";
 import { AUDIENCE_OPTIONS } from "@/lib/project-options";
 import { useAutosave } from "@/lib/use-autosave";
-import type { IdeaSessionResource, ProjectResource } from "@/server/api/resources";
+import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
+import { IdeaChat } from "./idea-chat";
 import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
 
 type Idea = IdeaSessionResource;
@@ -40,8 +41,17 @@ const count = (s: string) => Array.from(s).length;
  * or "Sharpen my idea" makes the brief, with 2 other angles (F2.3); "Turn my notes into a brief" does the same from the
  * pasted notes (F2.4). F2.7 restyles this as Stitch screen 09. `onProject` gets the project after a brief, whose title may have followed it (PRD F2-FR11).
  */
-export function IdeaStep(props: { projectId: string; language: ProjectResource["language"]; initial: Idea; editable: boolean; onProject: (p: ProjectResource) => void }) {
-  const { projectId, language, initial, editable, onProject } = props;
+export function IdeaStep(props: {
+  projectId: string;
+  language: ProjectResource["language"];
+  initial: Idea;
+  initialChat: { items: ChatMessageResource[]; hasOlder: boolean };
+  editable: boolean;
+  onProject: (p: ProjectResource) => void;
+}) {
+  const { projectId, language, initial, initialChat, editable, onProject } = props;
+  // Brief fields the last chat answer changed (F2.5), highlighted until the next message or a new brief.
+  const [changed, setChanged] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
   const [clipped, setClipped] = useState<keyof typeof LIMITS | null>(null);
   const [brief, setBrief] = useState<{ brief: Brief | null; alternatives: Brief[]; updatedAt: string | null }>({
@@ -69,6 +79,7 @@ export function IdeaStep(props: { projectId: string; language: ProjectResource["
       if (problem) throw new Error(problem);
       const { data } = await apiCall<BriefReply>(`/api/v1/projects/${projectId}/idea/brief`, { method: "POST", body: request });
       setBrief({ brief: data.brief, alternatives: data.alternatives, updatedAt: data.briefUpdatedAt });
+      setChanged([]);
       onProject(data.project);
     });
 
@@ -254,14 +265,30 @@ export function IdeaStep(props: { projectId: string; language: ProjectResource["
           ai={ai}
           // The brief being looked at: a repeated or retried switch then can't swap back (the server keeps the current one).
           onSwitch={(index) => makeBrief(`angle:${index}`, { from: "alternative", index, ...(brief.updatedAt && { briefUpdatedAt: brief.updatedAt }) })}
+          changed={changed}
+        />
+      ) : null}
+
+      {brief.brief ? (
+        <IdeaChat
+          projectId={projectId}
+          initial={initialChat}
+          editable={editable}
+          ai={ai}
+          onSend={() => setChanged([])}
+          onAnswer={(reply) => {
+            if (reply.brief) setBrief((b) => ({ ...b, brief: reply.brief, updatedAt: reply.briefUpdatedAt }));
+            setChanged(reply.assistantMessage.changedFields);
+            onProject(reply.project);
+          }}
         />
       ) : null}
     </Card>
   );
 }
 
-type IdeaAi = ReturnType<typeof useIdeaAi>;
-type AiErrorState = { message: string; reason?: string; code?: string } | null;
+export type IdeaAi = ReturnType<typeof useIdeaAi>;
+export type AiErrorState = { message: string; reason?: string; code?: string } | null;
 
 /**
  * The Idea step's AI requests (suggestions and briefs) run one at a time: each costs a Gemini call and a unit of the
@@ -309,19 +336,21 @@ function useIdeaAi() {
     return () => clearTimeout(timer);
   }, [lockedUntil]);
 
-  const run = useCallback(async (kind: string, fn: () => Promise<void>) => {
+  /** `ownError`: the caller shows the error itself (the chat, next to its message); the limit lock applies either way. */
+  const run = useCallback(async (kind: string, fn: () => Promise<void>, ownError?: (error: NonNullable<AiErrorState>) => void) => {
     if (asking.current) return;
     asking.current = true;
     setBusy(kind);
     setError(null);
+    const show = (e: NonNullable<AiErrorState>) => (ownError ? ownError(e) : setError(e));
     try {
       await fn();
     } catch (err) {
       if (!(err instanceof ApiClientError)) {
-        setError({ message: err instanceof Error && err.message ? err.message : "Something went wrong. Please try again." });
+        show({ message: err instanceof Error && err.message ? err.message : "Something went wrong. Please try again." });
       } else {
         const issue = err.details[0]?.issue;
-        setError({ message: err.message, code: err.code, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
+        show({ message: err.message, code: err.code, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
         const resetsAt = err.code === "LIMIT_REACHED" ? Date.parse(String(err.details[0]?.resetsAt ?? "")) : NaN;
         if (Number.isFinite(resetsAt)) setLockedUntil(resetsAt);
       }
@@ -337,7 +366,7 @@ function useIdeaAi() {
   return { busy, error, run, clearError, idle: busy === null, canAsk: busy === null && lockedUntil === null };
 }
 
-function Thinking({ busy }: { busy: string | null }) {
+export function Thinking({ busy }: { busy: string | null }) {
   // Switching angle makes no AI call.
   if (!busy || busy.startsWith("angle:")) return null;
   return (
@@ -347,7 +376,7 @@ function Thinking({ busy }: { busy: string | null }) {
   );
 }
 
-function AiError({ error }: { error: AiErrorState }) {
+export function AiError({ error }: { error: AiErrorState }) {
   if (!error) return null;
   return (
     <div role="alert" className="flex flex-col gap-1 rounded-xl border border-red/40 bg-red/5 px-4 py-3 text-sm">
@@ -443,32 +472,44 @@ function TopicIdeas(props: {
  * The brief (F2.3): what the video will be, and 2 other angles to switch to. The current brief takes the chosen angle's
  * place, so switching back is one click. "Generate storyboard" arrives with the storyboard milestone (F3).
  */
-function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boolean; ai: IdeaAi; onSwitch: (index: number) => void }) {
-  const { brief, alternatives, editable, ai, onSwitch } = props;
+function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boolean; ai: IdeaAi; onSwitch: (index: number) => void; changed: string[] }) {
+  const { brief, alternatives, editable, ai, onSwitch, changed } = props;
+  // A field the last chat answer changed: outlined, with a "changed" tag that screen readers hear too.
+  const mark = (field: string) => (changed.includes(field) ? "rounded-md outline outline-1 outline-offset-2 outline-cyan" : undefined);
+  const tag = (field: string) => (changed.includes(field) ? <span className="ml-2 font-mono text-xs text-cyan">changed</span> : null);
   const audience = AUDIENCE_OPTIONS.find((o) => o.value === brief.audience)?.label ?? brief.audience;
   return (
     // A container query: the card is narrow beside the settings panel even on a wide screen.
     <section aria-labelledby="brief-title" className="@container flex flex-col gap-5 rounded-xl border border-cyan/40 bg-cyan/5 p-5">
       <div className="flex flex-col gap-2">
         <Eyebrow>your brief</Eyebrow>
-        <h3 id="brief-title" className="text-xl font-semibold leading-snug">
+        <h3 id="brief-title" className={cx("text-xl font-semibold leading-snug", mark("title"))}>
           {brief.title}
+          {tag("title")}
         </h3>
-        <p className="text-cyan">“{brief.hook}”</p>
+        <p className={cx("text-cyan", mark("hook"))}>
+          “{brief.hook}”{tag("hook")}
+        </p>
       </div>
       <dl className="grid gap-x-4 gap-y-1 text-sm [&>dd]:mb-2 @md:grid-cols-[7rem_1fr] @md:gap-y-3 @md:[&>dd]:mb-0">
         <dt className="text-muted">Angle</dt>
-        <dd>{brief.angle}</dd>
+        <dd className={mark("angle")}>
+          {brief.angle}
+          {tag("angle")}
+        </dd>
         <dt className="text-muted">Audience</dt>
-        <dd>{audience}</dd>
+        <dd className={mark("audience")}>
+          {audience}
+          {tag("audience")}
+        </dd>
         {brief.sourceNotesSummary ? (
           <>
             <dt className="text-muted">From your notes</dt>
             <dd>{brief.sourceNotesSummary}</dd>
           </>
         ) : null}
-        <dt className="text-muted">Key points</dt>
-        <dd>
+        <dt className="text-muted">Key points{tag("keyPoints")}</dt>
+        <dd className={mark("keyPoints")}>
           <ol className="flex list-decimal flex-col gap-1 pl-5">
             {brief.keyPoints.map((k, i) => (
               <li key={i}>{k}</li>
@@ -477,8 +518,8 @@ function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boole
         </dd>
         {brief.outOfScope.length ? (
           <>
-            <dt className="text-muted">Left out to fit the length</dt>
-            <dd>
+            <dt className="text-muted">Left out to fit the length{tag("outOfScope")}</dt>
+            <dd className={mark("outOfScope")}>
               <ul className="flex list-disc flex-col gap-1 pl-5 text-muted">
                 {brief.outOfScope.map((k, i) => (
                   <li key={i}>{k}</li>

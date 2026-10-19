@@ -54,6 +54,7 @@ export const mongoModule = {
     projects: () => testMongo.db.collection("projects"),
     profiles: () => testMongo.db.collection("profiles"),
     ideaSessions: () => testMongo.db.collection("idea_sessions"),
+    chatMessages: () => testMongo.db.collection("chat_messages"),
     pipelineRuns: () => testMongo.db.collection("pipeline_runs"),
     publishJobs: () => testMongo.db.collection("publish_jobs"),
     renderJobs: () => testMongo.db.collection("render_jobs"),

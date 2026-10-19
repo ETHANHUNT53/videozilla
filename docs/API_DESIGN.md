@@ -441,6 +441,8 @@ interface ChatMessage {
   clarification: { question: string; options: string[] } | null;
   changedSceneIds: string[]; versionBefore: number | null; versionAfter: number | null;
   canUndo: boolean; createdAt: string;
+  clientMessageId: string | null;            // user messages (F2.5)
+  changedFields: string[];                   // idea chat: brief fields an `applied` answer changed (F2.5)
 }
 
 interface StoryboardVersion {
@@ -567,7 +569,7 @@ Response: `201 Project` (`status: "idea_draft"`), `Location: /api/v1/projects/{i
 | POST | `/projects/{id}/idea/brief` | `{ from: "idea" \| "notes" \| "suggestion", suggestionId? }`, or `{ from: "alternative", index: 0 \| 1, briefUpdatedAt? }` | `200 { brief, alternatives: [2], briefUpdatedAt, project }` | Saves the brief to the idea session. The project title follows the brief title until the user names the video (PRD F2-FR11), hence `project`. `idea` / `suggestion`: synchronous AI call (≤ 15 s, `ideas` limit). `notes` (F2.4): from the saved notes (≤ 25 s, one `ideas` unit whatever the length); the brief and both angles then carry `sourceNotesSummary` (one sentence on what the notes cover) and up to 5 `outOfScope` items. `alternative`: swaps in one of the 2 other angles (no AI call, not counted); with `briefUpdatedAt` (the brief the user saw), a request whose brief has changed meanwhile swaps nothing and returns the current brief, so a retry or a second tab can't swap it back. Errors: `400 VALIDATION_FAILED` (empty idea; an unknown `suggestionId`, or one from someone else's or another video, with field `suggestionId`; an unknown angle; notes with no content or only links, with field `notesText`, before anything is counted), `409 INVALID_STATE`, `422 UNSAFE_CONTENT` (field `idea` or `notes`), `429`, `503 AI_BUSY`. (F2.3, F2.4) |
 | PATCH | `/projects/{id}/idea/brief` | partial brief (`title`, `keyPoints`, …) | `200 IdeaSession` | Direct edits (PRD F2-FR7) |
 | GET | `/projects/{id}/idea/chat` | `?limit&cursor` | `200 { items: ChatMessage[], … }` | Oldest → newest |
-| POST | `/projects/{id}/idea/chat` | `{ clientMessageId, content }` | `200 { userMessage, assistantMessage, brief }` | Synchronous refine (≤ 15 s); idempotent on `clientMessageId` |
+| POST | `/projects/{id}/idea/chat` | `{ clientMessageId, content }` (UUID v4; 1–1,000 characters) | `200 { userMessage, assistantMessage, brief, briefUpdatedAt, project }` | Synchronous refine (≤ 15 s; ≤ 25 s for a brief from notes), one `ideas` unit, refunded when nothing is delivered. The assistant's `status` is `applied` (the brief changed in place; the other 2 angles stay), `clarification` or `unsupported` (no change); `changedFields` names what changed. Idempotent on `clientMessageId` (§9): a resend returns the stored answer with `Idempotent-Replayed: true`, other content `422 IDEMPOTENCY_KEY_REUSED`, one still being answered `409 RUN_IN_PROGRESS`, a failed one runs again. Errors: `400` without a brief, `409`, `422 UNSAFE_CONTENT` (field `message`), `429`, `503`. (F2.5) |
 
 **Streaming (P1):** `POST …/suggestions` and `…/idea/chat` may answer `text/event-stream` when the request sends `Accept: text/event-stream`. Events: `delta` (partial text), `result` (the final JSON above), `error` (the §7 format).
 

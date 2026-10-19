@@ -74,6 +74,13 @@ export function afterCursorDesc(field: string, cursor: Cursor) {
   return { $or: [{ [field]: { $lt: value } }, { [field]: value, _id: { $lt: id } }] };
 }
 
+/** The same for an ascending sort (oldest first, e.g. a chat thread). */
+export function afterCursorAsc(field: string, cursor: Cursor) {
+  const value = new Date(cursor.u);
+  const id = new ObjectId(cursor.i);
+  return { $or: [{ [field]: { $gt: value } }, { [field]: value, _id: { $gt: id } }] };
+}
+
 /**
  * Builds a page from `limit + 1` fetched rows: the extra row only tells us whether there is more.
  * `cursorOf` gives the sort value and id of a row.

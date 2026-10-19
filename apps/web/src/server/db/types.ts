@@ -97,6 +97,35 @@ export interface IdeaBriefDoc {
   sourceNotesSummary?: string;
 }
 
+/** What a chat message is now (DB Design §5.7); the idea chat uses these (no pending / undone). */
+export type ChatMessageStatus = "processing" | "applied" | "clarification" | "unsupported" | "failed";
+
+/**
+ * One message of the idea chat (F2.5) or, later, the revision chat (F7) (DB Design §4.5). A user message carries the
+ * page's `clientMessageId` (unique per project, so a resend is recognised); an assistant message points at the user
+ * message it answers and keeps the brief it left, so a replay returns exactly the first answer.
+ */
+export interface ChatMessageDoc {
+  _id: ObjectId;
+  projectId: ObjectId;
+  userId: string;
+  thread: "idea" | "revision";
+  role: "user" | "assistant";
+  content: string;
+  status: ChatMessageStatus;
+  clientMessageId?: string;
+  /** Assistant messages: the user message they answer. */
+  replyTo?: ObjectId;
+  /** Assistant messages: which brief fields changed (`applied`), for the highlight. */
+  changedFields?: string[];
+  /** Assistant messages: the brief after this answer. */
+  briefAfter?: IdeaBriefDoc | null;
+  /** User messages refused by the AI: the category, so a resend answers 422 again without another AI call. */
+  refusedCategory?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** One per project, created with it (DB Design §4.4, §6.1). The Idea Studio (F2) fills it in. */
 export interface IdeaSessionDoc {
   _id: ObjectId;

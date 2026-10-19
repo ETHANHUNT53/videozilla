@@ -22,6 +22,7 @@ import * as one from "@/app/api/v1/projects/[id]/route";
 import * as duplicate from "@/app/api/v1/projects/[id]/duplicate/route";
 import * as idea from "@/app/api/v1/projects/[id]/idea/route";
 import * as brief from "@/app/api/v1/projects/[id]/idea/brief/route";
+import * as chat from "@/app/api/v1/projects/[id]/idea/chat/route";
 import * as suggestions from "@/app/api/v1/projects/[id]/idea/suggestions/route";
 import * as restore from "@/app/api/v1/projects/[id]/restore/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
@@ -195,6 +196,24 @@ describe("B against A's projects (id routes)", () => {
     expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
   });
 
+  it("GET / POST /projects/{id}/idea/chat: 404 like an unknown id (even with A's own clientMessageId); no AI call, A's thread and brief unchanged", async () => {
+    const aBrief = { title: "A's brief", hook: "h", angle: "a", audience: "students", keyPoints: ["1", "2", "3"], outOfScope: [] };
+    await testMongo.db.collection("idea_sessions").updateOne({ projectId: new ObjectId(a.live) }, { $set: { brief: aBrief } });
+    const aMessageId = "6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+    const now = new Date();
+    await testMongo.db.collection("chat_messages").insertOne({ projectId: new ObjectId(a.live), userId: A.id, thread: "idea", role: "user", content: "A's secret request", status: "applied", clientMessageId: aMessageId, createdAt: now, updatedAt: now });
+    const before = await snapshotA();
+    for (const id of [a.live, a.deleted, a.attention]) {
+      await expectLikeUnknown(chat.GET, "GET", "/idea/chat", id);
+      await expectLikeUnknown(chat.POST, "POST", "/idea/chat", id, { clientMessageId: aMessageId, content: "A's secret request" });
+      await expectLikeUnknown(chat.POST, "POST", "/idea/chat", id, { clientMessageId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", content: "make it about B" });
+    }
+    expect(await snapshotA()).toEqual(before);
+    expect(await testMongo.db.collection("chat_messages").countDocuments({ userId: B.id })).toBe(0);
+    expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: B.id })).toBe(0);
+    expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
+  });
+
   it("PUT /projects/{id}/idea: 404, with or without If-Match; A's idea and project are unchanged", async () => {
     const before = await snapshotA();
     for (const id of [a.live, a.deleted]) await expectLikeUnknown(idea.PUT, "PUT", "/idea", id, { mode: "idea", ideaInput: "B was here" });
@@ -279,6 +298,8 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["PUT /projects/{id}/idea", idea.PUT, "PUT", "/api/v1/projects/x/idea", { id: "x" }],
   ["POST /projects/{id}/idea/suggestions", suggestions.POST, "POST", "/api/v1/projects/x/idea/suggestions", { id: "x" }],
   ["POST /projects/{id}/idea/brief", brief.POST, "POST", "/api/v1/projects/x/idea/brief", { id: "x" }],
+  ["GET /projects/{id}/idea/chat", chat.GET, "GET", "/api/v1/projects/x/idea/chat", { id: "x" }],
+  ["POST /projects/{id}/idea/chat", chat.POST, "POST", "/api/v1/projects/x/idea/chat", { id: "x" }],
 ];
 
 describe("every route needs a session, and a verified email", () => {
@@ -310,6 +331,7 @@ const MODULES: Record<string, Record<string, unknown>> = {
   "/projects/[id]/idea": idea,
   "/projects/[id]/idea/suggestions": suggestions,
   "/projects/[id]/idea/brief": brief,
+  "/projects/[id]/idea/chat": chat,
   "/projects/[id]/restore": restore,
 };
 const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
