@@ -4,8 +4,10 @@ import { openAiCompatBackend } from "./openai-compat";
 
 /**
  * Which AI answers, from the environment (System Design §8.1, docs/features/AI-provider-switch.md):
- * - `AI_PROVIDER=groq` (default for development): Groq's `GROQ_MODEL`, backed up by OpenRouter's free `OPENROUTER_MODEL`;
- * - `AI_PROVIDER=gemini` (later, on the paid plan): `GEMINI_FAST_MODEL`, backed up by `GEMINI_FALLBACK_MODEL`;
+ * - `AI_PROVIDER=chain` (default): Gemini's `GEMINI_FAST_MODEL`, then Groq's `GROQ_MODEL` if Gemini isn't available,
+ *   then OpenRouter's free `OPENROUTER_MODEL` if Groq isn't either. A tier without its API key is left out;
+ * - `AI_PROVIDER=groq`: Groq's `GROQ_MODEL`, backed up by OpenRouter's free `OPENROUTER_MODEL` (no Gemini);
+ * - `AI_PROVIDER=gemini`: `GEMINI_FAST_MODEL`, backed up by `GEMINI_FALLBACK_MODEL` (Gemini only);
  * - `AI_PROVIDER=mock` (manual testing): sample data from mock.ts, no network and no limits spent. Never in production.
  * Switching is a setting, never a code change.
  */
@@ -15,20 +17,25 @@ export const DEFAULT_FALLBACK_MODEL = "gemini-3.5-flash-lite";
 export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 export const DEFAULT_OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
 
-export const AI_PROVIDERS = ["groq", "gemini", "mock"] as const;
+export const AI_PROVIDERS = ["chain", "groq", "gemini", "mock"] as const;
 export type AiProviderSetting = (typeof AI_PROVIDERS)[number];
 
 /**
- * Time kept back for the OpenRouter backup while Groq runs. Free OpenRouter hosts are slower than Groq (1–3 s for our
- * requests), so more than Gemini's 4 s.
+ * Time kept back for Groq while an earlier tier (Gemini) runs. Groq answers our requests in 1–3 s, so a slow Gemini
+ * still leaves Groq enough time.
+ */
+const GROQ_RESERVE_MS = 4_000;
+/**
+ * Time kept back for OpenRouter while an earlier tier runs. Free OpenRouter hosts are slower than Groq (1–3 s for our
+ * requests, sometimes more), so more than Groq's.
  */
 const OPENROUTER_RESERVE_MS = 6_000;
 
 const missing = (name: string) => new Error(`${name} is missing. Add it to apps/web/.env.local (see .env.example).`);
 
 export function aiProvider(): AiProviderSetting {
-  const value = (process.env.AI_PROVIDER || "groq").trim().toLowerCase();
-  if (!(AI_PROVIDERS as readonly string[]).includes(value)) throw new Error(`AI_PROVIDER must be groq, gemini or mock (got "${value}").`);
+  const value = (process.env.AI_PROVIDER || "chain").trim().toLowerCase();
+  if (!(AI_PROVIDERS as readonly string[]).includes(value)) throw new Error(`AI_PROVIDER must be chain, groq, gemini or mock (got "${value}").`);
   return value as AiProviderSetting;
 }
 
@@ -47,47 +54,67 @@ const mockBackend: Backend = {
   },
 };
 
-/** The main model and its backup (none when the backup is turned off or has no key). */
-export function aiBackends(): { main: Backend; backup: Backend | null } {
-  if (aiProvider() === "mock") {
+function groqBackend(apiKey: string): Backend {
+  return openAiCompatBackend({
+    provider: "groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    apiKey,
+    keyName: "GROQ_API_KEY",
+    model: process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL,
+    reserveMs: GROQ_RESERVE_MS,
+  });
+}
+
+/** OpenRouter's free model, or null without a key or with OPENROUTER_MODEL set to empty (turned off). */
+function openRouterBackend(): Backend | null {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const model = process.env.OPENROUTER_MODEL ?? DEFAULT_OPENROUTER_MODEL;
+  if (!apiKey || !model) return null;
+  return openAiCompatBackend({
+    provider: "openrouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    apiKey,
+    keyName: "OPENROUTER_API_KEY",
+    model,
+    reserveMs: OPENROUTER_RESERVE_MS,
+    headers: { "HTTP-Referer": process.env.BETTER_AUTH_URL || "http://localhost:3000", "X-OpenRouter-Title": "Videozilla" },
+    // Only hosts that honour JSON mode.
+    body: { provider: { require_parameters: true } },
+  });
+}
+
+/**
+ * The models to try, in order: the first answers, each later one is the backup of the one before it (`generateJson`
+ * moves on when a tier is busy, too slow, or out of quota or credits).
+ */
+export function aiChain(): Backend[] {
+  const setting = aiProvider();
+  if (setting === "mock") {
     // Sample data must never reach real users.
     if (process.env.NODE_ENV === "production") throw new Error("AI_PROVIDER=mock is for development only.");
-    return { main: mockBackend, backup: null };
+    return [mockBackend];
   }
-  if (aiProvider() === "gemini") {
+  if (setting === "gemini") {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw missing("GEMINI_API_KEY");
     const primary = process.env.GEMINI_FAST_MODEL || DEFAULT_FAST_MODEL;
     const fallback = process.env.GEMINI_FALLBACK_MODEL || DEFAULT_FALLBACK_MODEL;
-    return { main: geminiBackend(apiKey, primary), backup: fallback !== primary ? geminiBackend(apiKey, fallback) : null };
+    return fallback !== primary ? [geminiBackend(apiKey, primary), geminiBackend(apiKey, fallback)] : [geminiBackend(apiKey, primary)];
+  }
+  const groqKey = process.env.GROQ_API_KEY;
+  const openRouter = openRouterBackend();
+  if (setting === "groq") {
+    if (!groqKey) throw missing("GROQ_API_KEY");
+    return openRouter ? [groqBackend(groqKey), openRouter] : [groqBackend(groqKey)];
   }
 
-  const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) throw missing("GROQ_API_KEY");
-  const main = openAiCompatBackend({
-    provider: "groq",
-    baseUrl: "https://api.groq.com/openai/v1",
-    apiKey: groqKey,
-    keyName: "GROQ_API_KEY",
-    model: process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL,
-    reserveMs: 0,
-  });
-  // The backup is optional: no key, or OPENROUTER_MODEL set to empty, turns it off.
-  const orKey = process.env.OPENROUTER_API_KEY;
-  const orModel = process.env.OPENROUTER_MODEL ?? DEFAULT_OPENROUTER_MODEL;
-  const backup =
-    orKey && orModel
-      ? openAiCompatBackend({
-          provider: "openrouter",
-          baseUrl: "https://openrouter.ai/api/v1",
-          apiKey: orKey,
-          keyName: "OPENROUTER_API_KEY",
-          model: orModel,
-          reserveMs: OPENROUTER_RESERVE_MS,
-          headers: { "HTTP-Referer": process.env.BETTER_AUTH_URL || "http://localhost:3000", "X-OpenRouter-Title": "Videozilla" },
-          // Only hosts that honour JSON mode.
-          body: { provider: { require_parameters: true } },
-        })
-      : null;
-  return { main, backup };
+  // chain: every tier whose key is set, in the order Gemini → Groq → OpenRouter.
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const chain = [
+    geminiKey ? geminiBackend(geminiKey, process.env.GEMINI_FAST_MODEL || DEFAULT_FAST_MODEL) : null,
+    groqKey ? groqBackend(groqKey) : null,
+    openRouter,
+  ].filter((b): b is Backend => b !== null);
+  if (!chain.length) throw new Error("No AI key is set. Add GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY to apps/web/.env.local (see .env.example).");
+  return chain;
 }

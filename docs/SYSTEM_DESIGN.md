@@ -308,21 +308,22 @@ Timeline {
 | `llm.fast` | `gemini-3.8-flash` | Idea suggestions, briefs, idea chat, captions, accuracy check |
 | `llm.lite` | `gemini-3.5-flash-lite` | Small helpers; **fallback when other models are busy** (refined from M0) |
 
-**Development (since 2026-10-18):** the Gemini free tier and prepaid credits ran out, so development uses free providers instead, picked by the `AI_PROVIDER` setting ([AI provider switch](features/AI-provider-switch.md)):
+**Provider chain (since 2026-10-19):** the interactive features ask the providers in order, picked by the `AI_PROVIDER` setting ([AI provider switch](features/AI-provider-switch.md#three-tier-chain-added-2026-10-19)):
 
-| `AI_PROVIDER` | Main | Backup |
-|---|---|---|
-| `groq` (development, default) | Groq `openai/gpt-oss-120b` (`GROQ_MODEL`) | OpenRouter `google/gemma-4-31b-it:free` (`OPENROUTER_MODEL`) |
-| `gemini` (launch, **paid plan**) | the aliases above | `gemini-3.5-flash-lite` |
-| `mock` (manual testing) | sample data, no network | — |
+| `AI_PROVIDER` | Order (each later tier backs up the one before) |
+|---|---|
+| `chain` (default) | Gemini `gemini-3.8-flash` (`GEMINI_FAST_MODEL`) → Groq `openai/gpt-oss-120b` (`GROQ_MODEL`) → OpenRouter `google/gemma-4-31b-it:free` (`OPENROUTER_MODEL`); a tier without its API key is left out |
+| `groq` | Groq → OpenRouter |
+| `gemini` | the aliases above, falling back to `gemini-3.5-flash-lite` |
+| `mock` (manual testing) | sample data, no network |
 
-Switching back to Gemini is a setting (`AI_PROVIDER=gemini`), not a code change. The M0 storyboard script still calls Gemini directly; F3 decides the storyboard's provider.
+A tier that is busy, too slow, or out of quota or credits hands over to the next one; the Gemini key is out of prepaid credits today, so Groq answers until it is topped up. Changing the order is a setting, not a code change. The M0 storyboard script still calls Gemini directly; F3 decides the storyboard's provider.
 
 ### 8.2 Call wrapper
 
 All AI calls go through one wrapper in `packages/ai` (`generateJson`), whichever provider answers (Gemini, or Groq / OpenRouter through one OpenAI-compatible adapter):
 1. **Structured JSON output** (`responseMimeType: application/json`), validated with Zod.
-2. **Busy handling:** retries for 429/5xx/"high demand" with 2, 4, 8, 16 s backoff, then the fallback model (seen repeatedly in M0).
+2. **Busy handling (interactive features):** the tiers of §8.1 in order inside a **15 s deadline**. The first model that fails fast with "busy" gets one retry after 1 s; a slow tier or one out of quota moves straight to the next. Each tier runs with the time left minus the **next** tier's reserve (Groq 4 s, OpenRouter 6 s), or all the time left when that would be less than its own reserve, so Gemini gets 11 s and a fast-failing Gemini leaves Groq 9 s and OpenRouter 6 s. A **circuit breaker** skips a model out of quota (429) for the time the provider gives, and a provider out of credits (402) for 30 min, with an `ai_calls` "skipped" row. A safety block stops the chain (`422`). (The M0 storyboard script still retries with 2, 4, 8, 16 s backoff.)
 3. **Repair loop:** on schema errors, the errors are sent back and Gemini corrects them (max 2 repairs).
 4. **Logging:** provider, model, tokens, latency and outcome go to `ai_calls`.
 5. **Timeout:** 90 s per call; the storyboard step streams so Vercel doesn't time out.

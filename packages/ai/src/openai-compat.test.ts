@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { AiBlockedError, AiBusyError, AiOutputError, generateJson, resetModelCooldowns, type AiCallLog } from "./generate-json";
 import { rateLimitCooldownMs } from "./openai-compat";
-import { aiBackends } from "./providers";
+import { aiChain } from "./providers";
 
-/** generateJson on AI_PROVIDER=groq: Groq main, OpenRouter backup, both through a mocked fetch. */
+/** generateJson on AI_PROVIDER=groq: Groq main, OpenRouter backup, both through a mocked fetch (fake keys only). */
 
 const fetchMock = vi.fn<typeof fetch>();
 const Shape = z.object({ items: z.array(z.string()).length(2) });
@@ -36,7 +36,8 @@ async function run(deadlineMs?: number) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("fetch", fetchMock);
-  vi.stubEnv("AI_PROVIDER", "");
+  vi.stubEnv("AI_PROVIDER", "groq");
+  vi.stubEnv("GEMINI_API_KEY", "");
   vi.stubEnv("GROQ_API_KEY", "groq-test");
   vi.stubEnv("GROQ_MODEL", "");
   vi.stubEnv("OPENROUTER_API_KEY", "or-test");
@@ -51,10 +52,12 @@ afterEach(() => {
 });
 
 describe("AI_PROVIDER", () => {
-  it("defaults to Groq (gpt-oss-120b) with the OpenRouter free backup (gemma-4-31b-it:free)", () => {
-    const { main, backup } = aiBackends();
-    expect([main.provider, main.model]).toEqual(["groq", "openai/gpt-oss-120b"]);
-    expect([backup?.provider, backup?.model]).toEqual(["openrouter", "google/gemma-4-31b-it:free"]);
+  it("groq: Groq (gpt-oss-120b) with the OpenRouter free backup (gemma-4-31b-it:free), never Gemini", () => {
+    vi.stubEnv("GEMINI_API_KEY", "g");
+    expect(aiChain().map((b) => [b.provider, b.model])).toEqual([
+      ["groq", "openai/gpt-oss-120b"],
+      ["openrouter", "google/gemma-4-31b-it:free"],
+    ]);
   });
 
   it("gemini selects the Gemini models; an unknown value is a clear error, never a silent fallback", () => {
@@ -62,20 +65,20 @@ describe("AI_PROVIDER", () => {
     vi.stubEnv("GEMINI_API_KEY", "g");
     vi.stubEnv("GEMINI_FAST_MODEL", "");
     vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
-    expect(aiBackends().main).toMatchObject({ provider: "gemini", model: "gemini-3.8-flash" });
+    expect(aiChain()[0]).toMatchObject({ provider: "gemini", model: "gemini-3.8-flash" });
     vi.stubEnv("AI_PROVIDER", "openai");
-    expect(() => aiBackends()).toThrow(/AI_PROVIDER must be groq, gemini or mock/);
+    expect(() => aiChain()).toThrow(/AI_PROVIDER must be chain, groq, gemini or mock/);
   });
 
   it("model names come from GROQ_MODEL / OPENROUTER_MODEL; an empty OPENROUTER_MODEL or no key turns the backup off", () => {
     vi.stubEnv("GROQ_MODEL", "qwen/qwen3.8-27b");
     vi.stubEnv("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free");
-    expect(aiBackends()).toMatchObject({ main: { model: "qwen/qwen3.8-27b" }, backup: { model: "nvidia/nemotron-3-super-120b-a12b:free" } });
+    expect(aiChain().map((b) => b.model)).toEqual(["qwen/qwen3.8-27b", "nvidia/nemotron-3-super-120b-a12b:free"]);
     vi.stubEnv("OPENROUTER_MODEL", "");
-    expect(aiBackends().backup).toBeNull();
+    expect(aiChain().map((b) => b.provider)).toEqual(["groq"]);
     vi.stubEnv("OPENROUTER_MODEL", "x:free");
     vi.stubEnv("OPENROUTER_API_KEY", "");
-    expect(aiBackends().backup).toBeNull();
+    expect(aiChain().map((b) => b.provider)).toEqual(["groq"]);
   });
 
   it("needs GROQ_API_KEY", async () => {

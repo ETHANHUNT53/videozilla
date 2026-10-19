@@ -171,15 +171,19 @@ describe("quota circuit breaker", () => {
     expect(quotaCooldownMs(new Error("429 RESOURCE_EXHAUSTED: Resource has been exhausted"))).toBeNull();
   });
 
-  it("a key out of prepaid credits (402) is skipped for 30 min on every model, without three failed calls per request", async () => {
+  it("a key out of prepaid credits (402) is skipped for 30 min on every model of the key, after a single failed call", async () => {
     const depleted = () => new Error('{"error":{"code":402,"message":"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing."}}');
     expect(quotaCooldownMs(depleted())).toBe(30 * 60_000);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     generateContent.mockRejectedValue(depleted());
     const first = await run();
     await expect(first.promise).rejects.toBeInstanceOf(AiBusyError);
-    // Main model once (no second try), then the fallback once: both now cool down.
-    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+    // Main model once (no second try); the fallback uses the same key, so it is skipped too (logged as skipped).
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.8-flash"]);
+    expect(first.logs).toEqual([
+      expect.objectContaining({ model: "gemini-3.8-flash", status: "retry", error: expect.stringMatching(/prepayment credits are depleted/) }),
+      expect.objectContaining({ model: "gemini-3.5-flash-lite", status: "retry", error: expect.stringMatching(/^skipped: quota cooldown/) }),
+    ]);
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/prepaid credits are used up/));
     generateContent.mockClear();
     const again = await run();

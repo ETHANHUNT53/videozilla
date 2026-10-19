@@ -1,4 +1,6 @@
-# AI provider switch — Groq + OpenRouter for development
+# AI provider switch — Gemini → Groq → OpenRouter chain
+
+> **Update 2026-10-19:** the default is now a three-tier chain (`AI_PROVIDER=chain`): Gemini first, Groq if Gemini isn't available, OpenRouter if Groq isn't either. See [Three-tier chain](#three-tier-chain-added-2026-10-19). The sections before it describe the Groq + OpenRouter switch of 2026-10-18, which is still available as `AI_PROVIDER=groq`.
 
 **Status:** approved 2026-10-18 (main `openai/gpt-oss-120b`, backup `google/gemma-4-31b-it:free`; OpenRouter's 50 free requests a day is fine) and built. The live check waits for the keys.
 
@@ -132,6 +134,76 @@ Groq usually answers in 1–3 s, so the main model keeps most of the budget.
 - The routes, the `ideas` limit, refunds and error codes.
 - `generateStoryboard` in `gemini.ts` (the M0 script; the storyboard work in F3 decides its provider).
 - The Gemini path when `AI_PROVIDER=gemini`.
+
+## Three-tier chain (added 2026-10-19)
+
+You asked: "first I would get the results from the Gemini. If the Gemini is not available, then the backup should be Grok. And if the Grok is not available, then the backup should be Open Router."
+
+### Settings
+
+| `AI_PROVIDER` | Order |
+|---|---|
+| **`chain`** (new default; also when the setting is empty) | Gemini `GEMINI_FAST_MODEL` → Groq `GROQ_MODEL` → OpenRouter `OPENROUTER_MODEL` |
+| `groq` | Groq → OpenRouter (no Gemini), as on 2026-10-18 |
+| `gemini` | `GEMINI_FAST_MODEL` → `GEMINI_FALLBACK_MODEL` (Gemini only) |
+| `mock` | sample data, unchanged |
+
+- **A tier without its key is left out.** No `GEMINI_API_KEY` → Groq → OpenRouter; no `GROQ_API_KEY` → Gemini → OpenRouter; no `OPENROUTER_API_KEY` (or `OPENROUTER_MODEL` set to empty) → no third tier. With no AI key at all, the request fails with "No AI key is set…".
+- The chain uses one Gemini model (`GEMINI_FAST_MODEL`); `GEMINI_FALLBACK_MODEL` is only used by `AI_PROVIDER=gemini`.
+- `chain` is a new setting rather than a new meaning for `groq`, so each value says what it does, and `groq` / `gemini` still pin a single provider when you want to compare them.
+
+### When a tier "isn't available"
+
+The request moves on to the next tier when a tier:
+- is **busy** (429 rate limit, 5xx, overloaded, network error) — the first model that fails fast gets **one quick retry** (after 1 s) per request, then the chain moves on;
+- is **too slow** (its time budget below runs out) — no second try;
+- is **out of quota or credits** — no second try, and the **breaker** skips it on later requests:
+  - **402 / out of credits** (Gemini "prepayment credits are depleted", OpenRouter "Insufficient credits", any Groq 402): skipped for **30 min**, for every model of that provider (the whole key is out), with a loud server-log line;
+  - **429 quota** (Groq per-minute or daily, OpenRouter's free daily limit, Gemini quota): skipped for the time the provider gives (`retry-after`, reset time, "try again in …"), else 30 min for a daily cap and 1 min otherwise;
+  - each skip writes an `ai_calls` row (`status: "retry"`, `latencyMs: 0`, `error: "skipped: quota cooldown until …"`), once per model per request.
+
+With today's Gemini key (402), the first request after a server start makes **one** Gemini call (a fast 402), then Groq answers in the same request. Later requests go **straight to Groq** for 30 min, with no Gemini call.
+
+These stop the chain at once instead (no next tier): a **safety block** (`AiBlockedError` → `422 UNSAFE_CONTENT`), and a **setup error** such as a bad key (401/403). A `{"refused":true,"category":…}` reply is an ordinary answer from any tier, so the refusal categories work the same everywhere. The **repair round** stays on the tier that answered.
+
+### Time budget (15 s overall)
+
+Each tier keeps a **reserve**: time held back for it while an earlier tier runs.
+
+| Tier | Reserve | Why |
+|---|---|---|
+| Gemini | 4 s (only used by `AI_PROVIDER=gemini`'s fallback) | measured 2026-10-17 |
+| Groq | **4 s** | Groq answers our requests in 1–3 s |
+| OpenRouter | **6 s** | free hosts are slower |
+
+**Rule:** a tier runs with `time left − the next available tier's reserve`. If that would leave it less than its own reserve (an earlier tier used most of the deadline), it gets all the time that's left. Tiers that are cooling down don't count as "next". A tier with under 1 s left is skipped.
+
+What that gives with all three keys:
+
+| What happens | Gemini | Groq | OpenRouter |
+|---|---|---|---|
+| Gemini answers | up to 11 s | — | — |
+| Gemini never answers | 11 s | 4 s | none left → `503` if Groq also fails |
+| Gemini fails fast (e.g. 402), Groq never answers | ≈0 s | 9 s | 6 s |
+| Gemini busy twice (1 s pause), Groq never answers | ≈0 s | 8 s | 6 s |
+| Gemini cooling down (skipped) | 0 s | 9 s | 6 s |
+
+Why not keep back Groq's *and* OpenRouter's reserves (10 s) while Gemini runs: Gemini would then get only 5 s, and `gemini-3.8-flash` needs 9–12 s for 5 Hindi idea cards, so it would almost always time out and the first choice would never answer. Keeping only the next tier's reserve gives Gemini the same 11 s it had before; the price is that when **both** Gemini and Groq are slow, OpenRouter has no time left (the request answers `503` and the `ideas` count is given back). When Gemini fails fast — today's case — both later tiers get their full time.
+
+### Unchanged
+
+Refunds on failure (`503` gives the `ideas` count back), `ai_calls` rows per attempt with `provider` and `model` (`status: "ok"` for the first tier, `"fallback"` for a later one), RECITATION retry, Groq's invalid-JSON 400 → repair round, OpenRouter moderation → `422`, and `AI_PROVIDER=mock`.
+
+### Tests
+
+`packages/ai/src/chain.test.ts` (mocked Gemini SDK and mocked `fetch`, fake keys only; no test calls a real AI): chain order and model settings, key-missing skips, Gemini answers first, busy Gemini → Groq → OpenRouter, the repair round staying on Groq, a Gemini safety block stopping the chain, Gemini 402 → Groq in the same request and skipped on later requests (and back after 30 min), Groq daily 429 → OpenRouter, everything cooling down → `AiBusyError`, the deadline cases in the table above, and mock mode with every key set.
+
+### Try it live (you)
+
+1. In `apps/web/.env.local`, set `AI_PROVIDER=chain` (or remove the line) and keep the three keys. Restart `npm run dev`.
+2. Open a video → **Find a topic** → type a topic → go. You should get 5 cards. In the terminal running `npm run dev` you should see one line `[ai] gemini says the account's prepaid credits are used up … Skipping it for 30 min.`
+3. Click **Use this** on a card (one brief). It should answer without a new Gemini line (Gemini is skipped).
+4. Optional: in MongoDB, `ai_calls` for those two requests shows `gemini` (`retry`, the 402) then `groq` (`fallback`), and for the second request `gemini` "skipped: quota cooldown" then `groq`.
 
 ## Mock mode (added 2026-10-19)
 
