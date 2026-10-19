@@ -51,3 +51,13 @@ describe("forms in the server HTML (before hydration)", () => {
     for (const tag of submits) expect(tag).toMatch(/\bdisabled=""/);
   });
 });
+
+describe("reset password errors", () => {
+  it("a used, expired or unknown link never shows Better Auth's raw 'Invalid token'", async () => {
+    const { resetErrorText } = await import("./auth-forms");
+    expect(resetErrorText({ code: "INVALID_TOKEN", message: "Invalid token", status: 400 })).toBe("This reset link is invalid or has expired. Request a new one.");
+    expect(resetErrorText({ message: "invalid token" })).toBe("This reset link is invalid or has expired. Request a new one.");
+    expect(resetErrorText({ code: "PASSWORD_TOO_SHORT", message: "Password too short", status: 400 })).toBe("Password too short");
+    expect(resetErrorText({ status: 500 })).toMatch(/on our side/);
+  });
+});

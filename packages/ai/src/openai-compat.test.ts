@@ -135,10 +135,26 @@ describe("Groq main model", () => {
     expect(logs[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/^groq 400: Failed to generate JSON/) });
   });
 
-  it("invalid JSON twice: AiOutputError", async () => {
+  it("invalid JSON twice on Groq, then on OpenRouter: AiOutputError", async () => {
     fetchMock.mockImplementation(async () => ok("not json"));
     await expect((await run()).promise).rejects.toBeInstanceOf(AiOutputError);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(calls().map((c) => c.url)).toEqual([GROQ, GROQ, OPENROUTER, OPENROUTER]);
+  });
+
+  it("a wrong shape after Groq's repair round goes to OpenRouter, fresh (only the system prompt and the request)", async () => {
+    fetchMock.mockResolvedValueOnce(ok({ items: ["one"] })).mockResolvedValueOnce(ok({ items: ["one"] })).mockResolvedValueOnce(good());
+    await expect((await run()).promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(calls()[2].body.messages.map((m: { role: string }) => m.role)).toEqual(["system", "user"]);
+  });
+
+  it("GROQ_BASE_URL / OPENROUTER_BASE_URL point the chain at other servers (QA's fakes); a non-http value is an error", async () => {
+    vi.stubEnv("GROQ_BASE_URL", "http://127.0.0.1:9001/v1/");
+    vi.stubEnv("OPENROUTER_BASE_URL", "http://127.0.0.1:9002/api/v1");
+    fetchMock.mockResolvedValueOnce(groqBusy()).mockResolvedValueOnce(groqBusy()).mockResolvedValueOnce(good());
+    await (await run()).promise;
+    expect(calls().map((c) => c.url)).toEqual(["http://127.0.0.1:9001/v1/chat/completions", "http://127.0.0.1:9001/v1/chat/completions", "http://127.0.0.1:9002/api/v1/chat/completions"]);
+    vi.stubEnv("GROQ_BASE_URL", "ftp://x");
+    expect(() => aiChain()).toThrow("GROQ_BASE_URL must be an http(s) address");
   });
 
   it("a bad key (401) with no later tier fails at once, naming the setting to check", async () => {

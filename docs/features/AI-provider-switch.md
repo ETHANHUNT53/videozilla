@@ -166,7 +166,7 @@ The request moves on to the next tier when a tier:
 
 With today's Gemini key (402), the first request after a server start makes **one** Gemini call (a fast 402), then Groq answers in the same request. Later requests go **straight to Groq** for 30 min, with no Gemini call.
 
-These stop the chain at once instead (no next tier): a **safety block** (`AiBlockedError` → `422 UNSAFE_CONTENT`), and a **setup error** such as a bad key (401/403). A `{"refused":true,"category":…}` reply is an ordinary answer from any tier, so the refusal categories work the same everywhere. The **repair round** stays on the tier that answered.
+These stop the chain at once instead (no next tier): a **safety block** (`AiBlockedError` → `422 UNSAFE_CONTENT`), and a **setup error** such as a bad key (401/403). A `{"refused":true,"category":…}` reply is an ordinary answer from any tier, so the refusal categories work the same everywhere. The **repair round** stays on the tier that answered; if that tier's repair also fails (bad JSON or the wrong shape twice), the request **moves on to the next tier** with a fresh conversation while time is left (QA note, 2026-10-19). Only when no tier is left, or there's no time, is it `503` (with the refund).
 
 ### Time budget (15 s overall)
 
@@ -178,9 +178,14 @@ Each tier keeps a **reserve**: time held back for it while an earlier tier runs.
 | Groq | **4 s** | Groq answers our requests in 1–3 s |
 | OpenRouter | **6 s** | free hosts are slower |
 
-**Rule:** a tier runs with `time left − the next available tier's reserve`. If that would leave it less than its own reserve (an earlier tier used most of the deadline), it gets all the time that's left. Tiers that are cooling down don't count as "next". A tier with under 1 s left is skipped.
+**Rule** (`budgetMs` in generate-json.ts; updated 2026-10-19 after QA):
+1. A tier keeps back the reserves of **all** later tiers, if that still leaves it its **typical time** (Gemini flash 9 s, flash-lite 3 s, Groq 3 s, OpenRouter 4 s). That's the case with a long deadline, such as 25 s for notes.
+2. Otherwise it keeps back only the **next** tier's reserve, if that leaves it at least its own reserve.
+3. Otherwise it gets all the time that's left (an earlier tier used most of the deadline).
 
-What that gives with all three keys:
+Tiers that are cooling down don't count. A tier with under 1 s left is skipped.
+
+What that gives with all three keys, for the usual 15 s:
 
 | What happens | Gemini | Groq | OpenRouter |
 |---|---|---|---|
@@ -190,7 +195,13 @@ What that gives with all three keys:
 | Gemini busy twice (1 s pause), Groq never answers | ≈0 s | 8 s | 6 s |
 | Gemini cooling down (skipped) | 0 s | 9 s | 6 s |
 
-Why not keep back Groq's *and* OpenRouter's reserves (10 s) while Gemini runs: Gemini would then get only 5 s, and `gemini-3.8-flash` needs 9–12 s for 5 Hindi idea cards, so it would almost always time out and the first choice would never answer. Keeping only the next tier's reserve gives Gemini the same 11 s it had before; the price is that when **both** Gemini and Groq are slow, OpenRouter has no time left (the request answers `503` and the `ideas` count is given back). When Gemini fails fast — today's case — both later tiers get their full time.
+With the **25 s** notes deadline, rule 1 applies: Gemini gets 15 s, then Groq 4 s, then OpenRouter 6 s, so OpenRouter answers even when Gemini and Groq both hang. After a fast Gemini failure: Groq 19 s, OpenRouter 6 s.
+
+Why the 15 s deadline doesn't keep back Groq's *and* OpenRouter's reserves (10 s) while Gemini runs: Gemini would then get only 5 s, and `gemini-3.8-flash` needs 9–12 s for 5 Hindi idea cards, so it would almost always time out and the first choice would never answer. Keeping only the next tier's reserve gives Gemini the same 11 s it had before; the price is that when **both** Gemini and Groq are slow, OpenRouter has no time left (the request answers `503` and the `ideas` count is given back). When Gemini fails fast — today's case — both later tiers get their full time.
+
+### For QA: pointing the chain at fake servers
+
+`GROQ_BASE_URL` and `OPENROUTER_BASE_URL` (in `apps/web/.env.local`) replace the API addresses, like the Gemini SDK's own `GOOGLE_GEMINI_BASE_URL`. For example `GROQ_BASE_URL=http://127.0.0.1:9001/v1` sends `POST http://127.0.0.1:9001/v1/chat/completions`. A value that isn't `http(s)://…` is a clear error. Leave them unset normally.
 
 ### Unchanged
 

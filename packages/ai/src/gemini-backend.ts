@@ -37,6 +37,8 @@ export function geminiBackend(apiKey: string, model: string): Backend {
     provider: "gemini",
     model,
     reserveMs: GEMINI_RESERVE_MS,
+    // Measured 2026-10-17: gemini-3.8-flash 9–12 s for 5 Hindi idea cards, the flash-lite models about 2 s.
+    typicalMs: /lite/.test(model) ? 3_000 : 9_000,
     async complete({ system, turns, temperature, signal }) {
       const res = await ai.models.generateContent({
         model,

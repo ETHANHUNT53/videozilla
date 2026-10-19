@@ -50,6 +50,7 @@ export function IdeaStep(props: { projectId: string; language: ProjectResource["
     updatedAt: initial.briefUpdatedAt,
   });
   const ai = useIdeaAi();
+  const suggestButton = useRef<HTMLButtonElement>(null);
   const { state, queue } = useAutosave<Draft, Idea>({
     rev: initial.rev,
     save: async (value, rev, { keepalive }) =>
@@ -172,6 +173,8 @@ export function IdeaStep(props: { projectId: string; language: ProjectResource["
             value={draft.topicInput}
             max={LIMITS.topicInput}
             onChange={(v) => setText("topicInput", v)}
+            // Enter asks for ideas, like pressing "Suggest 5 ideas" (a no-op while that button is disabled).
+            onEnter={() => suggestButton.current?.click()}
             readOnly={!editable}
           />
         ) : tab.mode === "idea" ? (
@@ -208,6 +211,7 @@ export function IdeaStep(props: { projectId: string; language: ProjectResource["
             initial={initial.suggestions}
             editable={editable}
             ai={ai}
+            suggestButton={suggestButton}
             onUse={(card) => makeBrief(`use:${card.id}`, { from: "suggestion", suggestionId: card.id })}
           />
         ) : tab.mode === "idea" ? (
@@ -358,8 +362,16 @@ function AiError({ error }: { error: AiErrorState }) {
  * without repeating titles already shown. Cards are saved with the video, newest first here. "Use this" makes a card
  * the brief (F2.3).
  */
-function TopicIdeas(props: { projectId: string; topic: string; initial: Suggestion[]; editable: boolean; ai: IdeaAi; onUse: (card: Suggestion) => void }) {
-  const { projectId, topic, initial, editable, ai, onUse } = props;
+function TopicIdeas(props: {
+  projectId: string;
+  topic: string;
+  initial: Suggestion[];
+  editable: boolean;
+  ai: IdeaAi;
+  suggestButton: React.RefObject<HTMLButtonElement | null>;
+  onUse: (card: Suggestion) => void;
+}) {
+  const { projectId, topic, initial, editable, ai, suggestButton, onUse } = props;
   const [cards, setCards] = useState<Suggestion[]>(initial);
   const trimmed = topic.trim();
   const busy = ai.busy;
@@ -379,7 +391,7 @@ function TopicIdeas(props: { projectId: string; topic: string; initial: Suggesti
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" disabled={!canAsk || !trimmed} onClick={() => ask("new", trimmed, cards)} aria-busy={busy === "new"}>
+        <Button ref={suggestButton} type="button" disabled={!canAsk || !trimmed} onClick={() => ask("new", trimmed, cards)} aria-busy={busy === "new"}>
           {busy === "new" ? "Thinking…" : "Suggest 5 ideas"}
         </Button>
         {!trimmed && editable ? <span className="text-xs text-muted">Type a subject first.</span> : null}
@@ -506,7 +518,7 @@ function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boole
   );
 }
 
-function TextBox(props: { label: string; hint: string; value: string; max: number; rows?: number; readOnly: boolean; onChange: (v: string) => void }) {
+function TextBox(props: { label: string; hint: string; value: string; max: number; rows?: number; readOnly: boolean; onChange: (v: string) => void; onEnter?: () => void }) {
   const id = useId();
   const used = count(props.value);
   const common = {
@@ -523,7 +535,21 @@ function TextBox(props: { label: string; hint: string; value: string; max: numbe
       <label htmlFor={id} className="text-sm text-muted">
         {props.label}
       </label>
-      {props.rows ? <textarea rows={props.rows} {...common} /> : <input type="text" {...common} />}
+      {props.rows ? (
+        <textarea rows={props.rows} {...common} />
+      ) : (
+        <input
+          type="text"
+          {...common}
+          onKeyDown={(e) => {
+            // Not while an input method (Hindi typing) is composing: its Enter picks a word.
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && props.onEnter) {
+              e.preventDefault();
+              props.onEnter();
+            }
+          }}
+        />
+      )}
       {/* Muted, not dim: small text needs 4.5:1 contrast (dim is about 3:1 on this background). */}
       <div className="flex justify-between gap-3 text-xs text-muted">
         <span id={`${id}-hint`}>{props.hint}</span>

@@ -8,7 +8,7 @@ vi.mock("@google/genai", () => ({
   },
 }));
 
-import { AiBlockedError, AiBusyError, generateJson, resetModelCooldowns, type AiCallLog } from "./generate-json";
+import { AiBlockedError, AiBusyError, budgetMs, generateJson, resetModelCooldowns, type AiCallLog } from "./generate-json";
 import { aiChain } from "./providers";
 
 /**
@@ -285,6 +285,34 @@ describe("billing / quota breaker across the chain", () => {
     order.length = 0;
     await expect((await run()).promise).rejects.toBeInstanceOf(AiBusyError);
     expect(order).toEqual([]); // nothing is called while everything cools down
+  });
+});
+
+describe("a longer deadline (25 s, notes) keeps every later tier's reserve", () => {
+  it("budgetMs: all later reserves when that leaves this model its typical time, else the next one's, else everything", () => {
+    const [gemini, groq, openrouter] = aiChain();
+    expect(budgetMs(gemini, [groq, openrouter], 25_000)).toBe(15_000); // 25 − 4 − 6, Gemini's typical 9 s fits
+    expect(budgetMs(gemini, [groq, openrouter], 15_000)).toBe(11_000); // 5 s would be too little: only Groq's 4 s
+    expect(budgetMs(groq, [openrouter], 10_000)).toBe(4_000);
+    expect(budgetMs(groq, [openrouter], 7_000)).toBe(7_000); // less than its own reserve otherwise: all of it
+    expect(budgetMs(openrouter, [], 6_000)).toBe(6_000);
+  });
+
+  it("Gemini and Groq both never answer: 15 s, then 4 s, and OpenRouter still answers in its 6 s", async () => {
+    gemini(never);
+    http(never, good);
+    const started = Date.now();
+    const { promise, logs } = await run(25_000);
+    await expect(promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(Date.now() - started).toBeLessThanOrEqual(25_000);
+    expect(logs.map((l) => [l.provider, l.latencyMs])).toEqual([["gemini", 15_000], ["groq", 4_000], ["openrouter", expect.any(Number)]]);
+  });
+
+  it("a failed repair round on Gemini falls through to Groq, fresh", async () => {
+    gemini(() => geminiReply({ items: ["one"] }), () => geminiReply({ items: ["still one"] }));
+    http(good);
+    await expect((await run(25_000)).promise).resolves.toMatchObject({ provider: "groq" });
+    expect(order).toEqual(["gemini", "gemini", "groq"]);
   });
 });
 

@@ -47,6 +47,7 @@ const mockBackend: Backend = {
   provider: "mock",
   model: "mock",
   reserveMs: 0,
+  typicalMs: 0,
   async complete({ mock }) {
     if (!mock) throw new ProviderError("AI_PROVIDER=mock has no sample data for this task.", "fatal");
     await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
@@ -54,14 +55,26 @@ const mockBackend: Backend = {
   },
 };
 
+/**
+ * The API address, or an override from the environment (`GROQ_BASE_URL`, `OPENROUTER_BASE_URL`, like the Gemini SDK's
+ * own `GOOGLE_GEMINI_BASE_URL`), so QA can run the chain against fake servers.
+ */
+function baseUrl(name: string, fallback: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) return fallback;
+  if (!/^https?:\/\//i.test(value)) throw new Error(`${name} must be an http(s) address (got "${value}").`);
+  return value.replace(/\/+$/, "");
+}
+
 function groqBackend(apiKey: string): Backend {
   return openAiCompatBackend({
     provider: "groq",
-    baseUrl: "https://api.groq.com/openai/v1",
+    baseUrl: baseUrl("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
     apiKey,
     keyName: "GROQ_API_KEY",
     model: process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL,
     reserveMs: GROQ_RESERVE_MS,
+    typicalMs: 3_000, // Groq answers our requests in 1–3 s
   });
 }
 
@@ -72,11 +85,12 @@ function openRouterBackend(): Backend | null {
   if (!apiKey || !model) return null;
   return openAiCompatBackend({
     provider: "openrouter",
-    baseUrl: "https://openrouter.ai/api/v1",
+    baseUrl: baseUrl("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
     apiKey,
     keyName: "OPENROUTER_API_KEY",
     model,
     reserveMs: OPENROUTER_RESERVE_MS,
+    typicalMs: 4_000,
     headers: { "HTTP-Referer": process.env.BETTER_AUTH_URL || "http://localhost:3000", "X-OpenRouter-Title": "Videozilla" },
     // Only hosts that honour JSON mode.
     body: { provider: { require_parameters: true } },

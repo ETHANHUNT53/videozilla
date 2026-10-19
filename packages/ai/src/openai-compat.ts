@@ -13,6 +13,7 @@ export interface OpenAiCompatConfig {
   apiKey: string;
   model: string;
   reserveMs: number;
+  typicalMs: number;
   /** Name of the env setting that holds the key, for error messages. */
   keyName: string;
   headers?: Record<string, string>;
@@ -42,6 +43,7 @@ export function openAiCompatBackend(cfg: OpenAiCompatConfig): Backend {
     provider: cfg.provider,
     model: cfg.model,
     reserveMs: cfg.reserveMs,
+    typicalMs: cfg.typicalMs,
     async complete({ system, turns, temperature, signal }) {
       const body = {
         model: cfg.model,

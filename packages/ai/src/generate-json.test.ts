@@ -113,11 +113,31 @@ describe("generateJson", () => {
     }
   });
 
-  it("invalid JSON twice: AiOutputError", async () => {
+  it("invalid JSON twice on every model: AiOutputError (the main model, then the fallback with a fresh conversation)", async () => {
     generateContent.mockResolvedValue(reply("not json"));
     const { promise } = await run();
     await expect(promise).rejects.toBeInstanceOf(AiOutputError);
-    expect(generateContent).toHaveBeenCalledTimes(2);
+    expect(generateContent.mock.calls.map((c) => [c[0].model, c[0].contents.length])).toEqual([
+      ["gemini-3.8-flash", 1],
+      ["gemini-3.8-flash", 3],
+      ["gemini-3.5-flash-lite", 1],
+      ["gemini-3.5-flash-lite", 3],
+    ]);
+  });
+
+  it("a failed repair round falls through to the next model, which answers", async () => {
+    generateContent.mockResolvedValueOnce(reply({ items: ["one"] })).mockResolvedValueOnce(reply({ items: ["still one"] })).mockResolvedValueOnce(reply({ items: ["a", "b"] }));
+    const { promise } = await run();
+    await expect(promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite", data: { items: ["a", "b"] } });
+  });
+
+  it("no time left for the next model after a failed repair: AiOutputError (503 with a refund), not AiBusyError", async () => {
+    generateContent.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 6_000));
+      return reply({ items: ["one"] });
+    });
+    const { promise } = await run(15_000);
+    await expect(promise).rejects.toBeInstanceOf(AiOutputError);
   });
 
   it("uses the model names from the environment", async () => {

@@ -201,7 +201,7 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     const res = await post({ topic: "Gitanjali by Tagore" });
     expect(res.status).toBe(503);
     expect(res.json.error.code).toBe("AI_BUSY");
-    expect(generateContent).toHaveBeenCalledTimes(2); // one "use your own words" retry
+    expect(generateContent).toHaveBeenCalledTimes(4); // one "use your own words" retry on each model
     expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME.id }))!.ideas).toBe(0);
   });
 

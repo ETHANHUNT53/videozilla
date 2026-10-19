@@ -25,6 +25,11 @@ export interface Backend {
   model: string;
   /** Time kept back for this backend when it's the fallback, while the main model runs. */
   reserveMs: number;
+  /**
+   * About how long this model needs for our requests. While it runs, every later tier's reserve is kept back only if
+   * that still leaves it this much; otherwise only the next tier's (see `generateJson`).
+   */
+  typicalMs: number;
   complete(req: { system: string; turns: ChatTurn[]; temperature: number; signal: AbortSignal; mock?: () => unknown }): Promise<BackendReply>;
 }
 

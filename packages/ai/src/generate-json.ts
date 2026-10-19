@@ -64,6 +64,22 @@ const inSetupCooldown = (b: Backend) => (cooldownUntil.get(setupKey(b)) ?? 0) > 
 /** How long to skip a provider with a setup problem: fixing a key or model name is a manual step. */
 const SETUP_COOLDOWN_MS = 10 * 60_000;
 
+/**
+ * How long a tier may run, so a slow model still leaves the later tiers time (docs/features/AI-provider-switch.md):
+ * 1. every later tier's reserve is kept back, if that still leaves this model its typical time (a long deadline, such
+ *    as 25 s for notes, so all three tiers get a chance);
+ * 2. otherwise only the next tier's reserve, if that leaves this model at least its own reserve (15 s: Gemini 11 s,
+ *    Groq 4 s);
+ * 3. otherwise all the time that's left (an earlier tier used most of the deadline).
+ * `later` are the tiers after this one that aren't cooling down.
+ */
+export function budgetMs(backend: Backend, later: Backend[], left: number): number {
+  const all = later.reduce((sum, b) => sum + b.reserveMs, 0);
+  if (later.length > 1 && left - all >= backend.typicalMs) return left - all;
+  if (later.length && left - later[0].reserveMs >= backend.reserveMs) return left - later[0].reserveMs;
+  return left;
+}
+
 /** Forget all quota cooldowns (tests). */
 export function resetModelCooldowns(): void {
   cooldownUntil.clear();
@@ -145,11 +161,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           }
           break;
         }
-        // Keep the next available tier's reserve back, so a slow model still leaves it time. When that would leave
-        // this model less than its own reserve (a slow earlier tier used most of the deadline), it gets all that's left.
-        const next = tiers.slice(tier + 1).find((b) => !coolingDown(b));
-        const left = deadline - Date.now();
-        const remaining = next && left - next.reserveMs >= backend.reserveMs ? left - next.reserveMs : left;
+        const remaining = budgetMs(backend, tiers.slice(tier + 1).filter((b) => !coolingDown(b)), deadline - Date.now());
         if (remaining < 1_000) break;
         const started = Date.now();
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -227,28 +239,45 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
     throw new AiBusyError(allOut ? Math.min(3600, Math.ceil(Math.min(...waits))) : undefined, allOut && tiers.every(inBillingCooldown));
   };
 
+  // Each tier gets two rounds (the reply, then one repair). A tier whose repair round also fails hands over to the next
+  // one, with a fresh conversation, while there's time; only when none is left is the request an AiOutputError.
   let problem = "";
-  for (let round = 0; round < 2; round++) {
-    const { text, backend, recited } = await call();
-    if (recited) {
-      problem = "The reply repeated existing text (recitation).";
-      // No reply text to answer, so the instruction joins the last user turn (turns must alternate).
-      turns[turns.length - 1].text += `\n\n${RECITATION_FIX}`;
-      continue;
+  for (;;) {
+    for (let round = 0; round < 2; round++) {
+      let reply: Awaited<ReturnType<typeof call>>;
+      try {
+        reply = await call();
+      } catch (err) {
+        // A later tier was busy or out of time after this one's unusable replies: the unusable reply is the real story.
+        if (problem && err instanceof AiBusyError) throw new AiOutputError(`The model's reply didn't match the expected shape: ${problem}`);
+        throw err;
+      }
+      const { text, backend, recited } = reply;
+      if (recited) {
+        problem = "The reply repeated existing text (recitation).";
+        // No reply text to answer, so the instruction joins the last user turn (turns must alternate).
+        turns[turns.length - 1].text += `\n\n${RECITATION_FIX}`;
+        continue;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        problem = "The reply was not valid JSON.";
+        // An empty model turn is refused by some APIs, so an empty reply is described instead.
+        turns.push({ role: "model", text: text || "(empty reply)" }, { role: "user", text: `${problem} Return only the JSON object.` });
+        continue;
+      }
+      const result = opts.schema.safeParse(parsed);
+      if (result.success) return { data: result.data, model: backend.model, provider: backend.provider };
+      problem = result.error.issues.slice(0, 10).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+      turns.push({ role: "model", text }, { role: "user", text: `The JSON did not match the required shape: ${problem}. Fix it and return the full corrected JSON only.` });
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      problem = "The reply was not valid JSON.";
-      // An empty model turn is refused by some APIs, so an empty reply is described instead.
-      turns.push({ role: "model", text: text || "(empty reply)" }, { role: "user", text: `${problem} Return only the JSON object.` });
-      continue;
-    }
-    const result = opts.schema.safeParse(parsed);
-    if (result.success) return { data: result.data, model: backend.model, provider: backend.provider };
-    problem = result.error.issues.slice(0, 10).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
-    turns.push({ role: "model", text }, { role: "user", text: `The JSON did not match the required shape: ${problem}. Fix it and return the full corrected JSON only.` });
+    // Both rounds were unusable (`call` may have moved on to a later tier meanwhile; `tier` is the one that answered):
+    // the next tier, if there is one.
+    if (tier + 1 >= tiers.length) break;
+    tier++;
+    turns.splice(0, turns.length, { role: "user", text: opts.prompt });
   }
   throw new AiOutputError(`The model's reply didn't match the expected shape: ${problem}`);
 }

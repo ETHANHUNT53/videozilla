@@ -238,6 +238,13 @@ export function ForgotPasswordForm() {
   );
 }
 
+/** Better Auth's reset errors in our words: a used, expired or unknown link says so (never the raw "Invalid token"). */
+export function resetErrorText(error: { code?: string; message?: string; status?: number }): string {
+  if (error.code === "INVALID_TOKEN" || /invalid token|expired/i.test(error.message ?? "")) return "This reset link is invalid or has expired. Request a new one.";
+  if (error.code === "PASSWORD_TOO_SHORT" || error.code === "PASSWORD_TOO_LONG") return error.message ?? "That password isn't allowed.";
+  return error.status && error.status >= 500 ? "Something went wrong on our side. Please try again in a minute." : (error.message ?? "Couldn't reset your password.");
+}
+
 export function ResetPasswordForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -252,7 +259,7 @@ export function ResetPasswordForm() {
     const { error } = await authClient.resetPassword({ newPassword: String(new FormData(e.currentTarget).get("password")), token });
     setBusy(false);
     if (error) {
-      setError(error.message ?? "Couldn't reset your password.");
+      setError(resetErrorText(error));
       return;
     }
     router.push("/sign-in");
