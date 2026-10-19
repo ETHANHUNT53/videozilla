@@ -141,10 +141,20 @@ describe("Groq main model", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("a bad key (401) fails at once, naming the setting to check", async () => {
+  it("a bad key (401) with no later tier fails at once, naming the setting to check", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", ""); // Groq alone: nothing to move on to
+    vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock.mockResolvedValueOnce(json(401, { error: { message: "Invalid API Key", type: "invalid_request_error" } }));
     await expect((await run()).promise).rejects.toThrow(/groq 401: Invalid API Key \(check GROQ_API_KEY/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Groq's per-minute token limit (413 TPM) is a quota cooldown, not a fatal error: OpenRouter answers", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(413, { error: { message: "Request too large for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000, Requested 9500. Please try again in 12.5s.", type: "tokens" } }))
+      .mockResolvedValueOnce(ok({ items: ["a", "b"] }));
+    await expect((await run()).promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("{\"refused\":true} is an ordinary reply here (Groq has no block reasons): the schema decides", async () => {

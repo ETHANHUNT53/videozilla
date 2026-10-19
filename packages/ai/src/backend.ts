@@ -70,13 +70,15 @@ export class AiOutputError extends Error {
  * - `busy`: try again / move on to the fallback;
  * - `quota`, `billing`: skip this model for `cooldownMs`;
  * - `bad_json`: the model wrote text that isn't JSON (`text`); goes to the repair round like an unparsable reply;
- * - `fatal`: a setup problem (bad key, bad request), thrown at once.
+ * - `fatal`: a setup problem (bad key, bad request). `setup: true` when it's the provider's setup (key rejected, model
+ *   unknown), which no request can fix: the chain skips that provider for a while and moves on. Other fatal errors
+ *   (a bad request) move on to the next tier without a cooldown, and are thrown when no tier is left.
  */
 export class ProviderError extends Error {
   constructor(
     message: string,
     readonly kind: "busy" | "quota" | "billing" | "bad_json" | "fatal",
-    readonly extra: { cooldownMs?: number; text?: string } = {},
+    readonly extra: { cooldownMs?: number; text?: string; setup?: boolean } = {},
   ) {
     super(message);
     this.name = "ProviderError";

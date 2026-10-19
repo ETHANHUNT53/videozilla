@@ -158,6 +158,34 @@ describe("AI_PROVIDER=chain (the default)", () => {
     ]);
   });
 
+  it("a rejected Gemini key or retired model doesn't break the chain: Groq answers, and Gemini is skipped for a while", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const bad of [Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }), Object.assign(new Error("models/gemini-9 is not found for API version v1beta"), { status: 404 })]) {
+      resetModelCooldowns();
+      error.mockClear();
+      generateContent.mockReset().mockRejectedValueOnce(bad);
+      fetchMock.mockReset().mockResolvedValueOnce(good());
+      await expect((await run()).promise).resolves.toMatchObject({ provider: "groq" });
+      expect(error).toHaveBeenCalledWith(expect.stringMatching(/gemini rejected its key or model/));
+      // The next request skips Gemini at once (setup cooldown), logged as such.
+      generateContent.mockClear();
+      fetchMock.mockReset().mockResolvedValueOnce(good());
+      const again = await run();
+      await expect(again.promise).resolves.toMatchObject({ provider: "groq" });
+      expect(generateContent).not.toHaveBeenCalled();
+      expect(again.logs[0]).toMatchObject({ provider: "gemini", error: expect.stringMatching(/^skipped: setup cooldown/) });
+    }
+  });
+
+  it("a bad request on every tier is that error (not 'busy'), thrown after the last tier", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    generateContent.mockReset().mockRejectedValueOnce(Object.assign(new Error("400 INVALID_ARGUMENT: bad request"), { status: 400 }));
+    fetchMock.mockReset().mockImplementation(async () => json(400, { error: { message: "bad request", type: "invalid_request_error" } }));
+    const { promise } = await run();
+    await expect(promise).rejects.toThrow(/openrouter 400: bad request/);
+    expect(urls()).toEqual([GROQ, OPENROUTER]);
+  });
+
   it("every tier busy: AiBusyError (the app answers 503 and gives the request back)", async () => {
     gemini(geminiBusy, geminiBusy);
     http(busy503, busy503);

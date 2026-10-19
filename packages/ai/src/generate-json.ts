@@ -54,10 +54,15 @@ const MAX_COOLDOWN_MS = 24 * 3600_000;
 const key = (b: Backend) => `${b.provider}:${b.model}`;
 /** A whole provider's cooldown (its account is out of credits). */
 const providerKey = (b: Backend) => `${b.provider}:*`;
-const cooldownEnd = (b: Backend) => Math.max(cooldownUntil.get(key(b)) ?? 0, cooldownUntil.get(providerKey(b)) ?? 0);
+const cooldownEnd = (b: Backend) => Math.max(cooldownUntil.get(key(b)) ?? 0, cooldownUntil.get(providerKey(b)) ?? 0, cooldownUntil.get(`${b.provider}:setup`) ?? 0);
 const coolingDown = (b: Backend) => cooldownEnd(b) > Date.now();
 /** Skipped because the account is out of credits (rather than a quota). */
 const inBillingCooldown = (b: Backend) => (cooldownUntil.get(providerKey(b)) ?? 0) > Date.now();
+/** A provider whose key or model was rejected (a setup problem) is skipped for a while, so the chain moves on. */
+const setupKey = (b: Backend) => `${b.provider}:setup`;
+const inSetupCooldown = (b: Backend) => (cooldownUntil.get(setupKey(b)) ?? 0) > Date.now();
+/** How long to skip a provider with a setup problem: fixing a key or model name is a manual step. */
+const SETUP_COOLDOWN_MS = 10 * 60_000;
 
 /** Forget all quota cooldowns (tests). */
 export function resetModelCooldowns(): void {
@@ -85,8 +90,13 @@ export function quotaCooldownMs(err: unknown): number | null {
 }
 
 /** What to do about a failed call: the adapter's own verdict, or (Gemini SDK errors) one read from the message. */
-function classify(err: unknown): { kind: ProviderError["kind"]; cooldownMs?: number; text?: string } {
+function classify(err: unknown): { kind: ProviderError["kind"]; cooldownMs?: number; text?: string; setup?: boolean } {
   if (err instanceof ProviderError) return { kind: err.kind, ...err.extra };
+  // Gemini SDK: the key was rejected, or the model doesn't exist (a wrong or retired GEMINI_FAST_MODEL).
+  const status = (err as { status?: unknown })?.status;
+  if (status === 401 || status === 403 || status === 404 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED|is not found for API version/i.test(String((err as Error)?.message))) {
+    return { kind: "fatal", setup: true };
+  }
   // The Gemini SDK's ApiError carries the HTTP status: 402 is always "pay first".
   if ((err as { status?: unknown })?.status === 402) return { kind: "billing", cooldownMs: BILLING_COOLDOWN_MS };
   const cooldownMs = quotaCooldownMs(err);
@@ -118,6 +128,8 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   let tier = 0; // position in `tiers`; a busy model moves us on, and we stay there for the repair round
   let retried = false; // one quick retry per request, for the first model that fails fast with "busy"
   const skipLogged = new Set<string>(); // one "skipped" row per model per request
+  let lastFatal: unknown; // a tier's bad-request / setup error, thrown only if no later tier answers
+  let sawBusy = false; // some tier was merely busy, slow or out of quota: then the answer is "busy", not that error
   const call = async (): Promise<{ text: string; backend: Backend; recited?: boolean }> => {
     for (; tier < tiers.length; tier++) {
       const backend = tiers[tier];
@@ -128,7 +140,8 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           // used, or why the request failed without a single call).
           if (!skipLogged.has(key(backend))) {
             skipLogged.add(key(backend));
-            await log({ provider, model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: ${inBillingCooldown(backend) ? "billing" : "quota"} cooldown until ${new Date(cooldownEnd(backend)).toISOString()}` });
+            const why = inBillingCooldown(backend) ? "billing" : inSetupCooldown(backend) ? "setup" : "quota";
+            await log({ provider, model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: ${why} cooldown until ${new Date(cooldownEnd(backend)).toISOString()}` });
           }
           break;
         }
@@ -169,7 +182,17 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           // Out of quota or credits counts as busy (move on to the next tier, answer 503 with a refund), never as a bug.
           const busy = verdict.kind !== "fatal";
           await log({ provider, model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
-          if (!busy) throw err;
+          if (!busy) {
+            if (verdict.setup && !inSetupCooldown(backend)) {
+              // The key or model is wrong: skip this provider for a while, and say so once in the server log.
+              cooldownUntil.set(setupKey(backend), Date.now() + SETUP_COOLDOWN_MS);
+              console.error(`[ai] ${provider} rejected its key or model (${model}): ${message}. Skipping it for ${SETUP_COOLDOWN_MS / 60_000} min.`);
+            }
+            // A later tier may still answer (the chain exists for this); only when none is left is this error the answer.
+            lastFatal = err;
+            break;
+          }
+          sawBusy = true;
           const cooldown = verdict.cooldownMs ?? null;
           // One operator line per billing cooldown per provider (not per model, nor per concurrent request).
           const newBillingCooldown = verdict.kind === "billing" && !inBillingCooldown(backend);
@@ -189,6 +212,8 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         }
       }
     }
+    // Every tier we tried failed with a setup or bad-request error (nothing was merely busy): that error is the answer.
+    if (lastFatal !== undefined && !sawBusy) throw lastFatal;
     // Every model is out of quota: say when the first one is back (capped at an hour, since a free tier's daily reset
     // is hours away and a paid key may be added meanwhile).
     const waits = tiers.filter(coolingDown).map((b) => (cooldownEnd(b) - Date.now()) / 1000);

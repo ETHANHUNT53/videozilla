@@ -260,3 +260,9 @@ Mocked `fetch` for Groq and OpenRouter; the existing mocked `@google/genai` test
 1. **Main model:** `openai/gpt-oss-120b` (stable, production) — OK? Or start with `qwen/qwen3.8-27b` (often better Hindi, but preview, so Groq may remove it)? I can also decide after the live Hindi check, since it's a one-line setting.
 2. **Backup model:** `google/gemma-4-31b-it:free` — OK?
 3. **OpenRouter's 50 free requests a day:** fine for now? (A one-time $10 credit raises it to 1,000 a day. Not needed yet.)
+
+## Review fixes (after 8216972)
+
+- **A tier's setup error no longer breaks the chain.** A rejected key (401/403) or an unknown model (404, or Gemini's "API key not valid" / "is not found for API version") used to be thrown at once, so a broken Gemini key failed every request although Groq and OpenRouter worked. Now that provider is skipped for 10 min (one `console.error` line, `ai_calls` rows say "skipped: setup cooldown") and the next tier answers. Other bad-request errors move on without a cooldown (they may be request-specific). The error is only the answer when every tier tried failed that way; otherwise it's `AiBusyError`.
+- **Groq 413 "Request too large … tokens per minute (TPM)"** is its per-minute token limit, so it's a quota cooldown (the "try again in" time) like 429, not a fatal error.
+- Reviewed and fine: deadline and abort across the 3 tiers (each call gets `AbortSignal.timeout(remaining)` plus a cleared timer race; the body read uses the same signal, so nothing leaks); breaker keys (billing per provider, quota per model, setup per provider); keys only in request headers (errors name the setting, never the value); mock mode throws in production; the forms' hydration gate only stays disabled when JavaScript never runs (the intended trade-off with `method="post"`).
