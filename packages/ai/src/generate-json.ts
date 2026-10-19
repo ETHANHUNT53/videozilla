@@ -146,9 +146,9 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   const tiers = aiChain();
   const deadline = Date.now() + (opts.deadlineMs ?? 15_000);
   const turns: ChatTurn[] = [{ role: "user", text: opts.prompt }];
-  // Logging must never break the feature. Between tiers it isn't waited for (`void log`): the ai_calls write finishes
-  // while the next tier runs, so a slow database never eats a later tier's reserve (see budgetMs). Where the request
-  // ends (a usable reply, a block) it is waited for.
+  // Logging must never break the feature. Between tiers and rounds it isn't waited for (`void log`, unusable replies
+  // included): the ai_calls write finishes while the next call runs, so a slow database never eats a later tier's
+  // reserve (see budgetMs). Where the request ends (a usable reply, a block) it is waited for.
   const log = async (entry: AiCallLog) => {
     try {
       await opts.onCall?.(entry);
@@ -164,7 +164,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   let sawBusy = false; // some tier was merely busy, slow or out of quota: then the answer is "busy", not that error
   let badRequest = false; // a fatal error that isn't a setup problem (our request was wrong): a bug, thrown as it is
   /** `logReply`: writes the reply's ai_calls row once it has been checked (usable → ok/fallback, else failed). */
-  const call = async (): Promise<{ text: string; backend: Backend; recited?: boolean; logReply?: (problem?: string) => Promise<void> }> => {
+  const call = async (repair = false): Promise<{ text: string; backend: Backend; recited?: boolean; logReply?: (problem?: string) => Promise<void> }> => {
     for (; tier < tiers.length; tier++) {
       const backend = tiers[tier];
       const { provider, model } = backend;
@@ -179,7 +179,9 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           }
           break;
         }
-        const remaining = budgetMs(backend, tiers.slice(tier + 1).filter((b) => !coolingDown(b)), deadline - Date.now());
+        const later = tiers.slice(tier + 1).filter((b) => !coolingDown(b));
+        // A repair round always leaves the next tier its reserve (a fresh model beats a second try at a broken reply).
+        const remaining = repair && later.length ? deadline - Date.now() - later[0].reserveMs : budgetMs(backend, later, deadline - Date.now());
         if (remaining < 1_000) break;
         const started = Date.now();
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -272,9 +274,14 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   let problem = "";
   for (;;) {
     for (let round = 0; round < 2; round++) {
+      if (round === 1) {
+        // No time for a repair round that still leaves the next tier its reserve: go to that tier, fresh.
+        const next = tiers.slice(tier + 1).find((b) => !coolingDown(b));
+        if (next && deadline - Date.now() - next.reserveMs < 1_000) break;
+      }
       let reply: Awaited<ReturnType<typeof call>>;
       try {
-        reply = await call();
+        reply = await call(round === 1);
       } catch (err) {
         // A later tier was busy or out of time after this one's unusable replies: the unusable reply is the real story.
         if (problem && err instanceof AiBusyError) throw new AiOutputError(`The model's reply didn't match the expected shape: ${problem}`);
@@ -292,7 +299,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         parsed = JSON.parse(text);
       } catch {
         problem = "The reply was not valid JSON.";
-        await logReply?.(problem);
+        void logReply?.(problem); // not waited for: a slow ai_calls write mustn't eat the repair round or the next tier
         // An empty model turn is refused by some APIs, so an empty reply is described instead.
         turns.push({ role: "model", text: text || "(empty reply)" }, { role: "user", text: `${problem} Return only the JSON object.` });
         continue;
@@ -304,7 +311,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
       }
       problem = result.error.issues.slice(0, 10).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
       // Logged as failed, so a repair round or a fall-through to the next tier doesn't look like a success.
-      await logReply?.(problem);
+      void logReply?.(problem);
       turns.push({ role: "model", text }, { role: "user", text: `The JSON did not match the required shape: ${problem}. Fix it and return the full corrected JSON only.` });
     }
     // Both rounds were unusable (`call` may have moved on to a later tier meanwhile; `tier` is the one that answered):

@@ -354,6 +354,39 @@ describe("a longer deadline (25 s, notes) keeps every later tier's reserve", () 
     expect(order).toEqual(["gemini", "groq", "openrouter"]);
   });
 
+  it("a slow ai_calls write after unusable replies (5 s) isn't waited for: Gemini hangs, Groq's shape is wrong twice, OpenRouter answers", async () => {
+    const slowLog = async () => {
+      await new Promise((r) => setTimeout(r, 5_000));
+    };
+    gemini(never);
+    http(() => ok({ items: ["one"] }), () => ok({ items: ["still one"] }), good);
+    const promise = generateJson({ system: "s", prompt: "p", schema: Shape, deadlineMs: 25_000, onCall: slowLog });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(order).toEqual(["gemini", "groq", "groq", "openrouter"]);
+  });
+
+  it("Groq's repair round keeps OpenRouter's 6 s: a slow wrong shape, then a repair that never answers", async () => {
+    gemini(never);
+    const slowWrong = () => new Promise<Response>((r) => setTimeout(() => r(ok({ items: ["one"] })), 1_500)) as unknown as Promise<never>;
+    http(slowWrong, never, good);
+    const { promise } = await run(25_000);
+    await expect(promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(order).toEqual(["gemini", "groq", "groq", "openrouter"]);
+  });
+
+  it("no time for a repair round that leaves OpenRouter its reserve: straight to OpenRouter, fresh", async () => {
+    gemini(never);
+    const slowWrong = () => new Promise<Response>((r) => setTimeout(() => r(ok({ items: ["one"] })), 3_500)) as unknown as Promise<never>;
+    http(slowWrong, good);
+    const { promise } = await run(25_000);
+    await expect(promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(order).toEqual(["gemini", "groq", "openrouter"]);
+    const [, init] = fetchMock.mock.calls[1];
+    expect(JSON.parse(String(init?.body)).messages).toHaveLength(2); // system + the request, no repair turns
+  });
+
   it("Gemini and Groq both never answer: 15 s, then 4 s, and OpenRouter still answers in its 6 s", async () => {
     gemini(never);
     http(never, good);
