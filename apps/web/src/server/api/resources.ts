@@ -50,9 +50,17 @@ export function toProfile(p: ProfileDoc) {
 /** The `Profile` resource's shape; client components import it as a type only. */
 export type ProfileResource = ReturnType<typeof toProfile>;
 
-/** A brief as the API shows it (API Design §12); `sourceNotesSummary` stays internal for now. */
+/** A brief as the API shows it (API Design §12); `sourceNotesSummary` only on briefs made from notes (F2.4). */
 export function toBrief(b: IdeaBriefDoc) {
-  return { title: b.title, hook: b.hook, angle: b.angle, audience: b.audience, keyPoints: b.keyPoints, outOfScope: b.outOfScope ?? [] };
+  return {
+    title: b.title,
+    hook: b.hook,
+    angle: b.angle,
+    audience: b.audience,
+    keyPoints: b.keyPoints,
+    outOfScope: b.outOfScope ?? [],
+    ...(b.sourceNotesSummary ? { sourceNotesSummary: b.sourceNotesSummary } : {}),
+  };
 }
 
 /** The `IdeaSession` resource (API Design §12, §13.3). */

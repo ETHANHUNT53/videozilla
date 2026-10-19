@@ -317,7 +317,7 @@ Timeline {
 | `gemini` | the aliases above, falling back to `gemini-3.5-flash-lite` |
 | `mock` (manual testing) | sample data, no network |
 
-A tier that is busy, too slow, or out of quota or credits hands over to the next one; the Gemini key is out of prepaid credits today, so Groq answers until it is topped up. Changing the order is a setting, not a code change. The M0 storyboard script still calls Gemini directly; F3 decides the storyboard's provider.
+A tier that is busy, too slow, or out of quota or credits hands over to the next one; the Gemini key is out of prepaid credits today, so Groq answers until it is topped up. Changing the order is a setting, not a code change. Briefs from pasted notes (F2.4) use the same chain with a 25 s deadline; the table in §8 (T2) asks for `llm.heavy` when notes are over 5,000 characters, which waits for the paid Gemini plan (development has no heavy model). The M0 storyboard script still calls Gemini directly; F3 decides the storyboard's provider.
 
 ### 8.2 Call wrapper
 

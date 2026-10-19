@@ -65,6 +65,7 @@ const TEXT = {
     outOfScope: ["Formulas and derivations", "History beyond one line"],
     altAngles: ["A story-first angle: one character meets the idea.", "A myth-busting angle: start from what people get wrong."],
     altTitles: (t: string) => [`The story behind ${t}`, `${t}: what most people get wrong`],
+    notesSummary: (t: string) => `[Mock] Your notes cover ${t} and a few related points.`,
   },
   hi: {
     hook: (t: string) => `[Mock] क्या आपने कभी अपने रोज़ के जीवन में ${t} पर ध्यान दिया है?`,
@@ -73,8 +74,16 @@ const TEXT = {
     outOfScope: ["सूत्र और गणनाएँ", "एक लाइन से ज़्यादा इतिहास"],
     altAngles: ["कहानी से शुरुआत: एक किरदार इस विचार से मिलता है।", "मिथक तोड़ना: लोग जो गलत समझते हैं, वहीं से शुरुआत।"],
     altTitles: (t: string) => [`${t} के पीछे की कहानी`, `${t}: ज़्यादातर लोग क्या गलत समझते हैं`],
+    notesSummary: (t: string) => `[Mock] आपके नोट्स ${t} और उससे जुड़ी कुछ बातों के बारे में हैं।`,
   },
 };
+
+/** The notes' first line with content (their heading, usually): the mock brief's subject. */
+const firstLine = (notes: string) =>
+  notes
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^[\s#*\-•\d.)]+/u, "").trim())
+    .find((l) => /[\p{L}\p{N}]/u.test(l)) ?? "";
 
 /** Five sample idea cards (or a test refusal / busy). */
 export function mockIdeas(input: IdeaSuggestionsInput): unknown {
@@ -98,11 +107,11 @@ export function mockIdeas(input: IdeaSuggestionsInput): unknown {
 
 /** A sample brief and 2 other angles (or a test refusal / busy). */
 export function mockBrief(input: IdeaBriefInput): unknown {
-  const text = input.source.kind === "idea" ? input.source.text : `${input.source.title} ${input.source.hook}`;
+  const text = input.source.kind === "card" ? `${input.source.title} ${input.source.hook}` : input.source.text;
   const refusal = trigger(text);
   if (refusal) return refusal;
   const L = TEXT[input.language];
-  const t = subject(input.source.kind === "idea" ? input.source.text : input.source.title, input.language);
+  const t = subject(input.source.kind === "idea" ? input.source.text : input.source.kind === "notes" ? firstLine(input.source.text) : input.source.title, input.language);
   const count = input.lengthSec === 60 ? 3 : 4;
   const make = (title: string, angle: string, hook: string): IdeaBrief => ({
     title: title.slice(0, 120),
@@ -111,6 +120,7 @@ export function mockBrief(input: IdeaBriefInput): unknown {
     audience: input.audience,
     keyPoints: L.briefPoints(t).slice(0, count),
     outOfScope: L.outOfScope,
+    ...(input.source.kind === "notes" ? { sourceNotesSummary: L.notesSummary(t) } : {}),
   });
   const brief =
     input.source.kind === "card"

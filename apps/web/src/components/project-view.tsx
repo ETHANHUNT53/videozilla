@@ -107,7 +107,7 @@ export function ProjectView({ initial, idea }: { initial: Project; idea: IdeaSes
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         {step === 0 ? (
-          <IdeaStep projectId={project.id} initial={idea} editable={project.allowedActions.includes("edit_idea")} onProject={saved} />
+          <IdeaStep projectId={project.id} language={project.language} initial={idea} editable={project.allowedActions.includes("edit_idea")} onProject={saved} />
         ) : (
           <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
             <Eyebrow accent="text-violet">{WORKSPACE[step].eyebrow}</Eyebrow>

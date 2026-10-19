@@ -1,5 +1,6 @@
 "use client";
 
+import { NOTES_PROBLEM_TEXT, notesLanguage, notesProblem } from "@videozilla/ai/notes";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import type { AutosaveState } from "@/lib/autosave";
@@ -28,17 +29,19 @@ const TABS: { mode: Mode; label: string; field: keyof typeof LIMITS }[] = [
   { mode: "notes", label: "Use my notes", field: "notesText" },
 ];
 
+const LANGUAGE_NAME = { en: "English", hi: "Hindi", other: "another language" } as const;
+
 const draftOf = (i: Idea): Draft => ({ mode: i.mode, topicInput: i.topicInput, ideaInput: i.ideaInput, notesText: i.notesText });
 const count = (s: string) => Array.from(s).length;
 
 /**
  * The Idea step (PRD F2): three ways to start, each with its own text, autosaved through
  * `PUT /api/v1/projects/{id}/idea` (F2.1). "Find a topic" asks Gemini for 5 idea cards (F2.2); "Use this" on a card
- * or "Sharpen my idea" makes the brief, with 2 other angles (F2.3). Notes (F2.4) come next; F2.7 restyles this as
- * Stitch screen 09. `onProject` gets the project after a brief, whose title may have followed it (PRD F2-FR11).
+ * or "Sharpen my idea" makes the brief, with 2 other angles (F2.3); "Turn my notes into a brief" does the same from the
+ * pasted notes (F2.4). F2.7 restyles this as Stitch screen 09. `onProject` gets the project after a brief, whose title may have followed it (PRD F2-FR11).
  */
-export function IdeaStep(props: { projectId: string; initial: Idea; editable: boolean; onProject: (p: ProjectResource) => void }) {
-  const { projectId, initial, editable, onProject } = props;
+export function IdeaStep(props: { projectId: string; language: ProjectResource["language"]; initial: Idea; editable: boolean; onProject: (p: ProjectResource) => void }) {
+  const { projectId, language, initial, editable, onProject } = props;
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
   const [clipped, setClipped] = useState<keyof typeof LIMITS | null>(null);
   const [brief, setBrief] = useState<{ brief: Brief | null; alternatives: Brief[]; updatedAt: string | null }>({
@@ -74,6 +77,12 @@ export function IdeaStep(props: { projectId: string; initial: Idea; editable: bo
       (await queue.settle()) ? null : "Your idea isn't saved yet, so it can't be sharpened. Check the save status above and try again.",
     );
 
+  // Same: the brief comes from the saved notes.
+  const fromNotes = () =>
+    makeBrief("notes", { from: "notes" }, async () =>
+      (await queue.settle()) ? null : "Your notes aren't saved yet, so no brief can be made. Check the save status above and try again.",
+    );
+
   const setText = (field: keyof typeof LIMITS, raw: string) => {
     // Pasted notes often carry invisible control characters (page breaks from PDFs), which the API rejects; drop them
     // here so the text can always be saved.
@@ -86,6 +95,9 @@ export function IdeaStep(props: { projectId: string; initial: Idea; editable: bo
   const tab = TABS.find((t) => t.mode === draft.mode) ?? TABS[0];
   const conflict = state.status === "conflict" ? state.conflict : undefined;
   const ideaText = draft.ideaInput.trim();
+  // The same checks as the server, so the button says why before anything is sent.
+  const notesIssue = notesProblem(draft.notesText);
+  const notesLang = notesLanguage(draft.notesText);
 
   return (
     <Card className="flex min-h-80 flex-col gap-5 p-6">
@@ -211,11 +223,21 @@ export function IdeaStep(props: { projectId: string; initial: Idea; editable: bo
             <AiError error={ai.error} />
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" disabled title="Arrives in a later update">
-              Turn my notes into a brief
-            </Button>
-            <span className="font-mono text-xs text-muted">{"// arrives in a later update"}</span>
+          <div className="flex flex-col gap-4">
+            {notesLang && notesLang !== language ? (
+              <p className="text-sm text-muted">
+                Your notes are in {LANGUAGE_NAME[notesLang]}; the video will be in {LANGUAGE_NAME[language]}.
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" disabled={!editable || !ai.canAsk || notesIssue !== null} onClick={fromNotes} aria-busy={ai.busy === "notes"}>
+                {ai.busy === "notes" ? "Thinking…" : brief.brief ? "Make a new brief from my notes" : "Turn my notes into a brief"}
+              </Button>
+              {notesIssue && editable ? <span className="text-xs text-muted">{NOTES_PROBLEM_TEXT[notesIssue]}</span> : null}
+              {!notesIssue && brief.brief && editable && !ai.busy ? <span className="text-xs text-muted">A new brief replaces the one below.</span> : null}
+              <Thinking busy={ai.busy} />
+            </div>
+            <AiError error={ai.error} />
           </div>
         )}
       </div>
@@ -316,7 +338,7 @@ function Thinking({ busy }: { busy: string | null }) {
   if (!busy || busy.startsWith("angle:")) return null;
   return (
     <span role="status" className="font-mono text-xs text-violet">
-      {"// gemini is thinking — usually about 10 seconds"}
+      {busy === "notes" ? "// the AI is reading your notes — up to 25 seconds" : "// the AI is thinking — usually about 10 seconds"}
     </span>
   );
 }
@@ -427,6 +449,12 @@ function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boole
         <dd>{brief.angle}</dd>
         <dt className="text-muted">Audience</dt>
         <dd>{audience}</dd>
+        {brief.sourceNotesSummary ? (
+          <>
+            <dt className="text-muted">From your notes</dt>
+            <dd>{brief.sourceNotesSummary}</dd>
+          </>
+        ) : null}
         <dt className="text-muted">Key points</dt>
         <dd>
           <ol className="flex list-decimal flex-col gap-1 pl-5">

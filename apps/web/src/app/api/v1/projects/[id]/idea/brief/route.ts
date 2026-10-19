@@ -1,4 +1,4 @@
-import { AiBlockedError, AiBusyError, AiOutputError, briefIdea, type IdeaBrief, type IdeaBriefInput } from "@videozilla/ai";
+import { AiBlockedError, AiBusyError, AiOutputError, briefIdea, NOTES_PROBLEM_TEXT, notesProblem, type IdeaBrief, type IdeaBriefInput } from "@videozilla/ai";
 import { AUDIENCES, truncateChars } from "@videozilla/db";
 import { z } from "zod";
 import { aiBusy, unsafeContent } from "@/server/api/ai-errors";
@@ -17,12 +17,12 @@ import { isAllowed } from "@/server/rules/project-actions";
 /**
  * `POST /api/v1/projects/{id}/idea/brief` (API Design §13.3, PRD F2-FR3): the brief for the video plus 2 other angles,
  * saved with the idea session; the video's title follows the brief title while the user hasn't named it (F2-FR11).
- * - `from: "idea"`: from the saved "I have an idea" text. `from: "suggestion"`: from one of the saved idea cards. Both
- *   are a synchronous AI call (≤ 15 s) that counts against the shared daily `ideas` limit.
+ * - `from: "idea"`: from the saved "I have an idea" text. `from: "suggestion"`: from one of the saved idea cards.
+ *   `from: "notes"` (F2.4): from the saved notes, one focus taken only from them. Each is a synchronous AI call
+ *   (≤ 15 s, notes ≤ 25 s) that counts one unit of the shared daily `ideas` limit.
  * - `from: "alternative"`: one of the 2 other angles becomes the brief (no AI call, not counted).
- * - `from: "notes"` is F2.4: `400 VALIDATION_FAILED` until then.
  * Errors: `409` outside `idea_draft` / `storyboard_ready`, `422 UNSAFE_CONTENT`, `429 LIMIT_REACHED`, `503 AI_BUSY`.
- * See docs/features/F2.3-idea-brief.md.
+ * See docs/features/F2.3-idea-brief.md and F2.4-notes-brief.md.
  */
 const body = z.discriminatedUnion("from", [
   z.strictObject({ from: z.literal("idea") }),
@@ -33,12 +33,6 @@ const body = z.discriminatedUnion("from", [
 ]);
 
 export const POST = apiRoute({ params, body }, async ({ user, params, body }) => {
-  if (body.from === "notes") {
-    throw new ApiError("VALIDATION_FAILED", {
-      message: "Briefs from notes arrive in a later update.",
-      details: [{ field: "from", issue: "'notes' isn't available yet (F2.4)" }],
-    });
-  }
   const project = await getProject(user.id, params.id);
   const idea = project && (await getIdea(user.id, params.id));
   if (!project || !idea) throw new ApiError("NOT_FOUND");
@@ -59,12 +53,18 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   if (body.from === "idea") {
     if (!idea.ideaInput?.trim()) throw new ApiError("VALIDATION_FAILED", { message: "Describe your idea first.", details: [{ field: "ideaInput", issue: "is empty" }] });
     source = { kind: "idea", text: idea.ideaInput };
+  } else if (body.from === "notes") {
+    // Checked before anything is counted: notes with nothing to explain, or only links, never reach the AI.
+    const problem = notesProblem(idea.notesText ?? "");
+    if (problem) throw new ApiError("VALIDATION_FAILED", { message: NOTES_PROBLEM_TEXT[problem], details: [{ field: "notesText", issue: problem === "empty" ? "has no content to explain" : "only links" }] });
+    source = { kind: "notes", text: idea.notesText! };
   } else {
     const card = idea.suggestions.find((s) => s.id === body.suggestionId);
     if (!card) throw new ApiError("VALIDATION_FAILED", { message: "That idea card isn't saved with this video any more.", details: [{ field: "suggestionId", issue: "no such idea card" }] });
     source = { kind: "card", title: card.title, hook: card.hook, angle: card.angle, keyPoints: card.keyPoints };
   }
 
+  const field = body.from === "notes" ? "notes" : "idea";
   const profile = await collections.profiles().findOne({ userId: user.id }, { projection: { about: 1 } });
   const usage = await consumeUsage(user.id, "ideas");
 
@@ -83,7 +83,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     );
   } catch (err) {
     // Blocked by the provider's safety systems (Gemini's filters, OpenRouter's moderation): a refusal like the model's own, and it counts (it was real use).
-    if (err instanceof AiBlockedError) throw unsafeContent("blocked", "idea");
+    if (err instanceof AiBlockedError) throw unsafeContent("blocked", field);
     // Nothing was delivered: give the request back to the daily limit.
     await refundUsage(user.id, usage);
     if (err instanceof AiBusyError || err instanceof AiOutputError) {
@@ -93,9 +93,9 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     throw err;
   }
 
-  if ("refused" in reply) throw unsafeContent(reply.category, "idea");
+  if ("refused" in reply) throw unsafeContent(reply.category, field);
 
-  const saved = await saveBrief(user.id, params.id, trimBrief(reply.brief), reply.alternatives.map(trimBrief));
+  const saved = await saveBrief(user.id, params.id, trimBrief(reply.brief, field), reply.alternatives.map((b) => trimBrief(b, field)));
   return respond(user.id, saved, usage);
 });
 
@@ -119,14 +119,16 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
 }
 
 /** Display lengths (DB Design §4.4); Gemini's limits are looser so a slightly long field doesn't cost a repair round. */
-function trimBrief(b: IdeaBrief): IdeaBriefDoc {
+function trimBrief(b: IdeaBrief, from: "idea" | "notes"): IdeaBriefDoc {
   return {
     title: truncateChars(b.title, 80),
     hook: truncateChars(b.hook, 200),
     angle: truncateChars(b.angle, 300),
     audience: b.audience,
     keyPoints: b.keyPoints.map((k) => truncateChars(k, 160)),
-    outOfScope: b.outOfScope.slice(0, 3).map((k) => truncateChars(k, 160)),
+    // A notes brief names up to 5 of the notes' other main topics; an idea brief leaves out at most 3 things.
+    outOfScope: b.outOfScope.slice(0, from === "notes" ? 5 : 3).map((k) => truncateChars(k, 160)),
+    ...(from === "notes" && b.sourceNotesSummary ? { sourceNotesSummary: truncateChars(b.sourceNotesSummary, 200) } : {}),
   };
 }
 
