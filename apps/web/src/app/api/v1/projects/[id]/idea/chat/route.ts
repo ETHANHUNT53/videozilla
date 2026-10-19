@@ -62,7 +62,9 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   if (claim.kind === "replay") {
     const current = await getProject(user.id, params.id);
     if (!current) throw new ApiError("NOT_FOUND");
-    const res = answerBody(claim.message, claim.answer, claim.answer.briefAfter ?? idea.brief, idea.briefUpdatedAt, current);
+    // The stored messages, with the brief as it is now (it may have changed since; the page must never go back to an
+    // older brief, and `briefUpdatedAt` must describe the brief it's sent with).
+    const res = answerBody(claim.message, claim.answer, idea.brief, idea.briefUpdatedAt, current);
     return json(res, { headers: { "Idempotent-Replayed": "true" } });
   }
   const message = claim.message;
@@ -123,16 +125,32 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   let changedFields: string[] = [];
   if (reply.status === "applied" && "brief" in reply && reply.brief) {
     brief = trimBrief(reply.brief, fromNotes ? "notes" : "idea");
-    // A notes brief keeps its summary even if the model left it out.
-    if (fromNotes && !brief.sourceNotesSummary) brief.sourceNotesSummary = idea.brief.sourceNotesSummary;
+    // A notes brief keeps its summary as it was: it describes the notes, which a chat message doesn't change (and the
+    // highlight doesn't cover it, so a rewrite would go unnoticed).
+    if (fromNotes) brief.sourceNotesSummary = idea.brief.sourceNotesSummary;
     changedFields = changedBriefFields(idea.brief as IdeaBrief, brief as IdeaBrief);
   }
-  const saved = await saveChatAnswer(user.id, params.id, { userMessageId: message._id, status: reply.status, reply: reply.reply, brief, changedFields });
-  if (!saved || saved === "invalid_state" || saved === "not_processing") {
+  let saved;
+  try {
+    saved = await saveChatAnswer(user.id, params.id, { userMessageId: message._id, status: reply.status, reply: reply.reply, brief, changedFields, basedOn: idea.briefUpdatedAt });
+  } catch (err) {
+    // Nothing was saved (the transaction rolled back): give the request back and let the message be sent again now,
+    // not only once it counts as stale.
+    await refundUsage(user.id, usage);
+    await failUserMessage(user.id, message._id);
+    throw err;
+  }
+  if (!saved || typeof saved === "string") {
     await refundUsage(user.id, usage);
     await failUserMessage(user.id, message._id);
     if (!saved) throw new ApiError("NOT_FOUND"); // deleted meanwhile
     if (saved === "invalid_state") throw new ApiError("INVALID_STATE", { message: "The video moved on to its storyboard while the AI was answering, so nothing was changed." });
+    if (saved === "brief_changed") {
+      throw new ApiError("PRECONDITION_FAILED", {
+        message: "The brief changed while the AI was answering (in another tab?), so nothing was changed. Send the message again.",
+        details: [{ field: "brief", issue: "changed while the message was being answered" }],
+      });
+    }
     throw new ApiError("RUN_IN_PROGRESS", { message: "This message was answered by another request." });
   }
   return json(answerBody(saved.userMessage, saved.assistantMessage, saved.idea.brief, saved.idea.briefUpdatedAt, saved.project), { headers: rateLimitHeaders(usage) });

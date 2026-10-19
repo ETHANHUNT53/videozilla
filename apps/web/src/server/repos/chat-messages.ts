@@ -1,7 +1,7 @@
 import "server-only";
 import { ObjectId, MongoServerError } from "mongodb";
 import { afterCursorAsc, decodeCursor, toPage, type Page } from "../api/pagination";
-import { toChatMessage, type ChatMessageResource } from "../api/resources";
+import { CHAT_STALE_PROCESSING_MS as STALE_PROCESSING_MS, toChatMessage, type ChatMessageResource } from "../api/resources";
 import { collections } from "../db/mongo";
 import type { ChatMessageDoc } from "../db/types";
 
@@ -10,9 +10,6 @@ import type { ChatMessageDoc } from "../db/types";
  * project, API Design §9), and the thread is read oldest first. Like every repository, the user's id is in every
  * filter. Saving an answer happens with the brief, in `saveChatAnswer` (ideas.ts). See docs/features/F2.5-idea-chat.md.
  */
-
-/** A message still "processing" after this long belongs to a request that died (a crash, a timeout): it can be retried. */
-const STALE_PROCESSING_MS = 2 * 60_000;
 
 export type ClaimResult =
   /** A new message (or a failed one sent again): answer it now. */
@@ -76,7 +73,7 @@ export async function listIdeaChat(userId: string, projectId: ObjectId, limit: n
     .sort({ createdAt: 1, _id: 1 })
     .limit(limit + 1)
     .toArray();
-  return toPage(rows, limit, toChatMessage, (m) => ({ u: m.createdAt.toISOString(), i: m._id.toHexString() }), scope);
+  return toPage(rows, limit, (m) => toChatMessage(m), (m) => ({ u: m.createdAt.toISOString(), i: m._id.toHexString() }), scope);
 }
 
 /** The newest answered turns of the idea thread, oldest first, for the prompt's context (failed and pending ones left out). */
@@ -101,5 +98,5 @@ export async function latestIdeaChat(userId: string, projectId: ObjectId, limit:
     .sort({ createdAt: -1, _id: -1 })
     .limit(limit + 1)
     .toArray();
-  return { items: rows.slice(0, limit).reverse().map(toChatMessage), hasOlder: rows.length > limit };
+  return { items: rows.slice(0, limit).reverse().map((m) => toChatMessage(m)), hasOlder: rows.length > limit };
 }

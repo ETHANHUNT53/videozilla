@@ -1,4 +1,4 @@
-import { ObjectId } from "mongodb";
+import { Collection, ObjectId } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db/mongo", async () => (await import("../../../test/mongo")).mongoModule);
@@ -126,6 +126,97 @@ describe("POST …/idea/chat — answers", () => {
     const res = await post({ clientMessageId: uuid(), content: "focus on anthocyanins" });
     expect(res.json.brief.sourceNotesSummary).toBe("Notes on leaf pigments.");
     expect(sentPrompt().user).toContain("<notes>");
+  });
+
+  it("a notes brief's summary stays as it was even when the model rewrites it (it isn't highlighted)", async () => {
+    await setIdea({ brief: { ...BRIEF, sourceNotesSummary: "Notes on leaf pigments." }, notesText: "Leaves have chlorophyll, carotenoids and anthocyanins in autumn." });
+    generateContent.mockResolvedValueOnce(applied({ sourceNotesSummary: "Something the notes never said." }));
+    const res = await post({ clientMessageId: uuid(), content: "focus on anthocyanins" });
+    expect(res.json.brief.sourceNotesSummary).toBe("Notes on leaf pigments.");
+    expect((await getIdea(ME.id, projectId))!.brief!.sourceNotesSummary).toBe("Notes on leaf pigments.");
+  });
+});
+
+describe("POST …/idea/chat — the brief changing while the AI answers", () => {
+  /** Another tab replaces the brief while this message's AI call runs, then the AI answers with `reply`. */
+  const otherTabDuring = (reply: () => unknown) =>
+    generateContent.mockImplementationOnce(async () => {
+      await setIdea({ brief: { ...BRIEF, title: "Another tab's brief", hook: "Another tab's hook." }, briefUpdatedAt: new Date() });
+      return reply();
+    });
+
+  it("an applied answer based on the old brief isn't saved: 412, refunded, the message can be sent again and then uses the new brief", async () => {
+    otherTabDuring(() => applied());
+    const id = uuid();
+    const res = await post({ clientMessageId: id, content: "Make it for kids" });
+    expect(res.status).toBe(412);
+    expect(res.json.error.code).toBe("PRECONDITION_FAILED");
+    expect((await getIdea(ME.id, projectId))!.brief).toMatchObject({ title: "Another tab's brief", audience: "students" }); // not undone
+    expect(await usedIdeas()).toBe(0);
+    expect((await messages()).map((m) => m.status)).toEqual(["failed"]);
+
+    generateContent.mockResolvedValueOnce(applied({ title: "Another tab's brief" }));
+    const again = await post({ clientMessageId: id, content: "Make it for kids" });
+    expect(again.status).toBe(200);
+    expect(sentPrompt().user).toContain("Another tab");
+    expect(again.json.brief).toMatchObject({ title: "Another tab's brief", audience: "kids" });
+  });
+
+  it("two tabs sending at once: the second answer doesn't silently undo the first", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    generateContent.mockImplementation(async () => {
+      calls++;
+      if (calls === 2) release();
+      await gate; // both requests have read the brief before either saves
+      return calls === 2 ? applied({ hook: "Tab A's hook." }) : applied({ hook: "Tab B's hook." });
+    });
+    const [a, b] = await Promise.all([post({ clientMessageId: uuid(), content: "Change the hook" }), post({ clientMessageId: uuid(), content: "Make it for kids" })]);
+    expect([a.status, b.status].sort()).toEqual([200, 412]);
+    const winner = a.status === 200 ? a : b;
+    expect((await getIdea(ME.id, projectId))!.brief!.hook).toBe(winner.json.brief.hook);
+    expect(await usedIdeas()).toBe(1);
+  });
+
+  it("a question back (no brief change) is still saved when the brief changed meanwhile", async () => {
+    otherTabDuring(() => answer({ status: "clarification", reply: "Which point do you mean?" }));
+    const res = await post({ clientMessageId: uuid(), content: "change that point" });
+    expect(res.status).toBe(200);
+    expect(res.json.assistantMessage.status).toBe("clarification");
+    expect(res.json.brief.title).toBe("Another tab's brief");
+  });
+
+  it("a failed save (the transaction throws): refunded, and the message can be sent again at once", async () => {
+    const insertOne = Collection.prototype.insertOne;
+    const spy = vi.spyOn(Collection.prototype, "insertOne").mockImplementation(function (this: Collection, doc, opts) {
+      if ((doc as { role?: string }).role === "assistant") return Promise.reject(new Error("write failed"));
+      return insertOne.call(this, doc, opts) as never;
+    });
+    generateContent.mockResolvedValueOnce(applied());
+    const id = uuid();
+    try {
+      expect((await post({ clientMessageId: id, content: "Make it for kids" })).status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await usedIdeas()).toBe(0);
+    expect((await messages()).map((m) => m.status)).toEqual(["failed"]);
+    expect((await getIdea(ME.id, projectId))!.brief).toEqual(BRIEF);
+    generateContent.mockResolvedValueOnce(applied());
+    expect((await post({ clientMessageId: id, content: "Make it for kids" })).status).toBe(200);
+  });
+
+  it("a replay returns the brief as it is now, with its own briefUpdatedAt (never an older brief)", async () => {
+    generateContent.mockResolvedValueOnce(applied());
+    const id = uuid();
+    await post({ clientMessageId: id, content: "Make it for kids" });
+    const later = new Date();
+    await setIdea({ brief: { ...BRIEF, title: "Made later" }, briefUpdatedAt: later });
+    const again = await post({ clientMessageId: id, content: "Make it for kids" });
+    expect(again.headers.get("idempotent-replayed")).toBe("true");
+    expect(again.json.brief.title).toBe("Made later");
+    expect(again.json.briefUpdatedAt).toBe(later.toISOString());
   });
 });
 
@@ -266,6 +357,19 @@ describe("GET …/idea/chat", () => {
     const page2 = await get(`?limit=3&cursor=${page1.json.nextCursor}`);
     expect([...page1.json.items, ...page2.json.items].map((m: { id: string }) => m.id)).toEqual(all.json.items.slice(0, 6).map((m: { id: string }) => m.id));
     expect((await get("?cursor=garbage")).status).toBe(400);
+  });
+
+  it("a message left 'processing' by a request that died shows as failed once stale (so the page offers Send again); a fresh one as pending", async () => {
+    const old = new Date(Date.now() - 10 * 60_000);
+    const now = new Date();
+    await testMongo.db.collection("chat_messages").insertMany([
+      { projectId: oid(), userId: ME.id, thread: "idea", role: "user", content: "died", status: "processing", clientMessageId: uuid(), createdAt: old, updatedAt: old },
+      { projectId: oid(), userId: ME.id, thread: "idea", role: "user", content: "running", status: "processing", clientMessageId: uuid(), createdAt: now, updatedAt: now },
+    ]);
+    expect((await get()).json.items.map((m: { content: string; status: string }) => [m.content, m.status])).toEqual([
+      ["died", "failed"],
+      ["running", "pending"],
+    ]);
   });
 
   it("404 for an unknown project", async () => {

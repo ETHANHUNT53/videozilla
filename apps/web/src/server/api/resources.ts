@@ -84,17 +84,22 @@ export function toIdeaSession(i: IdeaSessionDoc) {
 /** The `IdeaSession` resource's shape; client components import it as a type only. */
 export type IdeaSessionResource = ReturnType<typeof toIdeaSession>;
 
+/** A chat message still "processing" after this long belongs to a request that died (a crash, a timeout): it can be sent again. */
+export const CHAT_STALE_PROCESSING_MS = 2 * 60_000;
+
 /**
  * The `ChatMessage` resource (API Design §12). The idea chat (F2.5) adds `changedFields` (assistant answers that
- * changed the brief); the revision fields stay empty until F7. A message still being answered shows as `pending`.
+ * changed the brief); the revision fields stay empty until F7. A message still being answered shows as `pending`;
+ * one left behind by a request that died shows as `failed` once it's stale, so the page offers "Send again" (which takes
+ * it over, see claimUserMessage) instead of showing it as pending for ever.
  */
-export function toChatMessage(m: ChatMessageDoc) {
+export function toChatMessage(m: ChatMessageDoc, now = Date.now()) {
   return {
     id: m._id.toHexString(),
     thread: m.thread,
     role: m.role,
     content: m.content,
-    status: m.status === "processing" ? ("pending" as const) : m.status,
+    status: m.status === "processing" ? (m.updatedAt.getTime() < now - CHAT_STALE_PROCESSING_MS ? ("failed" as const) : ("pending" as const)) : m.status,
     clientMessageId: m.clientMessageId ?? null,
     changedFields: m.changedFields ?? [],
     scopeSceneId: null,

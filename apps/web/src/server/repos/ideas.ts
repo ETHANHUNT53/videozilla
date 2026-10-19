@@ -172,21 +172,30 @@ export function trimBrief(b: IdeaBrief, from: "idea" | "notes"): IdeaBriefDoc {
   };
 }
 
-export type ChatAnswerResult = { idea: IdeaSessionDoc; project: ProjectDoc; userMessage: ChatMessageDoc; assistantMessage: ChatMessageDoc } | null | "invalid_state" | "not_processing";
+export type ChatAnswerResult =
+  | { idea: IdeaSessionDoc; project: ProjectDoc; userMessage: ChatMessageDoc; assistantMessage: ChatMessageDoc }
+  | null
+  | "invalid_state"
+  | "not_processing"
+  | "brief_changed";
 
 /**
  * Saves the answer to an idea-chat message (F2.5) in one transaction (DB Design §6): the new brief (when it changed;
  * the other 2 angles stay as they are, and the title rule of F2.3 applies), the user message's status, and the
  * assistant's reply. `not_processing` when the user message isn't being answered any more (another request finished
- * it first). Null / `invalid_state` as for briefs.
+ * it first). `brief_changed` when the answer changes the brief but the brief it was based on (`basedOn`, its
+ * `briefUpdatedAt`) was replaced meanwhile (another tab's chat message, a new brief, another angle): saving it would
+ * silently undo that change, so nothing is written. Null / `invalid_state` as for briefs.
  */
 export async function saveChatAnswer(
   userId: string,
   projectId: string,
-  answer: { userMessageId: ObjectId; status: "applied" | "clarification" | "unsupported"; reply: string; brief: IdeaBriefDoc | null; changedFields: string[] },
+  answer: { userMessageId: ObjectId; status: "applied" | "clarification" | "unsupported"; reply: string; brief: IdeaBriefDoc | null; changedFields: string[]; basedOn: Date | null },
 ): Promise<ChatAnswerResult> {
   return inIdeaStage(userId, projectId, async (ctx) => {
     const { session, now } = ctx;
+    // Checked before any write: a value returned here still commits the transaction.
+    if (answer.brief && (ctx.idea.briefUpdatedAt?.getTime() ?? null) !== (answer.basedOn?.getTime() ?? null)) return "brief_changed" as const;
     const userMessage = await collections.chatMessages().findOneAndUpdate(
       { _id: answer.userMessageId, userId, status: "processing" },
       { $set: { status: answer.status, updatedAt: now } },

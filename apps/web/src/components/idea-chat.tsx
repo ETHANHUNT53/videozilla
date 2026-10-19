@@ -99,6 +99,10 @@ export function IdeaChat(props: {
               <span className="sr-only">{m.role === "user" ? "You: " : "AI: "}</span>
               {m.content}
               {m.role === "assistant" && m.status === "applied" && m.changedFields.length ? <span className="mt-1 block font-mono text-xs text-cyan">{"// brief updated"}</span> : null}
+              {m.role === "user" && m.status === "pending" && !outgoing.some((o) => o.clientMessageId === m.clientMessageId) ? (
+                // Being answered by a request from another tab or an earlier visit: reload to see the answer.
+                <span className="mt-1 block font-mono text-xs text-muted">being answered… reload to see the answer</span>
+              ) : null}
               {failedInThread(m) ? (
                 <span className="mt-1 flex items-center gap-2 text-xs text-orange">
                   Not answered.
