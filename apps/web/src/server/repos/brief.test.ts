@@ -238,6 +238,18 @@ describe("POST …/idea/brief — switching to another angle", () => {
     expect(await usedIdeas()).toBe(1); // only the first brief
   });
 
+  it("the switched-in angle takes the video's audience setting, not the one it was made with (QA, F2.5)", async () => {
+    generateContent.mockResolvedValueOnce(reply());
+    await post({ from: "idea" }); // all three made for "students"
+    await updateProject(ME.id, projectId, { audience: "kids" }); // then the settings panel changes the audience
+    const res = await post({ from: "alternative", index: 0 });
+    expect(res.json.brief).toEqual({ ...aBrief(2), audience: "kids" });
+    expect((await getIdea(ME.id, projectId))!.brief!.audience).toBe("kids");
+    // The angle it replaced keeps its own fields (switching back gives the setting's audience again).
+    expect(res.json.alternatives[0]).toEqual(aBrief(1));
+    expect((await post({ from: "alternative", index: 0 })).json.brief).toEqual({ ...aBrief(1), audience: "kids" });
+  });
+
   it("is 400 when there's no brief or no angle at that index", async () => {
     expect((await post({ from: "alternative", index: 0 })).json.error).toMatchObject({ code: "VALIDATION_FAILED", details: [{ field: "index" }] });
     await setIdea({ brief: aBrief(1), briefAlternatives: [aBrief(2)] });

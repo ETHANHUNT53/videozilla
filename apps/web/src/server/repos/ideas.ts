@@ -151,7 +151,9 @@ export async function switchToAlternative(userId: string, projectId: string, ind
     const alternatives = ctx.idea.briefAlternatives ?? [];
     const chosen = alternatives[index];
     if (!ctx.idea.brief || !chosen) return "no_alternative" as const;
-    return applyBrief(ctx, chosen, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
+    // An angle keeps the audience it was made with; the brief takes the video's audience setting, as chat answers do
+    // (F2.5), so the brief and the settings panel agree after a switch too.
+    return applyBrief(ctx, { ...chosen, audience: ctx.project.audience }, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
   });
 }
 
