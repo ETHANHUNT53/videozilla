@@ -70,6 +70,9 @@ export class AiOutputError extends Error {
  * - `busy`: try again / move on to the fallback;
  * - `quota`, `billing`: skip this model for `cooldownMs`;
  * - `bad_json`: the model wrote text that isn't JSON (`text`); goes to the repair round like an unparsable reply;
+ * - `too_large`: this request is bigger than the model's limit (Groq's 413 against its whole per-minute token limit),
+ *   so it can never fit there: move on to the next tier for this request only, with no retry and no cooldown (other,
+ *   smaller requests still fit);
  * - `fatal`: a setup problem (bad key, bad request). `setup: true` when it's the provider's setup (key rejected, model
  *   unknown), which no request can fix: the chain skips that provider for a while and moves on. Other fatal errors
  *   (a bad request) move on to the next tier without a cooldown, and are thrown when no tier is left.
@@ -77,7 +80,7 @@ export class AiOutputError extends Error {
 export class ProviderError extends Error {
   constructor(
     message: string,
-    readonly kind: "busy" | "quota" | "billing" | "bad_json" | "fatal",
+    readonly kind: "busy" | "quota" | "billing" | "bad_json" | "too_large" | "fatal",
     readonly extra: { cooldownMs?: number; text?: string; setup?: boolean } = {},
   ) {
     super(message);

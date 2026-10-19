@@ -179,6 +179,12 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
             await log({ provider, model, status: "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
             return { text: verdict.text ?? "", backend };
           }
+          // Too big for this model: the next tier, for this request only (no retry here, no cooldown for others).
+          if (verdict.kind === "too_large") {
+            await log({ provider, model, status: "retry", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
+            sawBusy = true;
+            break;
+          }
           // Out of quota or credits counts as busy (move on to the next tier, answer 503 with a refund), never as a bug.
           const busy = verdict.kind !== "fatal";
           await log({ provider, model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });

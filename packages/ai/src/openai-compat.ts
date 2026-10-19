@@ -120,10 +120,10 @@ export function httpError(cfg: Pick<OpenAiCompatConfig, "provider" | "keyName">,
   if (status === 403 && (type === "content_policy_violation" || type === "refusal" || /moderation|flagged|content policy/i.test(String(e?.message)))) {
     return new AiBlockedError(`${cfg.provider} moderation`);
   }
-  // Groq answers 413 "Request too large … on tokens per minute (TPM)" for its per-minute token limit: a quota.
-  if (status === 413 && /tokens per minute|\bTPM\b|rate limit|try again in/i.test(String(e?.message ?? raw))) {
-    return new ProviderError(message, "quota", { cooldownMs: rateLimitCooldownMs(headers, String(e?.message ?? raw)) });
-  }
+  // Groq answers 413 "Request too large for model … on tokens per minute (TPM): Limit 8000, Requested 9500" when one
+  // request is bigger than its whole per-minute limit: it can never fit there (long notes), but smaller requests still
+  // do, so skip Groq for this request only, without a cooldown. (A minute's budget simply used up is a 429.)
+  if (status === 413) return new ProviderError(message, "too_large");
   if (status === 408 || status === 422 || status === 498 || status >= 500) return new ProviderError(message, "busy");
   // The key or the model is wrong: no request can fix it, so the chain skips this provider for a while.
   if (status === 401 || status === 403) return new ProviderError(`${message} (check ${cfg.keyName} in apps/web/.env.local)`, "fatal", { setup: true });

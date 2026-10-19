@@ -149,12 +149,23 @@ describe("Groq main model", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("Groq's per-minute token limit (413 TPM) is a quota cooldown, not a fatal error: OpenRouter answers", async () => {
+  it("a request too large for Groq's whole per-minute limit (413) goes to OpenRouter, and Groq stays available for smaller ones", async () => {
     fetchMock
-      .mockResolvedValueOnce(json(413, { error: { message: "Request too large for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000, Requested 9500. Please try again in 12.5s.", type: "tokens" } }))
+      .mockResolvedValueOnce(json(413, { error: { message: "Request too large for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000, Requested 9500, please reduce your message size and try again.", type: "tokens" } }))
       .mockResolvedValueOnce(ok({ items: ["a", "b"] }));
     await expect((await run()).promise).resolves.toMatchObject({ provider: "openrouter" });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // No retry of Groq for that request.
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual(["https://api.groq.com/openai/v1/chat/completions", "https://openrouter.ai/api/v1/chat/completions"]);
+    // No cooldown: the next (small) request goes to Groq first again.
+    fetchMock.mockReset().mockResolvedValueOnce(ok({ items: ["a", "b"] }));
+    await expect((await run()).promise).resolves.toMatchObject({ provider: "groq" });
+  });
+
+  it("a request too large for Groq with no later tier: AiBusyError (the app answers 503 and refunds), not a crash", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    fetchMock.mockResolvedValueOnce(json(413, { error: { message: "Request too large for model x on tokens per minute (TPM): Limit 8000, Requested 9500" } }));
+    await expect((await run()).promise).rejects.toMatchObject({ name: "AiBusyError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("{\"refused\":true} is an ordinary reply here (Groq has no block reasons): the schema decides", async () => {
