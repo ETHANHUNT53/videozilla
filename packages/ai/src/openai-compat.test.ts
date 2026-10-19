@@ -147,6 +147,17 @@ describe("Groq main model", () => {
     expect(calls()[2].body.messages.map((m: { role: string }) => m.role)).toEqual(["system", "user"]);
   });
 
+  it("refuses GROQ_BASE_URL / OPENROUTER_BASE_URL in production (the key would be sent to that host)", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("GROQ_BASE_URL", "http://127.0.0.1:9001/v1");
+    expect(() => aiChain()).toThrow(/GROQ_BASE_URL is for testing against fake servers only/);
+    vi.stubEnv("GROQ_BASE_URL", "");
+    vi.stubEnv("OPENROUTER_BASE_URL", "https://example.com/api/v1");
+    expect(() => aiChain()).toThrow(/OPENROUTER_BASE_URL is for testing/);
+    vi.stubEnv("OPENROUTER_BASE_URL", "");
+    expect(() => aiChain()).not.toThrow(); // the real addresses are fine
+  });
+
   it("GROQ_BASE_URL / OPENROUTER_BASE_URL point the chain at other servers (QA's fakes); a non-http value is an error", async () => {
     vi.stubEnv("GROQ_BASE_URL", "http://127.0.0.1:9001/v1/");
     vi.stubEnv("OPENROUTER_BASE_URL", "http://127.0.0.1:9002/api/v1");

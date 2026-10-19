@@ -84,6 +84,13 @@ const sentPrompt = () => {
   return { system: req.config.systemInstruction as string, user: (req.contents as { parts: { text: string }[] }[])[0].parts[0].text };
 };
 
+it("the AI routes ask the platform for more time than their AI budget (notes 25 s, suggestions 15 s)", async () => {
+  const brief = await import("@/app/api/v1/projects/[id]/idea/brief/route");
+  const suggestions = await import("@/app/api/v1/projects/[id]/idea/suggestions/route");
+  expect(brief.maxDuration).toBeGreaterThanOrEqual(35);
+  expect(suggestions.maxDuration).toBeGreaterThanOrEqual(20);
+});
+
 describe("POST /api/v1/projects/{id}/idea/brief — from the idea", () => {
   it("returns the brief and 2 other angles, saves them (idea rev unchanged), renames an untitled video and sends RateLimit headers", async () => {
     generateContent.mockResolvedValueOnce(reply());

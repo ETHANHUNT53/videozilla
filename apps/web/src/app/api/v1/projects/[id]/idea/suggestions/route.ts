@@ -25,6 +25,8 @@ const body = z.strictObject({
   avoidTitles: z.array(textField(120)).max(30).optional(),
 });
 
+/** The platform's limit for this function (seconds): the 15 s AI budget plus the database work around it (see the brief route). */
+export const maxDuration = 30;
 export const POST = apiRoute({ params, body }, async ({ user, params, body }) => {
   const project = await getProject(user.id, params.id);
   if (!project) throw new ApiError("NOT_FOUND");

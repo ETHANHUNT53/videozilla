@@ -57,11 +57,13 @@ const mockBackend: Backend = {
 
 /**
  * The API address, or an override from the environment (`GROQ_BASE_URL`, `OPENROUTER_BASE_URL`, like the Gemini SDK's
- * own `GOOGLE_GEMINI_BASE_URL`), so QA can run the chain against fake servers.
+ * own `GOOGLE_GEMINI_BASE_URL`), so QA can run the chain against fake servers. Never in production: the API key goes
+ * to that address, so a stray or tampered value would send it to another host (in clear text over http).
  */
 function baseUrl(name: string, fallback: string): string {
   const value = process.env[name]?.trim();
   if (!value) return fallback;
+  if (process.env.NODE_ENV === "production") throw new Error(`${name} is for testing against fake servers only; remove it in production (the API key would be sent there).`);
   if (!/^https?:\/\//i.test(value)) throw new Error(`${name} must be an http(s) address (got "${value}").`);
   return value.replace(/\/+$/, "");
 }

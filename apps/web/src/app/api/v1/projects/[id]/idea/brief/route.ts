@@ -32,6 +32,13 @@ const body = z.discriminatedUnion("from", [
   z.strictObject({ from: z.literal("notes") }),
 ]);
 
+/**
+ * The platform's limit for this function (seconds). A notes brief may use its whole 25 s AI budget, plus the database
+ * work around it; without this the host's default (shorter on some plans) could cut it off mid-call, with no clean
+ * 503 and no refund.
+ */
+export const maxDuration = 40;
+
 export const POST = apiRoute({ params, body }, async ({ user, params, body }) => {
   const project = await getProject(user.id, params.id);
   const idea = project && (await getIdea(user.id, params.id));
