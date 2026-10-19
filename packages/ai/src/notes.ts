@@ -12,12 +12,20 @@
 export const MIN_NOTES_CONTENT = 20;
 
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/giu;
-/** A letter and the marks attached to it, or one digit (a keycap's marks are left out). */
-const CONTENT_RE = /\p{L}\p{M}*|\p{N}/gu;
+/**
+ * A letter and the marks attached to it, or one digit that isn't part of a keycap emoji (1️⃣: the digit is
+ * followed by a variation selector and/or the combining keycap mark).
+ */
+const CONTENT_RE = /\p{L}\p{M}*|\p{N}(?![\uFE0F\u20E3])/gu;
 const LETTER_RE = /\p{L}\p{M}*/gu;
+/**
+ * At most this many code points count per letter: a real letter carries a few marks at most (a Hindi consonant with a
+ * vowel sign, nukta and anusvara), while "Zalgo" text stacks dozens of accents on one letter.
+ */
+const MAX_PER_LETTER = 4;
 
 /** Code points of content (see MIN_NOTES_CONTENT). */
-const contentLength = (s: string, re: RegExp) => (s.match(re) ?? []).reduce((n, m) => n + Array.from(m).length, 0);
+const contentLength = (s: string, re: RegExp) => (s.match(re) ?? []).reduce((n, m) => n + Math.min(Array.from(m).length, MAX_PER_LETTER), 0);
 
 export type NotesProblem = "empty" | "links_only";
 
@@ -43,14 +51,14 @@ export const NOTES_PROBLEM_TEXT: Record<NotesProblem, string> = {
 export function notesLanguage(text: string): "hi" | "en" | "other" | null {
   // Each letter with its marks, weighted by length (vowel signs belong to their letter's script).
   const letters = text.replace(URL_RE, " ").match(LETTER_RE) ?? [];
-  const total = letters.reduce((n, m) => n + Array.from(m).length, 0);
+  const size = (m: string) => Math.min(Array.from(m).length, MAX_PER_LETTER);
+  const total = letters.reduce((n, m) => n + size(m), 0);
   if (total < MIN_NOTES_CONTENT) return null;
   let deva = 0;
   let latin = 0;
   for (const m of letters) {
-    const size = Array.from(m).length;
-    if (/^\p{Script=Devanagari}/u.test(m)) deva += size;
-    else if (/^\p{Script=Latin}/u.test(m)) latin += size;
+    if (/^\p{Script=Devanagari}/u.test(m)) deva += size(m);
+    else if (/^\p{Script=Latin}/u.test(m)) latin += size(m);
   }
   if (deva / total >= 0.5) return "hi";
   if (latin / total >= 0.5) return "en";

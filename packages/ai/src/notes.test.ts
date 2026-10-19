@@ -31,6 +31,11 @@ describe("notesProblem: notes that can't become a brief (no AI call)", () => {
     ["❤️".repeat(20), "empty"], // ❤️ ×20: U+FE0F is a mark
     ["✔️ ".repeat(25), "empty"], // ✔️ ×25
     ["1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣0️⃣", "empty"], // keycaps 1️⃣…0️⃣: 10 digits
+    ["1️⃣".repeat(25), "empty"], // 25 keycap emoji: their digits don't count either
+    ["2⃣".repeat(25), "empty"], // keycaps without the variation selector
+    ["h" + "̶".repeat(40), "empty"], // "Zalgo": one letter with 40 stacked accents
+    ["हैं".repeat(7), null], // हैं × 7: real Hindi syllables (letter + 2 marks) still count in full
+    ["Class 7 science: 25 questions", null], // ordinary digits still count
     ["́".repeat(30), "empty"], // combining acute accents alone
     ["ा ि ी ु ू े ै ो ौ ं ािीुूेैोौं", "empty"], // Hindi vowel signs alone
   ])("%j → %s", (text, problem) => expect(notesProblem(text)).toBe(problem));
