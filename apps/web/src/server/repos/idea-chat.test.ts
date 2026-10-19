@@ -131,6 +131,24 @@ describe("POST …/idea/chat — answers", () => {
     expect((await getIdea(ME.id, projectId))!.brief!.audience).toBe("college");
   });
 
+  it("setting changed but the model picks yet another audience and nothing else: unsupported, not its untrue reply, brief untouched", async () => {
+    await updateProject(ME.id, projectId, { audience: "kids" });
+    const before = (await getIdea(ME.id, projectId))!.briefUpdatedAt!;
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "Made it for college students.", brief: { ...BRIEF, audience: "college" } }));
+    const res = await post({ clientMessageId: uuid(), content: "Make it for college students" });
+    expect(res.json.assistantMessage).toMatchObject({ status: "unsupported", changedFields: [], content: expect.stringContaining("settings panel") });
+    const idea = (await getIdea(ME.id, projectId))!;
+    expect(idea.brief).toEqual(BRIEF);
+    expect(idea.briefUpdatedAt).toEqual(before);
+  });
+
+  it("the audience sentence follows the video's language (Hindi)", async () => {
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "बच्चों के लिए कर दिया।", brief: { ...BRIEF, audience: "kids" } }));
+    const res = await post({ clientMessageId: uuid(), content: "बच्चों के लिए बनाओ" });
+    expect(res.json.assistantMessage).toMatchObject({ status: "unsupported", content: expect.stringContaining("सेटिंग पैनल") });
+  });
+
   it("an applied answer that changes nothing: saved as applied, but the brief isn't rewritten", async () => {
     const before = (await getIdea(ME.id, projectId))!.briefUpdatedAt!;
     generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "It already says that.", brief: BRIEF }));

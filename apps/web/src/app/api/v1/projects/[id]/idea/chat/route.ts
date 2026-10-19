@@ -29,7 +29,8 @@ import { isAllowed } from "@/server/rules/project-actions";
 /** Our answer when the model changed only the audience, which is a video setting (the prompt asks it to say this itself). */
 const AUDIENCE_IN_SETTINGS = {
   en: "The audience is a video setting: change it in the settings panel next to the brief, then ask me to adapt the brief.",
-  hi: "दर्शक वीडियो की सेटिंग है: उसे ब्रीफ़ के बगल वाले सेटिंग पैनल में बदलें, फिर मुझसे ब्रीफ़ बदलने को कहें।",
+  // "Audience" is the settings panel's English label, so it's named as the creator sees it.
+  hi: "ऑडियंस (दर्शक) वीडियो की एक सेटिंग है: इसे ब्रीफ़ के बगल वाले सेटिंग पैनल में बदलें, फिर मुझसे ब्रीफ़ को उसके हिसाब से बदलने को कहें।",
 } as const;
 
 const listQuery = z.strictObject({ ...pageQuery, limit: pageQuery.limit.default(50) });
@@ -136,20 +137,23 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     // A notes brief keeps its summary as it was: it describes the notes, which a chat message doesn't change (and the
     // highlight doesn't cover it, so a rewrite would go unnoticed).
     if (fromNotes) brief.sourceNotesSummary = idea.brief.sourceNotesSummary;
-    // The audience belongs to the video's settings (the panel beside the brief): every answer sets the brief's audience
-    // to the setting, so the brief and the settings can't disagree on screen (QA, F2.5). After the setting changed,
-    // "adapt the brief for the new audience" brings the brief in line, and that counts as a real change. A model that
-    // picked some other audience is overruled.
+    // The audience belongs to the video's settings (the panel beside the brief): every answer that changes the brief
+    // sets its audience to the setting, so the brief and the settings can't disagree on screen (QA, F2.5). After the
+    // setting changed, "adapt the brief for the new audience" brings the brief in line, and that counts as a real change.
     const setting = project.audience as IdeaBrief["audience"];
-    const askedAudience = brief.audience !== setting;
+    const otherAudience = brief.audience !== setting; // the model picked an audience the setting doesn't have
     brief.audience = setting;
     changedFields = changedBriefFields(idea.brief as IdeaBrief, brief as IdeaBrief);
-    if (!changedFields.length) {
-      // Nothing left to change: the brief isn't rewritten (its briefUpdatedAt would move, failing another tab's answer
-      // or angle switch for nothing). When the model only changed the audience, its reply ("I made it for kids") would
-      // be untrue, so the answer says where the audience is changed instead.
+    // What the model changed apart from the audience.
+    const onlyAudience = !changedFields.some((f) => f !== "audience");
+    if (!changedFields.length || (otherAudience && onlyAudience)) {
+      // Nothing left to change, or the model only picked an audience that isn't the setting: its reply ("I made it for
+      // college students") would be untrue, so the brief isn't rewritten (its briefUpdatedAt would move, failing
+      // another tab's answer or angle switch for nothing), and when it was about the audience the answer says where the
+      // audience is changed instead.
       brief = null;
-      if (askedAudience) {
+      changedFields = [];
+      if (otherAudience) {
         status = "unsupported";
         replyText = AUDIENCE_IN_SETTINGS[project.language];
       }
