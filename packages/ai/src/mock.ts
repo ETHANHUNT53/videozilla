@@ -1,5 +1,6 @@
 import { ProviderError } from "./backend";
 import type { IdeaBrief, IdeaBriefInput } from "./brief";
+import type { BriefRewriteInput } from "./brief-rewrite";
 import type { IdeaChatInput } from "./idea-chat";
 import type { IdeaCard, IdeaLanguage, IdeaSuggestionsInput } from "./ideas";
 
@@ -155,4 +156,22 @@ export function mockIdeaChat(input: IdeaChatInput): unknown {
   const base = input.brief.hook.replace(/^(?:\[Mock\]\s*(?:New hook:|नया हुक:)?\s*)+/u, "");
   const brief: IdeaBrief = { ...input.brief, hook: `[Mock] ${hi ? "नया हुक:" : "New hook:"} ${base}`.slice(0, 300) };
   return { status: "applied", reply: hi ? "[Mock] मैंने हुक बदल दिया।" : "[Mock] I rewrote the hook.", brief };
+}
+
+/**
+ * A sample rewrite (F2.6 follow-up): the same briefs, marked "[Mock · hi 90 s]" in the hook so the new settings show,
+ * with 3 key points for 60 s and 4 for 90 s. `[mock:busy]` / `[mock:refuse]` in the brief's hook work as above.
+ */
+export function mockBriefRewrite(input: BriefRewriteInput): unknown {
+  const refusal = trigger(`${input.brief.title} ${input.brief.hook}`);
+  if (refusal) return refusal;
+  const count = input.lengthSec === 60 ? 3 : 4;
+  const filler = input.language === "hi" ? "एक और उदाहरण" : "One more example";
+  const tag = `[Mock · ${input.language} ${input.lengthSec} s]`;
+  const rewrite = (b: IdeaBrief): IdeaBrief => {
+    const points = b.keyPoints.slice(0, count);
+    while (points.length < count) points.push(`${filler} ${points.length + 1}`);
+    return { ...b, hook: `${tag} ${b.hook.replace(/^\[Mock[^\]]*\]\s*/, "")}`.slice(0, 300), keyPoints: points, audience: input.audience };
+  };
+  return { brief: rewrite(input.brief), alternatives: input.alternatives.slice(0, 2).map(rewrite) };
 }

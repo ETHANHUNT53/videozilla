@@ -1,4 +1,4 @@
-import { AiBlockedError, AiBusyError, AiOutputError, briefIdea, NOTES_PROBLEM_TEXT, notesProblem, type IdeaBriefInput } from "@videozilla/ai";
+import { AiBlockedError, AiBusyError, AiOutputError, briefIdea, NOTES_PROBLEM_TEXT, notesProblem, rewriteBrief, type IdeaBrief, type IdeaBriefInput, type IdeaBriefReply } from "@videozilla/ai";
 import { AUDIENCES } from "@videozilla/db";
 import { z } from "zod";
 import { aiBusy, unsafeContent } from "@/server/api/ai-errors";
@@ -20,6 +20,8 @@ import { isAllowed } from "@/server/rules/project-actions";
  *   `from: "notes"` (F2.4): from the saved notes, one focus taken only from them. Each is a synchronous AI call
  *   (≤ 15 s, notes ≤ 25 s) that counts one unit of the shared daily `ideas` limit.
  * - `from: "alternative"`: one of the 2 other angles becomes the brief (no AI call, not counted).
+ * - `from: "settings"` (F2.6 follow-up): the brief and its angles rewritten for the video's language and length now,
+ *   saying the same thing (chat changes kept); one `ideas` unit, ≤ 15 s. `400` when they already match.
  * Errors: `409` outside `idea_draft` / `storyboard_ready`, `422 UNSAFE_CONTENT`, `429 LIMIT_REACHED`, `503 AI_BUSY`.
  * See docs/features/F2.3-idea-brief.md and F2.4-notes-brief.md.
  */
@@ -29,6 +31,8 @@ const body = z.discriminatedUnion("from", [
   // `briefUpdatedAt`: the brief the user was looking at; if it has changed meanwhile, nothing is swapped (see switchToAlternative).
   z.strictObject({ from: z.literal("alternative"), index: z.union([z.literal(0), z.literal(1)]), briefUpdatedAt: z.string().datetime().optional() }),
   z.strictObject({ from: z.literal("notes") }),
+  // F2.6 follow-up: rewrite the brief and its angles for the video's language and length now.
+  z.strictObject({ from: z.literal("settings") }),
 ]);
 
 /**
@@ -54,6 +58,8 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     if (result === "no_alternative") throw new ApiError("VALIDATION_FAILED", { details: [{ field: "index", issue: "there's no other angle at this index" }] });
     return respond(user.id, result);
   }
+
+  if (body.from === "settings") return rewriteForSettings(user.id, params.id, project, idea);
 
   let source: IdeaBriefInput["source"];
   if (body.from === "idea") {
@@ -104,9 +110,49 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   const main = trimBrief(reply.brief, field);
   // An angle without its own notes summary takes the main one, so "From your notes" stays after "Use this angle".
   const alternatives = reply.alternatives.map((b) => trimBrief(b, field)).map((b) => (main.sourceNotesSummary && !b.sourceNotesSummary ? { ...b, sourceNotesSummary: main.sourceNotesSummary } : b));
-  const saved = await saveBrief(user.id, params.id, main, alternatives);
+  const saved = await saveBrief(user.id, params.id, main, alternatives, { language: project.language, lengthSec: project.lengthPreset });
   return respond(user.id, saved, usage);
 });
+
+/** `from: "settings"`: the brief and its angles for the video's settings now (F2.6 follow-up). */
+async function rewriteForSettings(userId: string, projectId: string, project: NonNullable<Awaited<ReturnType<typeof getProject>>>, idea: NonNullable<Awaited<ReturnType<typeof getIdea>>>) {
+  const brief = idea.brief;
+  const alternativesNow = idea.briefAlternatives ?? [];
+  // A brief from before F2.6b doesn't say what it was written for: it counts as written for the settings now.
+  const from = { language: idea.briefLanguage ?? project.language, lengthSec: idea.briefLengthSec ?? project.lengthPreset };
+  if (!brief) throw new ApiError("VALIDATION_FAILED", { message: "Make a brief first.", details: [{ field: "brief", issue: "there's no brief yet" }] });
+  if (from.language === project.language && from.lengthSec === project.lengthPreset) {
+    throw new ApiError("VALIDATION_FAILED", { message: "The brief already matches the video's settings.", details: [{ field: "brief", issue: "already written for this language and length" }] });
+  }
+  if (alternativesNow.length !== 2) throw new ApiError("VALIDATION_FAILED", { message: "This brief has no other angles to rewrite; make a new brief instead.", details: [{ field: "brief", issue: "has no 2 other angles" }] });
+  const usage = await consumeUsage(userId, "ideas");
+  let reply: IdeaBriefReply;
+  try {
+    reply = await rewriteBrief(
+      { brief: brief as IdeaBrief, alternatives: alternativesNow as IdeaBrief[], from, language: project.language, lengthSec: project.lengthPreset, audience: project.audience as (typeof AUDIENCES)[number] },
+      (call) => logAiCall({ userId, projectId: project._id, task: "brief", ...call }),
+    );
+  } catch (err) {
+    if (err instanceof AiBlockedError) throw unsafeContent("blocked", "idea");
+    await refundUsage(userId, usage);
+    if (err instanceof AiBusyError || err instanceof AiOutputError) {
+      if (err instanceof AiOutputError) console.warn(`[brief:settings] ${err.message}`);
+      throw aiBusy(err);
+    }
+    throw err;
+  }
+  if ("refused" in reply) throw unsafeContent(reply.category, "idea");
+  // A notes brief keeps its notes rules (up to 5 left-out topics, its summary); each angle keeps its own kind.
+  const kind = (b: { sourceNotesSummary?: string }) => (b.sourceNotesSummary ? "notes" : "idea");
+  const main = trimBrief(reply.brief, kind(brief));
+  if (brief.sourceNotesSummary && !main.sourceNotesSummary) main.sourceNotesSummary = brief.sourceNotesSummary;
+  const alternatives = reply.alternatives.map((b, i) => {
+    const t = trimBrief(b, kind(alternativesNow[i]));
+    return alternativesNow[i].sourceNotesSummary && !t.sourceNotesSummary ? { ...t, sourceNotesSummary: alternativesNow[i].sourceNotesSummary } : t;
+  });
+  const saved = await saveBrief(userId, projectId, main, alternatives, { language: project.language, lengthSec: project.lengthPreset });
+  return respond(userId, saved, usage);
+}
 
 /** The answer for a saved brief; when nothing was saved, the request goes back to the daily limit. */
 async function respond(userId: string, result: SaveBriefResult, usage?: UsageResult) {
@@ -121,6 +167,8 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
       brief: toBrief(idea.brief!),
       alternatives: (idea.briefAlternatives ?? []).map(toBrief),
       briefUpdatedAt: idea.briefUpdatedAt ? idea.briefUpdatedAt.toISOString() : null,
+      briefLanguage: idea.briefLanguage ?? null,
+      briefLengthSec: idea.briefLengthSec ?? null,
       project: toProject(project),
     },
     { headers: usage ? rateLimitHeaders(usage) : {} },

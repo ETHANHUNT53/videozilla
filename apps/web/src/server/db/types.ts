@@ -141,6 +141,9 @@ export interface IdeaSessionDoc {
   /** The 2 other angles that came with the brief (F2.3); missing on sessions from before it. */
   briefAlternatives?: IdeaBriefDoc[];
   briefUpdatedAt: Date | null;
+  /** The language and length the brief was written for (F2.6 follow-up); missing on briefs from before it. */
+  briefLanguage?: Language;
+  briefLengthSec?: 60 | 90;
   rev: number;
   createdAt: Date;
   updatedAt: Date;

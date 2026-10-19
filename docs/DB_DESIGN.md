@@ -200,6 +200,7 @@ One per project (unique `projectId`), autosaved.
 | `brief` | object? | | `{ title, hook, angle, audience, keyPoints[1–5], outOfScope[], sourceNotesSummary? }` |
 | `briefAlternatives` | array? | | ≤ 2 briefs of the same shape: the other angles that came with the brief (F2.3). Missing on older sessions = none |
 | `briefUpdatedAt` | Date? | | |
+| `briefLanguage`, `briefLengthSec` | string?, int? | | `en` \| `hi`, 60 \| 90: what the brief was written for (F2.6 follow-up). Set when a brief is saved (new brief, chat answer, rewrite), kept by an angle switch; missing on older briefs (treated as the video's settings) |
 | `rev` | int | R | |
 | `createdAt`, `updatedAt` | Date | R | |
 

@@ -529,6 +529,114 @@ describe("POST …/idea/brief — errors", () => {
   });
 });
 
+describe("POST …/idea/brief — from: settings (F2.6 follow-up: the brief follows a language or length change)", () => {
+  async function englishBrief() {
+    generateContent.mockResolvedValueOnce(reply());
+    await post({ from: "idea" });
+    generateContent.mockClear();
+  }
+  const hindi = (n: number, extra: Record<string, unknown> = {}) => aBrief(n, { title: `ब्रीफ़ ${n}`, hook: `हुक ${n}`, ...extra });
+
+  it("a brief remembers the language and length it was written for; an angle switch keeps them", async () => {
+    await englishBrief();
+    expect(await getIdea(ME.id, projectId)).toMatchObject({ briefLanguage: "en", briefLengthSec: 60 });
+    await updateProject(ME.id, projectId, { language: "hi" });
+    const switched = await post({ from: "alternative", index: 0 });
+    expect(switched.status).toBe(200);
+    expect(await getIdea(ME.id, projectId)).toMatchObject({ briefLanguage: "en", briefLengthSec: 60 }); // the angles were written in English
+  });
+
+  it("after a language change: the brief and both angles are rewritten in Hindi, saved for Hindi, counted once, title follows", async () => {
+    await englishBrief();
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockResolvedValueOnce(reply(hindi(1), [hindi(2), hindi(3)]));
+    const res = await post({ from: "settings" });
+    expect(res.status).toBe(200);
+    expect(res.json.brief).toMatchObject({ title: "ब्रीफ़ 1", hook: "हुक 1" });
+    expect(res.json.alternatives.map((a: { title: string }) => a.title)).toEqual(["ब्रीफ़ 2", "ब्रीफ़ 3"]);
+    expect(res.json.project.title).toBe("ब्रीफ़ 1"); // the title had followed the English brief, so it follows again
+    const idea = (await getIdea(ME.id, projectId))!;
+    expect(idea).toMatchObject({ briefLanguage: "hi", briefLengthSec: 60 });
+    expect(await usedIdeas()).toBe(2);
+    const { system, user } = sentPrompt();
+    expect(system).toMatch(/the language is now Hindi/);
+    expect(system).not.toMatch(/the length is now/);
+    expect(user).toContain("<brief>\nTitle: Brief 1");
+    expect(user.match(/<alternative>/g)).toHaveLength(2);
+  });
+
+  it("after a length change (60 → 90): the brief is updated for 90 s; the prompt says so", async () => {
+    await englishBrief();
+    await updateProject(ME.id, projectId, { lengthPreset: 90 });
+    generateContent.mockResolvedValueOnce(reply(aBrief(1, { keyPoints: ["Point a", "Point b", "Point c", "Point d"] })));
+    const res = await post({ from: "settings" });
+    expect(res.status).toBe(200);
+    expect(res.json.brief.keyPoints).toHaveLength(4);
+    expect(await getIdea(ME.id, projectId)).toMatchObject({ briefLanguage: "en", briefLengthSec: 90 });
+    expect(sentPrompt().system).toMatch(/the length is now about 90 seconds \(it was 60\)/);
+  });
+
+  it("chat edits are kept: what's rewritten is the current brief, not the original idea", async () => {
+    await englishBrief();
+    await setIdea({ brief: aBrief(1, { hook: "A hook refined in chat" }) });
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockResolvedValueOnce(reply(hindi(1), [hindi(2), hindi(3)]));
+    await post({ from: "settings" });
+    expect(sentPrompt().user).toContain("Hook: A hook refined in chat");
+    expect(sentPrompt().user).not.toContain("Why do leaves change colour"); // the original idea isn't sent
+  });
+
+  it("a notes brief keeps its summary and notes rules", async () => {
+    await setIdea({ brief: aBrief(1, { sourceNotesSummary: "Notes on leaves.", outOfScope: ["a1", "a2", "a3", "a4"] }), briefAlternatives: [aBrief(2, { sourceNotesSummary: "Notes on leaves." }), aBrief(3)], briefLanguage: "en", briefLengthSec: 60, briefUpdatedAt: new Date() });
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockResolvedValueOnce(reply(hindi(1, { outOfScope: ["b1", "b2", "b3", "b4"] }), [hindi(2), hindi(3)]));
+    const res = await post({ from: "settings" });
+    expect(res.json.brief).toMatchObject({ sourceNotesSummary: "Notes on leaves.", outOfScope: ["b1", "b2", "b3", "b4"] });
+    expect(res.json.alternatives[0].sourceNotesSummary).toBe("Notes on leaves.");
+  });
+
+  it("400 when the brief already matches the settings, when there's no brief, or for a brief from before F2.6b; no AI call, nothing counted", async () => {
+    expect((await post({ from: "settings" })).json.error).toMatchObject({ code: "VALIDATION_FAILED", details: [{ field: "brief" }] }); // no brief
+    await englishBrief();
+    expect((await post({ from: "settings" })).json.error.message).toBe("The brief already matches the video's settings.");
+    await testMongo.db.collection("idea_sessions").updateOne({ projectId: oid() }, { $unset: { briefLanguage: "", briefLengthSec: "" } });
+    await updateProject(ME.id, projectId, { language: "hi" });
+    expect((await post({ from: "settings" })).status).toBe(400); // an older brief counts as written for the settings now
+    expect((await getIdea(ME.id, projectId))!.briefLanguage).toBeUndefined();
+    expect(generateContent).not.toHaveBeenCalled();
+    expect(await usedIdeas()).toBe(1);
+  });
+
+  it("busy: 503, refunded, the brief unchanged; outside the Idea stage: 409", async () => {
+    await englishBrief();
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockRejectedValue(busy());
+    expect((await post({ from: "settings" })).status).toBe(503);
+    expect(await usedIdeas()).toBe(1);
+    expect((await getIdea(ME.id, projectId))!).toMatchObject({ briefLanguage: "en", brief: { title: "Brief 1" } });
+    await testMongo.db.collection("projects").updateOne({ _id: oid() }, { $set: { status: "storyboard_generating" } });
+    expect((await post({ from: "settings" })).status).toBe(409);
+  });
+
+  it("mock mode: a sample rewrite marked with the new settings", async () => {
+    await englishBrief();
+    await updateProject(ME.id, projectId, { language: "hi", lengthPreset: 90 });
+    vi.stubEnv("AI_PROVIDER", "mock");
+    const res = await post({ from: "settings" });
+    expect(res.status).toBe(200);
+    expect(res.json.brief.hook).toMatch(/^\[Mock · hi 90 s\]/);
+    expect(res.json.brief.keyPoints).toHaveLength(4);
+  });
+
+  it("the IdeaSession resource says what the brief was written for", async () => {
+    await englishBrief();
+    const res = await route.POST(new Request(`${APP}/api/v1/projects/${projectId}/idea/brief`, { method: "POST", headers: { origin: APP, "content-type": "application/json" }, body: JSON.stringify({ from: "alternative", index: 0 }) }), { params: Promise.resolve({ id: projectId }) });
+    expect(res.status).toBe(200);
+    const { toIdeaSession } = await import("../api/resources");
+    expect(toIdeaSession((await getIdea(ME.id, projectId))!)).toMatchObject({ briefLanguage: "en", briefLengthSec: 60 });
+  });
+});
+
 describe("GET …/idea after a brief", () => {
   it("the brief and its angles come back with the idea session (a reload shows them)", async () => {
     generateContent.mockResolvedValueOnce(reply());

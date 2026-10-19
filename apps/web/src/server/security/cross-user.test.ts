@@ -188,7 +188,7 @@ describe("B against A's projects (id routes)", () => {
       { $set: { ideaInput: "A's idea", notesText: "A's notes about photosynthesis and how plants make food", brief: aBrief, briefAlternatives: [{ ...aBrief, title: "Alt 1" }, { ...aBrief, title: "Alt 2" }], suggestions: [{ id: "sg_0123456789ab", title: "t", hook: "h", angle: "a", keyPoints: ["1", "2", "3"] }] } },
     );
     const before = await snapshotA();
-    for (const body of [{ from: "idea" }, { from: "suggestion", suggestionId: "sg_0123456789ab" }, { from: "alternative", index: 0 }, { from: "notes" }]) {
+    for (const body of [{ from: "idea" }, { from: "suggestion", suggestionId: "sg_0123456789ab" }, { from: "alternative", index: 0 }, { from: "notes" }, { from: "settings" }]) {
       for (const id of [a.live, a.deleted, a.attention]) await expectLikeUnknown(brief.POST, "POST", "/idea/brief", id, body);
     }
     expect(await snapshotA()).toEqual(before);

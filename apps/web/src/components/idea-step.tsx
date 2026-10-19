@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import type { AutosaveState } from "@/lib/autosave";
 import { clampChars, stripControlChars } from "@/lib/project-client";
+import { briefSettingsChange } from "@/lib/brief-settings";
 import { AUDIENCE_OPTIONS } from "@/lib/project-options";
 import { useAutosave } from "@/lib/use-autosave";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
@@ -17,7 +18,9 @@ type Draft = Pick<Idea, "mode" | "topicInput" | "ideaInput" | "notesText">;
 type Suggestion = Idea["suggestions"][number];
 type Brief = NonNullable<Idea["brief"]>;
 /** `POST …/idea/brief` (F2.3). */
-type BriefReply = { brief: Brief; alternatives: Brief[]; briefUpdatedAt: string | null; project: ProjectResource };
+type BriefReply = { brief: Brief; alternatives: Brief[]; briefUpdatedAt: string | null; briefLanguage: Idea["briefLanguage"]; briefLengthSec: Idea["briefLengthSec"]; project: ProjectResource };
+/** What the brief was written for (F2.6 follow-up); null for briefs from before it. */
+type WrittenFor = { language: Idea["briefLanguage"]; lengthSec: Idea["briefLengthSec"] };
 
 /** Same limits as the API and the database (characters, so an emoji or a Hindi letter is one). */
 const LIMITS = { topicInput: 200, ideaInput: 500, notesText: 20_000 } as const;
@@ -44,21 +47,25 @@ const count = (s: string) => Array.from(s).length;
 export function IdeaStep(props: {
   projectId: string;
   language: ProjectResource["language"];
+  lengthSec: ProjectResource["lengthPreset"];
   initial: Idea;
   initialChat: { items: ChatMessageResource[]; hasOlder: boolean };
   editable: boolean;
   onProject: (p: ProjectResource) => void;
 }) {
-  const { projectId, language, initial, initialChat, editable, onProject } = props;
+  const { projectId, language, lengthSec, initial, initialChat, editable, onProject } = props;
   // Brief fields the last chat answer changed (F2.5), highlighted until the next message or a new brief.
   const [changed, setChanged] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
   const [clipped, setClipped] = useState<keyof typeof LIMITS | null>(null);
-  const [brief, setBrief] = useState<{ brief: Brief | null; alternatives: Brief[]; updatedAt: string | null }>({
+  const [brief, setBrief] = useState<{ brief: Brief | null; alternatives: Brief[]; updatedAt: string | null; writtenFor: WrittenFor }>({
     brief: initial.brief,
     alternatives: initial.briefAlternatives,
     updatedAt: initial.briefUpdatedAt,
+    writtenFor: { language: initial.briefLanguage, lengthSec: initial.briefLengthSec },
   });
+  // "Keep as is" hides the bar for these settings until the next reload (your answer, F2.6 follow-up).
+  const [keptFor, setKeptFor] = useState<string | null>(null);
   const ai = useIdeaAi();
   const suggestButton = useRef<HTMLButtonElement>(null);
   const { state, queue } = useAutosave<Draft, Idea>({
@@ -78,7 +85,7 @@ export function IdeaStep(props: {
       const problem = await before?.();
       if (problem) throw new Error(problem);
       const { data } = await apiCall<BriefReply>(`/api/v1/projects/${projectId}/idea/brief`, { method: "POST", body: request });
-      setBrief({ brief: data.brief, alternatives: data.alternatives, updatedAt: data.briefUpdatedAt });
+      setBrief({ brief: data.brief, alternatives: data.alternatives, updatedAt: data.briefUpdatedAt, writtenFor: { language: data.briefLanguage, lengthSec: data.briefLengthSec } });
       setChanged([]);
       onProject(data.project);
     });
@@ -257,6 +264,16 @@ export function IdeaStep(props: {
         )}
       </div>
 
+      {brief.brief && editable ? (
+        <SettingsChangeBar
+          change={briefSettingsChange(brief.writtenFor, { language, lengthSec })}
+          keptFor={keptFor}
+          ai={ai}
+          onKeep={setKeptFor}
+          onRegenerate={() => makeBrief("settings", { from: "settings" })}
+        />
+      ) : null}
+
       {brief.brief ? (
         <BriefCard
           brief={brief.brief}
@@ -284,19 +301,45 @@ export function IdeaStep(props: {
                 setBrief((b) =>
                   b.updatedAt && data.briefUpdatedAt && Date.parse(data.briefUpdatedAt) < Date.parse(b.updatedAt)
                     ? b
-                    : { brief: data.brief, alternatives: data.briefAlternatives, updatedAt: data.briefUpdatedAt },
+                    : { brief: data.brief, alternatives: data.briefAlternatives, updatedAt: data.briefUpdatedAt, writtenFor: { language: data.briefLanguage, lengthSec: data.briefLengthSec } },
                 ),
               )
               .catch(() => {}); // the next message's answer brings it anyway
           }}
           onAnswer={(reply) => {
-            if (reply.brief) setBrief((b) => ({ ...b, brief: reply.brief, updatedAt: reply.briefUpdatedAt }));
+            // A saved chat change rewrote the whole brief for the video's settings now.
+            const rewritten = reply.assistantMessage.changedFields.length > 0;
+            if (reply.brief)
+              setBrief((b) => ({ ...b, brief: reply.brief, updatedAt: reply.briefUpdatedAt, writtenFor: rewritten ? { language: reply.project.language, lengthSec: reply.project.lengthPreset } : b.writtenFor }));
             setChanged(reply.assistantMessage.changedFields);
             onProject(reply.project);
           }}
         />
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * F2.6 follow-up: the video's language or length changed after its brief was written ("Regenerate brief in Hindi?",
+ * PRD F2). Regenerate rewrites the brief and its angles (one request); Keep as is hides this until the next reload.
+ */
+function SettingsChangeBar(props: { change: ReturnType<typeof briefSettingsChange>; keptFor: string | null; ai: IdeaAi; onKeep: (key: string) => void; onRegenerate: () => void }) {
+  const { change, keptFor, ai, onKeep, onRegenerate } = props;
+  if (!change || keptFor === change.key) return null;
+  return (
+    <div role="status" className="flex flex-col gap-3 rounded-xl border border-orange/40 bg-orange/5 px-4 py-3">
+      <p className="text-sm">{change.message}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" disabled={!ai.canAsk} onClick={onRegenerate} aria-busy={ai.busy === "settings"}>
+          {ai.busy === "settings" ? "Thinking…" : change.action}
+        </Button>
+        <Button type="button" variant="ghost" disabled={ai.busy === "settings"} onClick={() => onKeep(change.key)}>
+          Keep as is
+        </Button>
+        <Thinking busy={ai.busy === "settings" ? "settings" : null} />
+      </div>
+    </div>
   );
 }
 

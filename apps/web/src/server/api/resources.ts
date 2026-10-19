@@ -76,6 +76,9 @@ export function toIdeaSession(i: IdeaSessionDoc) {
     briefAlternatives: (i.briefAlternatives ?? []).map(toBrief),
     /** When the brief last changed; "Use this angle" sends it back so a repeated request can't swap twice. */
     briefUpdatedAt: i.briefUpdatedAt ? i.briefUpdatedAt.toISOString() : null,
+    /** What the brief was written for (F2.6 follow-up); null for briefs from before it (treated as the video's settings). */
+    briefLanguage: i.brief ? (i.briefLanguage ?? null) : null,
+    briefLengthSec: i.brief ? (i.briefLengthSec ?? null) : null,
     rev: i.rev,
     updatedAt: i.updatedAt.toISOString(),
   };

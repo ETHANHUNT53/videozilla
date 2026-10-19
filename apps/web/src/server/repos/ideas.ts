@@ -131,8 +131,8 @@ export type SaveBriefResult = { idea: IdeaSessionDoc; project: ProjectDoc } | nu
  * Saves a new brief and its 2 other angles (F2.3), replacing the previous ones. Null when the project is unknown,
  * someone else's or deleted; `invalid_state` when it left the Idea stage (e.g. while Gemini was thinking).
  */
-export async function saveBrief(userId: string, projectId: string, brief: IdeaBriefDoc, alternatives: IdeaBriefDoc[]): Promise<SaveBriefResult> {
-  return inIdeaStage(userId, projectId, (ctx) => applyBrief(ctx, brief, alternatives));
+export async function saveBrief(userId: string, projectId: string, brief: IdeaBriefDoc, alternatives: IdeaBriefDoc[], writtenFor?: WrittenFor): Promise<SaveBriefResult> {
+  return inIdeaStage(userId, projectId, (ctx) => applyBrief(ctx, brief, alternatives, writtenFor));
 }
 
 /**
@@ -152,7 +152,8 @@ export async function switchToAlternative(userId: string, projectId: string, ind
     const chosen = alternatives[index];
     if (!ctx.idea.brief || !chosen) return "no_alternative" as const;
     // applyBrief gives the switched-in brief (and the angles) the video's audience setting, so they agree after a switch.
-    return applyBrief(ctx, chosen, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
+    // The angles were written together with the brief, so the language and length it was written for stay.
+    return applyBrief(ctx, chosen, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)), "keep");
   });
 }
 
@@ -257,7 +258,14 @@ async function inIdeaStage<T>(userId: string, projectId: string, fn: (ctx: Brief
  * types, so a brief never makes the next autosave look like a conflict. The video's title follows the brief title while
  * the user hasn't named it (PRD F2-FR11): it's still the default, or still the title the previous brief gave it.
  */
-async function applyBrief({ session, project, idea, now }: BriefContext, briefIn: IdeaBriefDoc, alternativesIn: IdeaBriefDoc[]) {
+/**
+ * The language and length a brief was written for (F2.6 follow-up): what its AI call used (so a settings change during
+ * the call still shows the bar), `keep` for an angle switch, or by default the video's settings in this transaction.
+ */
+export type WrittenFor = { language: ProjectDoc["language"]; lengthSec: 60 | 90 } | "keep";
+
+async function applyBrief({ session, project, idea, now }: BriefContext, briefIn: IdeaBriefDoc, alternativesIn: IdeaBriefDoc[], writtenFor?: WrittenFor) {
+  const settings = writtenFor === "keep" ? {} : { briefLanguage: writtenFor?.language ?? project.language, briefLengthSec: writtenFor?.lengthSec ?? project.lengthPreset };
   // The brief and its angles always carry the video's audience setting (your decision, 2026-10-19): however the brief
   // was made (idea, card, notes, chat, angle switch), the brief card and the settings panel agree, and a later chat
   // answer never shows an "audience changed" nobody asked for. Read in this transaction, so a settings change at the
@@ -266,7 +274,7 @@ async function applyBrief({ session, project, idea, now }: BriefContext, briefIn
   const alternatives = alternativesIn.map((a) => ({ ...a, audience: project.audience }));
   const saved = await collections.ideaSessions().findOneAndUpdate(
     { _id: idea._id },
-    { $set: { brief, briefAlternatives: alternatives, briefUpdatedAt: now, updatedAt: now } },
+    { $set: { brief, briefAlternatives: alternatives, briefUpdatedAt: now, updatedAt: now, ...settings } },
     { session, returnDocument: "after" },
   );
   if (!saved) throw new Error("Idea session vanished during its own transaction");
