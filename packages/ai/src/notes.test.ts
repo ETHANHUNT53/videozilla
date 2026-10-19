@@ -27,6 +27,12 @@ describe("notesProblem: notes that can't become a brief (no AI call)", () => {
     ["🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂", "empty"],
     ["https://example.com/chapter-5/photosynthesis-notes-for-class-7", "links_only"],
     ["see https://a.example/x and www.b.example/y", "links_only"],
+    // QA: marks without a letter aren't content (they used to pass once marks counted).
+    ["❤️".repeat(20), "empty"], // ❤️ ×20: U+FE0F is a mark
+    ["✔️ ".repeat(25), "empty"], // ✔️ ×25
+    ["1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣0️⃣", "empty"], // keycaps 1️⃣…0️⃣: 10 digits
+    ["́".repeat(30), "empty"], // combining acute accents alone
+    ["ा ि ी ु ू े ै ो ौ ं ािीुूेैोौं", "empty"], // Hindi vowel signs alone
   ])("%j → %s", (text, problem) => expect(notesProblem(text)).toBe(problem));
 
   it.each([NOTES, "प्रकाश संश्लेषण में पौधे सूरज की रोशनी से भोजन बनाते हैं", "प्रकाश संश्लेषण में पौधे भोजन बनाते हैं", "Read this: https://example.com — plants make their own food using sunlight"])("real content passes: %j", (text) => {

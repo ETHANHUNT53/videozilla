@@ -4,21 +4,27 @@
  */
 
 /**
- * Fewer letters, marks or digits than this (in any script) is not something to explain. Marks count: Devanagari vowel
- * signs (ा ि ी े ो ं …) are `\p{M}`, not letters, so counting letters alone rejected short Hindi notes.
+ * Less content than this (in code points, any script) is not something to explain. Content is letters with the marks
+ * that follow them (Devanagari vowel signs such as ा ि ी are marks, so short Hindi notes need them counted), plus
+ * digits. Marks without a letter don't count: emoji variation selectors (❤️, ✔️), keycaps (1️⃣) and stray accents or
+ * vowel signs on their own are not content (QA, 2026-10-19).
  */
 export const MIN_NOTES_CONTENT = 20;
 
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/giu;
-const CONTENT_RE = /[\p{L}\p{M}\p{N}]/gu;
+/** A letter and the marks attached to it, or one digit (a keycap's marks are left out). */
+const CONTENT_RE = /\p{L}\p{M}*|\p{N}/gu;
+const LETTER_RE = /\p{L}\p{M}*/gu;
+
+/** Code points of content (see MIN_NOTES_CONTENT). */
+const contentLength = (s: string, re: RegExp) => (s.match(re) ?? []).reduce((n, m) => n + Array.from(m).length, 0);
 
 export type NotesProblem = "empty" | "links_only";
 
 /** Why these notes can't become a brief, or null when they can. */
 export function notesProblem(text: string): NotesProblem | null {
-  const content = (s: string) => (s.match(CONTENT_RE) ?? []).length;
   const withoutLinks = text.replace(URL_RE, " ");
-  if (content(withoutLinks) >= MIN_NOTES_CONTENT) return null;
+  if (contentLength(withoutLinks, CONTENT_RE) >= MIN_NOTES_CONTENT) return null;
   // Only links (with maybe a word or two around them): say links aren't supported, not "paste something".
   return withoutLinks !== text ? "links_only" : "empty";
 }
@@ -35,16 +41,18 @@ export const NOTES_PROBLEM_TEXT: Record<NotesProblem, string> = {
  * Only a hint for the "your notes are in X" note.
  */
 export function notesLanguage(text: string): "hi" | "en" | "other" | null {
-  // Letters and marks (vowel signs belong to their script too).
-  const letters = text.replace(URL_RE, " ").match(/[\p{L}\p{M}]/gu) ?? [];
-  if (letters.length < MIN_NOTES_CONTENT) return null;
+  // Each letter with its marks, weighted by length (vowel signs belong to their letter's script).
+  const letters = text.replace(URL_RE, " ").match(LETTER_RE) ?? [];
+  const total = letters.reduce((n, m) => n + Array.from(m).length, 0);
+  if (total < MIN_NOTES_CONTENT) return null;
   let deva = 0;
   let latin = 0;
-  for (const ch of letters) {
-    if (/\p{Script=Devanagari}/u.test(ch)) deva++;
-    else if (/\p{Script=Latin}/u.test(ch)) latin++;
+  for (const m of letters) {
+    const size = Array.from(m).length;
+    if (/^\p{Script=Devanagari}/u.test(m)) deva += size;
+    else if (/^\p{Script=Latin}/u.test(m)) latin += size;
   }
-  if (deva / letters.length >= 0.5) return "hi";
-  if (latin / letters.length >= 0.5) return "en";
+  if (deva / total >= 0.5) return "hi";
+  if (latin / total >= 0.5) return "en";
   return "other";
 }

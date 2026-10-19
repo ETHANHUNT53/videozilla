@@ -206,7 +206,7 @@ Why the 15 s deadline doesn't keep back Groq's *and* OpenRouter's reserves (10 s
 
 `GROQ_BASE_URL` and `OPENROUTER_BASE_URL` (in `apps/web/.env.local`) replace the API addresses, like the Gemini SDK's own `GOOGLE_GEMINI_BASE_URL`. For example `GROQ_BASE_URL=http://127.0.0.1:9001/v1` sends `POST http://127.0.0.1:9001/v1/chat/completions`. A value that isn't `http(s)://…` is a clear error. Leave them unset normally.
 
-**Never in production:** `GOOGLE_GEMINI_BASE_URL`, `GROQ_BASE_URL`, `OPENROUTER_BASE_URL` and `AI_PROVIDER=mock` are refused when `NODE_ENV=production` (`assertAiConfigSafe` in `packages/ai/src/config.ts`), both when the server starts (`apps/web/src/instrumentation.ts`, so a bad deploy fails at boot) and before every AI request (`aiChain`, before any key is used). The Gemini one is read by the SDK itself, which is why it's checked here.
+**Never in production:** `GOOGLE_GEMINI_BASE_URL`, `GROQ_BASE_URL`, `OPENROUTER_BASE_URL` and `AI_PROVIDER=mock` are refused when `NODE_ENV=production` (`assertAiConfigSafe` in `packages/ai/src/config.ts`), both when the server starts (`apps/web/src/instrumentation.ts`: logs why and exits with code 1, so a bad deploy fails at boot) and before every AI request (`aiChain`, before any key is used). The Gemini one is read by the SDK itself, which is why it's checked here.
 
 ### Unchanged
 
