@@ -93,6 +93,27 @@ describe("POST …/idea/chat — answers", () => {
     expect((await messages()).map((m) => [m.role, m.status])).toEqual([["user", "applied"], ["assistant", "applied"]]);
   });
 
+  it("an answer that only changes the audience (a video setting): unsupported with our sentence, the brief and its time untouched", async () => {
+    const before = (await getIdea(ME.id, projectId))!.briefUpdatedAt!;
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "Done, it is for kids now.", brief: { ...BRIEF, audience: "kids" } }));
+    const res = await post({ clientMessageId: uuid(), content: "Make it for kids" });
+    expect(res.status).toBe(200);
+    expect(res.json.assistantMessage).toMatchObject({ status: "unsupported", changedFields: [], content: expect.stringContaining("settings panel") });
+    expect(res.json.userMessage.status).toBe("unsupported");
+    const idea = (await getIdea(ME.id, projectId))!;
+    expect(idea.brief).toEqual(BRIEF);
+    expect(idea.briefUpdatedAt).toEqual(before); // another tab's answer or angle switch isn't failed for nothing
+    expect(res.json.briefUpdatedAt).toBe(before.toISOString());
+  });
+
+  it("an applied answer that changes nothing: saved as applied, but the brief isn't rewritten", async () => {
+    const before = (await getIdea(ME.id, projectId))!.briefUpdatedAt!;
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "It already says that.", brief: BRIEF }));
+    const res = await post({ clientMessageId: uuid(), content: "Keep it as it is" });
+    expect(res.json.assistantMessage).toMatchObject({ status: "applied", changedFields: [], content: "It already says that." });
+    expect((await getIdea(ME.id, projectId))!.briefUpdatedAt).toEqual(before);
+  });
+
   it("a title the user typed never follows the brief", async () => {
     await updateProject(ME.id, projectId, { title: "My own title" });
     generateContent.mockResolvedValueOnce(applied({ title: "New brief title" }));

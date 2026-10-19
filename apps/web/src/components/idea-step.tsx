@@ -279,7 +279,14 @@ export function IdeaStep(props: {
           onStale={() => {
             // Show the brief as it is now (another tab or a new brief changed it); "Send again" then works on that.
             void apiCall<Idea>(`/api/v1/projects/${projectId}/idea`)
-              .then(({ data }) => setBrief({ brief: data.brief, alternatives: data.briefAlternatives, updatedAt: data.briefUpdatedAt }))
+              // Unless a newer brief arrived meanwhile ("Send again" answered first): never go back to an older one.
+              .then(({ data }) =>
+                setBrief((b) =>
+                  b.updatedAt && data.briefUpdatedAt && Date.parse(data.briefUpdatedAt) < Date.parse(b.updatedAt)
+                    ? b
+                    : { brief: data.brief, alternatives: data.briefAlternatives, updatedAt: data.briefUpdatedAt },
+                ),
+              )
               .catch(() => {}); // the next message's answer brings it anyway
           }}
           onAnswer={(reply) => {

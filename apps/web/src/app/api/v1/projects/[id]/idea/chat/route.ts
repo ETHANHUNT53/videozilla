@@ -26,6 +26,12 @@ import { isAllowed } from "@/server/rules/project-actions";
  * (refusal, or a reused `clientMessageId`), `429`, `503`. See docs/features/F2.5-idea-chat.md.
  */
 
+/** Our answer when the model changed only the audience, which is a video setting (the prompt asks it to say this itself). */
+const AUDIENCE_IN_SETTINGS = {
+  en: "The audience is a video setting: change it in the settings panel next to the brief, then ask me to adapt the brief.",
+  hi: "दर्शक वीडियो की सेटिंग है: उसे ब्रीफ़ के बगल वाले सेटिंग पैनल में बदलें, फिर मुझसे ब्रीफ़ बदलने को कहें।",
+} as const;
+
 const listQuery = z.strictObject({ ...pageQuery, limit: pageQuery.limit.default(50) });
 
 export const GET = apiRoute({ params, query: listQuery }, async ({ user, params, query }) => {
@@ -123,6 +129,8 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
 
   let brief = null;
   let changedFields: string[] = [];
+  let status = reply.status;
+  let replyText = reply.reply;
   if (reply.status === "applied" && "brief" in reply && reply.brief) {
     brief = trimBrief(reply.brief, fromNotes ? "notes" : "idea");
     // A notes brief keeps its summary as it was: it describes the notes, which a chat message doesn't change (and the
@@ -130,12 +138,23 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     if (fromNotes) brief.sourceNotesSummary = idea.brief.sourceNotesSummary;
     // The audience belongs to the video's settings (the panel beside the brief), so chat never changes it: the brief and
     // the settings can't disagree on screen because of a chat answer (QA, F2.5).
+    const askedAudience = brief.audience !== idea.brief.audience;
     brief.audience = idea.brief.audience;
     changedFields = changedBriefFields(idea.brief as IdeaBrief, brief as IdeaBrief);
+    if (!changedFields.length) {
+      // Nothing left to change: the brief isn't rewritten (its briefUpdatedAt would move, failing another tab's answer
+      // or angle switch for nothing). When the model only changed the audience, its reply ("I made it for kids") would
+      // be untrue, so the answer says where the audience is changed instead.
+      brief = null;
+      if (askedAudience) {
+        status = "unsupported";
+        replyText = AUDIENCE_IN_SETTINGS[project.language];
+      }
+    }
   }
   let saved;
   try {
-    saved = await saveChatAnswer(user.id, params.id, { userMessageId: message._id, status: reply.status, reply: reply.reply, brief, changedFields, basedOn: idea.briefUpdatedAt });
+    saved = await saveChatAnswer(user.id, params.id, { userMessageId: message._id, status, reply: replyText, brief, changedFields, basedOn: idea.briefUpdatedAt });
   } catch (err) {
     // Nothing was saved (the transaction rolled back): give the request back and let the message be sent again now,
     // not only once it counts as stale.
