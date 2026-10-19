@@ -106,6 +106,31 @@ describe("POST …/idea/chat — answers", () => {
     expect(res.json.briefUpdatedAt).toBe(before.toISOString());
   });
 
+  it("after the audience setting changed, 'adapt the brief' brings the brief's audience in line: a real change, saved (QA)", async () => {
+    await updateProject(ME.id, projectId, { audience: "kids" }); // the settings panel (PATCH /projects/{id})
+    // The model only changed the audience, to the setting: that's the change asked for, not an "unsupported" one.
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "Adapted for kids.", brief: { ...BRIEF, audience: "kids" } }));
+    const res = await post({ clientMessageId: uuid(), content: "Adapt the brief for the new audience" });
+    expect(res.status).toBe(200);
+    expect(res.json.assistantMessage).toMatchObject({ status: "applied", changedFields: ["audience"], content: "Adapted for kids." });
+    expect(res.json.brief.audience).toBe("kids");
+    expect((await getIdea(ME.id, projectId))!.brief!.audience).toBe("kids");
+    expect(sentPrompt().user).toMatch(/Video audience setting: kids/);
+  });
+
+  it("any answer brings the brief to the setting, even when the model keeps the old audience or picks another", async () => {
+    await updateProject(ME.id, projectId, { audience: "college" });
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "New hook.", brief: { ...BRIEF, hook: "A sharper hook." } })); // kept "students"
+    const res = await post({ clientMessageId: uuid(), content: "Sharper hook" });
+    expect(res.json.brief).toMatchObject({ audience: "college", hook: "A sharper hook." });
+    expect(res.json.assistantMessage.changedFields).toEqual(["hook", "audience"]);
+    generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "Made it for kids.", brief: { ...BRIEF, hook: "A sharper hook.", audience: "kids" } }));
+    const second = await post({ clientMessageId: uuid(), content: "Make it for kids" });
+    // Only the audience differed from the brief, and not to the setting: the settings panel is where it changes.
+    expect(second.json.assistantMessage).toMatchObject({ status: "unsupported", content: expect.stringContaining("settings panel") });
+    expect((await getIdea(ME.id, projectId))!.brief!.audience).toBe("college");
+  });
+
   it("an applied answer that changes nothing: saved as applied, but the brief isn't rewritten", async () => {
     const before = (await getIdea(ME.id, projectId))!.briefUpdatedAt!;
     generateContent.mockResolvedValueOnce(answer({ status: "applied", reply: "It already says that.", brief: BRIEF }));

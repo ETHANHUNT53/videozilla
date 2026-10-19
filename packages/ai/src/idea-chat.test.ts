@@ -47,7 +47,7 @@ describe("idea chat prompt", () => {
     expect(sys).toMatch(/status applied: .*Change only what the message asks for/);
     expect(sys).toMatch(/settings panel/);
     expect(sys).toMatch(/language, length, audience, voice or style is done in the settings panel/);
-    expect(sys).toMatch(/audience exactly as in the brief now/);
+    expect(sys).toMatch(/audience the video's audience setting given below.*adapt the brief to the setting/);
     expect(sys).toMatch(/keyPoints 4–5/);
     expect(sys).toMatch(/Hindi, in Devanagari/);
     expect(sys).toMatch(/answer such a message with status unsupported/);

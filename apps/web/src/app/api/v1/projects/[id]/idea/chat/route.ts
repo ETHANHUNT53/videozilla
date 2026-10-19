@@ -136,10 +136,13 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     // A notes brief keeps its summary as it was: it describes the notes, which a chat message doesn't change (and the
     // highlight doesn't cover it, so a rewrite would go unnoticed).
     if (fromNotes) brief.sourceNotesSummary = idea.brief.sourceNotesSummary;
-    // The audience belongs to the video's settings (the panel beside the brief), so chat never changes it: the brief and
-    // the settings can't disagree on screen because of a chat answer (QA, F2.5).
-    const askedAudience = brief.audience !== idea.brief.audience;
-    brief.audience = idea.brief.audience;
+    // The audience belongs to the video's settings (the panel beside the brief): every answer sets the brief's audience
+    // to the setting, so the brief and the settings can't disagree on screen (QA, F2.5). After the setting changed,
+    // "adapt the brief for the new audience" brings the brief in line, and that counts as a real change. A model that
+    // picked some other audience is overruled.
+    const setting = project.audience as IdeaBrief["audience"];
+    const askedAudience = brief.audience !== setting;
+    brief.audience = setting;
     changedFields = changedBriefFields(idea.brief as IdeaBrief, brief as IdeaBrief);
     if (!changedFields.length) {
       // Nothing left to change: the brief isn't rewritten (its briefUpdatedAt would move, failing another tab's answer
