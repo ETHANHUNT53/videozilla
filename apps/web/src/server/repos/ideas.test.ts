@@ -112,7 +112,9 @@ describe("PUT /api/v1/projects/{id}/idea", () => {
     expect((await put({ mode: "idea", ideaInput: "a".repeat(501) })).status).toBe(400);
     const notes = "प्रकाश संश्लेषण 🌱 ".repeat(1_100).slice(0, 19_990);
     expect((await put({ mode: "notes", notesText: notes })).status).toBe(200);
-    expect((await put({ mode: "notes", notesText: "a".repeat(20_001) })).status).toBe(400);
+    const tooLong = await put({ mode: "notes", notesText: "a".repeat(20_001) });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.json.error).toMatchObject({ message: "Notes can be at most 20,000 characters.", details: [{ field: "notesText" }] });
   });
 
   it("accepts the full 20,000 characters of 4-byte text (80 KB) but not bodies over 128 KB", async () => {

@@ -310,6 +310,37 @@ describe("a longer deadline (25 s, notes) keeps every later tier's reserve", () 
     expect(budgetMs(openrouter, [], 6_000)).toBe(6_000);
   });
 
+  it("a few ms of overhead don't make Groq take OpenRouter's time (QA: Groq got 9.97 s and ran to the end)", () => {
+    const [, groq, openrouter] = aiChain();
+    expect(budgetMs(groq, [openrouter], 9_970)).toBe(3_970);
+    expect(budgetMs(groq, [openrouter], 9_600)).toBe(3_600);
+  });
+
+  it("with real overhead between tiers (each ai_calls write takes 150 ms), OpenRouter still answers inside 25 s; the 15 s path still gives Groq its time", async () => {
+    const slowLog = async () => {
+      await new Promise((r) => setTimeout(r, 150));
+    };
+    for (const [deadline, expected] of [
+      [25_000, ["gemini", "groq", "openrouter"]],
+      [15_000, ["gemini", "groq"]],
+    ] as const) {
+      resetModelCooldowns();
+      order.length = 0;
+      gemini(never);
+      http(never, good);
+      const started = Date.now();
+      const promise = generateJson({ system: "s", prompt: "p", schema: Shape, deadlineMs: deadline, onCall: slowLog });
+      promise.catch(() => {});
+      await vi.runAllTimersAsync();
+      if (deadline === 25_000) await expect(promise).resolves.toMatchObject({ provider: "openrouter" });
+      else await expect(promise).rejects.toBeInstanceOf(AiBusyError);
+      expect(order).toEqual(expected);
+      expect(Date.now() - started).toBeLessThanOrEqual(deadline + 200); // the last log write may finish just after
+      fetchMock.mockReset();
+      generateContent.mockReset();
+    }
+  });
+
   it("Gemini and Groq both never answer: 15 s, then 4 s, and OpenRouter still answers in its 6 s", async () => {
     gemini(never);
     http(never, good);

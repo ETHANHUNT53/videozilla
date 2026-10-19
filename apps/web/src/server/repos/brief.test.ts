@@ -335,6 +335,21 @@ describe("POST …/idea/brief — from the notes (F2.4)", () => {
     expect(await usedIdeas()).toBe(0);
   });
 
+  it("angles without their own summary take the main one, so 'From your notes' stays after 'Use this angle'", async () => {
+    await setIdea({ notesText: NOTES });
+    generateContent.mockResolvedValueOnce(reply(notesBrief(1), [aBrief(2), notesBrief(3)]));
+    const res = await post({ from: "notes" });
+    expect(res.json.alternatives.map((a: { sourceNotesSummary?: string }) => a.sourceNotesSummary)).toEqual([expect.stringMatching(/(1)/), expect.stringMatching(/(3)/)]);
+    const swapped = await post({ from: "alternative", index: 0, briefUpdatedAt: res.json.briefUpdatedAt });
+    expect(swapped.json.brief).toMatchObject({ title: "Brief 2", sourceNotesSummary: expect.stringMatching(/(1)/) });
+  });
+
+  it("short Hindi notes are real content (QA: vowel signs weren't counted): the brief is made", async () => {
+    await setIdea({ notesText: "प्रकाश संश्लेषण में पौधे भोजन बनाते हैं" });
+    generateContent.mockResolvedValueOnce(reply(notesBrief(1), [notesBrief(2), notesBrief(3)]));
+    expect((await post({ from: "notes" })).status).toBe(200);
+  });
+
   it("refused notes: 422 'those notes', field notes, counted; a safety block too", async () => {
     await setIdea({ notesText: NOTES });
     generateContent.mockResolvedValueOnce({ text: JSON.stringify({ refused: true, category: "dangerous" }) });

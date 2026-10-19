@@ -29,7 +29,7 @@ describe("notesProblem: notes that can't become a brief (no AI call)", () => {
     ["see https://a.example/x and www.b.example/y", "links_only"],
   ])("%j → %s", (text, problem) => expect(notesProblem(text)).toBe(problem));
 
-  it.each([NOTES, "प्रकाश संश्लेषण में पौधे सूरज की रोशनी से भोजन बनाते हैं", "Read this: https://example.com — plants make their own food using sunlight"])("real content passes: %j", (text) => {
+  it.each([NOTES, "प्रकाश संश्लेषण में पौधे सूरज की रोशनी से भोजन बनाते हैं", "प्रकाश संश्लेषण में पौधे भोजन बनाते हैं", "Read this: https://example.com — plants make their own food using sunlight"])("real content passes: %j", (text) => {
     expect(notesProblem(text)).toBeNull();
   });
 });
@@ -41,6 +41,8 @@ describe("notesLanguage: a hint from the script, no AI", () => {
     expect(notesLanguage("Paudhe dhoop se khana banate hain, isko photosynthesis kehte hain")).toBe("en");
     expect(notesLanguage("ஒளிச்சேர்க்கை என்பது தாவரங்கள் உணவு தயாரிக்கும் முறை")).toBe("other");
     expect(notesLanguage("hi there")).toBeNull();
+    // QA: short Hindi notes. Vowel signs are marks, not letters, and must count.
+    expect(notesLanguage("प्रकाश संश्लेषण में पौधे भोजन बनाते हैं")).toBe("hi");
   });
 });
 

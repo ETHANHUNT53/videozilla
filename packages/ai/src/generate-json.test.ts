@@ -146,6 +146,18 @@ describe("generateJson", () => {
     ]);
   });
 
+  it("unusable replies are logged as failed ('bad reply: …'), not ok, so repairs and fall-throughs don't look like successes", async () => {
+    generateContent.mockResolvedValueOnce(reply("not json")).mockResolvedValueOnce(reply({ items: ["one"] })).mockResolvedValueOnce(reply({ items: ["a", "b"] }));
+    const { promise, logs } = await run();
+    await expect(promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite" });
+    expect(logs.map((l) => [l.model, l.status, l.error?.slice(0, 28)])).toEqual([
+      ["gemini-3.8-flash", "failed", "bad reply: The reply was not"],
+      ["gemini-3.8-flash", "failed", "bad reply: items: Too small:"],
+      ["gemini-3.5-flash-lite", "fallback", undefined],
+    ]);
+    expect(logs[0]).toMatchObject({ inputTokens: 10, outputTokens: 5 }); // tokens still recorded
+  });
+
   it("a failed repair round falls through to the next model, which answers", async () => {
     generateContent.mockResolvedValueOnce(reply({ items: ["one"] })).mockResolvedValueOnce(reply({ items: ["still one"] })).mockResolvedValueOnce(reply({ items: ["a", "b"] }));
     const { promise } = await run();

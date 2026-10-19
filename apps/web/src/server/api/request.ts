@@ -66,8 +66,17 @@ export function parseWith<T>(schema: ZodType<T>, value: unknown, where: "body" |
     const field = issue.path.map(String).join(".");
     return { field: field || where, issue: issue.message };
   });
+  // One text over its limit (pasted notes, usually): say which and how long it may be, not the generic message.
+  const tooLong = details.length === 1 ? /^Must be at most (\d+) characters$/.exec(details[0].issue) : null;
+  if (tooLong) {
+    const name = FIELD_NAMES[details[0].field ?? ""] ?? `"${details[0].field}"`;
+    throw new ApiError("VALIDATION_FAILED", { message: `${name} can be at most ${Number(tooLong[1]).toLocaleString("en-IN")} characters.`, details });
+  }
   throw new ApiError("VALIDATION_FAILED", { details });
 }
+
+/** How a text field is named in a "too long" message. */
+const FIELD_NAMES: Record<string, string> = { notesText: "Notes", ideaInput: "An idea", topicInput: "A topic", about: "\"What you teach\"", displayName: "A display name", title: "A title" };
 
 /**
  * Optimistic concurrency (API Design §8): `If-Match: "<rev>"` → the revision the client last saw. `undefined` when the

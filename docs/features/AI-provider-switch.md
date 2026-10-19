@@ -184,6 +184,8 @@ Each tier keeps a **reserve**: time held back for it while an earlier tier runs.
 2. Otherwise it keeps back only the **next** tier's reserve, if that leaves it at least its own reserve.
 3. Otherwise it gets all the time that's left (an earlier tier used most of the deadline).
 
+Rules 1 and 2 allow 500 ms of slack, because logging between tiers takes a few milliseconds (QA saw Groq miss rule 2 by 30 ms and starve OpenRouter).
+
 Tiers that are cooling down don't count. A tier with under 1 s left is skipped.
 
 What that gives with all three keys, for the usual 15 s:

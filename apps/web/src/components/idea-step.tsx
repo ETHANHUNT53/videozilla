@@ -477,7 +477,7 @@ function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boole
         </dd>
         {brief.outOfScope.length ? (
           <>
-            <dt className="text-muted">Left out</dt>
+            <dt className="text-muted">Left out to fit the length</dt>
             <dd>
               <ul className="flex list-disc flex-col gap-1 pl-5 text-muted">
                 {brief.outOfScope.map((k, i) => (

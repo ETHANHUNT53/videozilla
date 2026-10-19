@@ -102,7 +102,10 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
 
   if ("refused" in reply) throw unsafeContent(reply.category, field);
 
-  const saved = await saveBrief(user.id, params.id, trimBrief(reply.brief, field), reply.alternatives.map((b) => trimBrief(b, field)));
+  const main = trimBrief(reply.brief, field);
+  // An angle without its own notes summary takes the main one, so "From your notes" stays after "Use this angle".
+  const alternatives = reply.alternatives.map((b) => trimBrief(b, field)).map((b) => (main.sourceNotesSummary && !b.sourceNotesSummary ? { ...b, sourceNotesSummary: main.sourceNotesSummary } : b));
+  const saved = await saveBrief(user.id, params.id, main, alternatives);
   return respond(user.id, saved, usage);
 });
 

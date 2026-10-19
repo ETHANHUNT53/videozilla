@@ -72,6 +72,9 @@ const needsAPerson = (b: Backend) => inBillingCooldown(b) || inSetupCooldown(b);
 /** How long to skip a provider with a setup problem: fixing a key or model name is a manual step. */
 const SETUP_COOLDOWN_MS = 10 * 60_000;
 
+/** Room for the few milliseconds that logging and setup take between tiers (see budgetMs). */
+const BUDGET_SLACK_MS = 500;
+
 /**
  * How long a tier may run, so a slow model still leaves the later tiers time (docs/features/AI-provider-switch.md):
  * 1. every later tier's reserve is kept back, if that still leaves this model its typical time (a long deadline, such
@@ -79,12 +82,14 @@ const SETUP_COOLDOWN_MS = 10 * 60_000;
  * 2. otherwise only the next tier's reserve, if that leaves this model at least its own reserve (15 s: Gemini 11 s,
  *    Groq 4 s);
  * 3. otherwise all the time that's left (an earlier tier used most of the deadline).
- * `later` are the tiers after this one that aren't cooling down.
+ * `later` are the tiers after this one that aren't cooling down. The checks allow `BUDGET_SLACK_MS`: by the time a
+ * later tier starts, logging and setup have used a few milliseconds, and an exact comparison would then fall through
+ * to rule 3 and starve the tiers after it (QA, 2026-10-19: Groq got 9.97 s, failed rule 2 by 30 ms, and took it all).
  */
 export function budgetMs(backend: Backend, later: Backend[], left: number): number {
   const all = later.reduce((sum, b) => sum + b.reserveMs, 0);
-  if (later.length > 1 && left - all >= backend.typicalMs) return left - all;
-  if (later.length && left - later[0].reserveMs >= backend.reserveMs) return left - later[0].reserveMs;
+  if (later.length > 1 && left - all >= backend.typicalMs - BUDGET_SLACK_MS) return left - all;
+  if (later.length && left - later[0].reserveMs >= backend.reserveMs - BUDGET_SLACK_MS) return left - later[0].reserveMs;
   return left;
 }
 
@@ -155,7 +160,8 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   let lastFatal: unknown; // a tier's bad-request / setup error, thrown only if no later tier answers
   let sawBusy = false; // some tier was merely busy, slow or out of quota: then the answer is "busy", not that error
   let badRequest = false; // a fatal error that isn't a setup problem (our request was wrong): a bug, thrown as it is
-  const call = async (): Promise<{ text: string; backend: Backend; recited?: boolean }> => {
+  /** `logReply`: writes the reply's ai_calls row once it has been checked (usable → ok/fallback, else failed). */
+  const call = async (): Promise<{ text: string; backend: Backend; recited?: boolean; logReply?: (problem?: string) => Promise<void> }> => {
     for (; tier < tiers.length; tier++) {
       const backend = tiers[tier];
       const { provider, model } = backend;
@@ -185,8 +191,11 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
             await log({ provider, model, status: "failed", latencyMs: Date.now() - started, inputTokens: res.inputTokens, outputTokens: null, error: "recitation" });
             return { text: "", backend, recited: true };
           }
-          await log({ provider, model, status: tier === 0 ? "ok" : "fallback", latencyMs: Date.now() - started, inputTokens: res.inputTokens, outputTokens: res.outputTokens });
-          return { text: res.text, backend };
+          const latencyMs = Date.now() - started;
+          const status = tier === 0 ? "ok" : "fallback";
+          const logReply = (problem?: string) =>
+            log({ provider, model, status: problem ? "failed" : status, latencyMs, inputTokens: res.inputTokens, outputTokens: res.outputTokens, ...(problem ? { error: `bad reply: ${problem}`.slice(0, 300) } : {}) });
+          return { text: res.text, backend, logReply };
         } catch (err) {
           if (err instanceof AiBlockedError) {
             await log({ provider, model, status: "failed", latencyMs: Date.now() - started, inputTokens: err.inputTokens, outputTokens: null, error: `blocked: ${err.reason}` });
@@ -268,7 +277,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         if (problem && err instanceof AiBusyError) throw new AiOutputError(`The model's reply didn't match the expected shape: ${problem}`);
         throw err;
       }
-      const { text, backend, recited } = reply;
+      const { text, backend, recited, logReply } = reply;
       if (recited) {
         problem = "The reply repeated existing text (recitation).";
         // No reply text to answer, so the instruction joins the last user turn (turns must alternate).
@@ -280,13 +289,19 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         parsed = JSON.parse(text);
       } catch {
         problem = "The reply was not valid JSON.";
+        await logReply?.(problem);
         // An empty model turn is refused by some APIs, so an empty reply is described instead.
         turns.push({ role: "model", text: text || "(empty reply)" }, { role: "user", text: `${problem} Return only the JSON object.` });
         continue;
       }
       const result = opts.schema.safeParse(parsed);
-      if (result.success) return { data: result.data, model: backend.model, provider: backend.provider };
+      if (result.success) {
+        await logReply?.();
+        return { data: result.data, model: backend.model, provider: backend.provider };
+      }
       problem = result.error.issues.slice(0, 10).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+      // Logged as failed, so a repair round or a fall-through to the next tier doesn't look like a success.
+      await logReply?.(problem);
       turns.push({ role: "model", text }, { role: "user", text: `The JSON did not match the required shape: ${problem}. Fix it and return the full corrected JSON only.` });
     }
     // Both rounds were unusable (`call` may have moved on to a later tier meanwhile; `tier` is the one that answered):

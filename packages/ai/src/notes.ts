@@ -3,11 +3,14 @@
  * `@videozilla/ai/notes`: no dependencies, so it's safe in the browser bundle). See docs/features/F2.4-notes-brief.md.
  */
 
-/** Fewer letters or digits than this (in any script) is not something to explain. */
+/**
+ * Fewer letters, marks or digits than this (in any script) is not something to explain. Marks count: Devanagari vowel
+ * signs (ा ि ी े ो ं …) are `\p{M}`, not letters, so counting letters alone rejected short Hindi notes.
+ */
 export const MIN_NOTES_CONTENT = 20;
 
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/giu;
-const CONTENT_RE = /[\p{L}\p{N}]/gu;
+const CONTENT_RE = /[\p{L}\p{M}\p{N}]/gu;
 
 export type NotesProblem = "empty" | "links_only";
 
@@ -32,7 +35,8 @@ export const NOTES_PROBLEM_TEXT: Record<NotesProblem, string> = {
  * Only a hint for the "your notes are in X" note.
  */
 export function notesLanguage(text: string): "hi" | "en" | "other" | null {
-  const letters = text.replace(URL_RE, " ").match(/\p{L}/gu) ?? [];
+  // Letters and marks (vowel signs belong to their script too).
+  const letters = text.replace(URL_RE, " ").match(/[\p{L}\p{M}]/gu) ?? [];
   if (letters.length < MIN_NOTES_CONTENT) return null;
   let deva = 0;
   let latin = 0;
