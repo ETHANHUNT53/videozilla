@@ -1,4 +1,5 @@
 import { ProviderError, type Backend } from "./backend";
+import { assertAiConfigSafe } from "./config";
 import { geminiBackend } from "./gemini-backend";
 import { openAiCompatBackend } from "./openai-compat";
 
@@ -104,6 +105,9 @@ function openRouterBackend(): Backend | null {
  * moves on when a tier is busy, too slow, or out of quota or credits).
  */
 export function aiChain(): Backend[] {
+  // Test-only settings (base-URL overrides, including the Gemini SDK's own GOOGLE_GEMINI_BASE_URL; mock) are refused
+  // in production before any key is used.
+  assertAiConfigSafe();
   const setting = aiProvider();
   if (setting === "mock") {
     // Sample data must never reach real users.
