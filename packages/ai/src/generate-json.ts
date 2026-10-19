@@ -54,13 +54,21 @@ const MAX_COOLDOWN_MS = 24 * 3600_000;
 const key = (b: Backend) => `${b.provider}:${b.model}`;
 /** A whole provider's cooldown (its account is out of credits). */
 const providerKey = (b: Backend) => `${b.provider}:*`;
-const cooldownEnd = (b: Backend) => Math.max(cooldownUntil.get(key(b)) ?? 0, cooldownUntil.get(providerKey(b)) ?? 0, cooldownUntil.get(`${b.provider}:setup`) ?? 0);
+const cooldownEnd = (b: Backend) =>
+  Math.max(cooldownUntil.get(key(b)) ?? 0, cooldownUntil.get(providerKey(b)) ?? 0, cooldownUntil.get(setupKey(b, "key")) ?? 0, cooldownUntil.get(setupKey(b, "model")) ?? 0);
 const coolingDown = (b: Backend) => cooldownEnd(b) > Date.now();
 /** Skipped because the account is out of credits (rather than a quota). */
 const inBillingCooldown = (b: Backend) => (cooldownUntil.get(providerKey(b)) ?? 0) > Date.now();
-/** A provider whose key or model was rejected (a setup problem) is skipped for a while, so the chain moves on. */
-const setupKey = (b: Backend) => `${b.provider}:setup`;
-const inSetupCooldown = (b: Backend) => (cooldownUntil.get(setupKey(b)) ?? 0) > Date.now();
+/**
+ * A setup problem is skipped for a while, so the chain moves on: a rejected key for the whole provider, a missing or
+ * retired model (404) for that model only.
+ */
+function setupKey(b: Backend, scope: "key" | "model") {
+  return scope === "key" ? `${b.provider}:setup` : `${b.provider}:${b.model}:setup`;
+}
+const inSetupCooldown = (b: Backend) => Math.max(cooldownUntil.get(setupKey(b, "key")) ?? 0, cooldownUntil.get(setupKey(b, "model")) ?? 0) > Date.now();
+/** Skipped for something a person has to fix (credits, key, model name): "unavailable", not "busy". */
+const needsAPerson = (b: Backend) => inBillingCooldown(b) || inSetupCooldown(b);
 /** How long to skip a provider with a setup problem: fixing a key or model name is a manual step. */
 const SETUP_COOLDOWN_MS = 10 * 60_000;
 
@@ -106,13 +114,13 @@ export function quotaCooldownMs(err: unknown): number | null {
 }
 
 /** What to do about a failed call: the adapter's own verdict, or (Gemini SDK errors) one read from the message. */
-function classify(err: unknown): { kind: ProviderError["kind"]; cooldownMs?: number; text?: string; setup?: boolean } {
+function classify(err: unknown): { kind: ProviderError["kind"]; cooldownMs?: number; text?: string; setup?: "key" | "model" } {
   if (err instanceof ProviderError) return { kind: err.kind, ...err.extra };
   // Gemini SDK: the key was rejected, or the model doesn't exist (a wrong or retired GEMINI_FAST_MODEL).
   const status = (err as { status?: unknown })?.status;
-  if (status === 401 || status === 403 || status === 404 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED|is not found for API version/i.test(String((err as Error)?.message))) {
-    return { kind: "fatal", setup: true };
-  }
+  const text = String((err as Error)?.message);
+  if (status === 404 || /is not found for API version/i.test(text)) return { kind: "fatal", setup: "model" };
+  if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED/i.test(text)) return { kind: "fatal", setup: "key" };
   // The Gemini SDK's ApiError carries the HTTP status: 402 is always "pay first".
   if ((err as { status?: unknown })?.status === 402) return { kind: "billing", cooldownMs: BILLING_COOLDOWN_MS };
   const cooldownMs = quotaCooldownMs(err);
@@ -146,6 +154,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   const skipLogged = new Set<string>(); // one "skipped" row per model per request
   let lastFatal: unknown; // a tier's bad-request / setup error, thrown only if no later tier answers
   let sawBusy = false; // some tier was merely busy, slow or out of quota: then the answer is "busy", not that error
+  let badRequest = false; // a fatal error that isn't a setup problem (our request was wrong): a bug, thrown as it is
   const call = async (): Promise<{ text: string; backend: Backend; recited?: boolean }> => {
     for (; tier < tiers.length; tier++) {
       const backend = tiers[tier];
@@ -201,13 +210,18 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           const busy = verdict.kind !== "fatal";
           await log({ provider, model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
           if (!busy) {
-            if (verdict.setup && !inSetupCooldown(backend)) {
+            if (verdict.setup && !((cooldownUntil.get(setupKey(backend, verdict.setup)) ?? 0) > Date.now())) {
               // The key or model is wrong: skip this provider for a while, and say so once in the server log.
-              cooldownUntil.set(setupKey(backend), Date.now() + SETUP_COOLDOWN_MS);
-              console.error(`[ai] ${provider} rejected its key or model (${model}): ${message}. Skipping it for ${SETUP_COOLDOWN_MS / 60_000} min.`);
+              cooldownUntil.set(setupKey(backend, verdict.setup), Date.now() + SETUP_COOLDOWN_MS);
+              console.error(
+                verdict.setup === "key"
+                  ? `[ai] ${provider} rejected its key: ${message}. Skipping ${provider} for ${SETUP_COOLDOWN_MS / 60_000} min.`
+                  : `[ai] ${provider} has no model ${model}: ${message}. Skipping that model for ${SETUP_COOLDOWN_MS / 60_000} min.`,
+              );
             }
             // A later tier may still answer (the chain exists for this); only when none is left is this error the answer.
             lastFatal = err;
+            if (!verdict.setup) badRequest = true;
             break;
           }
           sawBusy = true;
@@ -230,13 +244,15 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
         }
       }
     }
-    // Every tier we tried failed with a setup or bad-request error (nothing was merely busy): that error is the answer.
-    if (lastFatal !== undefined && !sawBusy) throw lastFatal;
+    // Every tier we tried failed with a bad-request error (nothing was merely busy): a bug, so that error is the answer.
+    if (badRequest && !sawBusy) throw lastFatal;
     // Every model is out of quota: say when the first one is back (capped at an hour, since a free tier's daily reset
     // is hours away and a paid key may be added meanwhile).
     const waits = tiers.filter(coolingDown).map((b) => (cooldownEnd(b) - Date.now()) / 1000);
     const allOut = waits.length === tiers.length;
-    throw new AiBusyError(allOut ? Math.min(3600, Math.ceil(Math.min(...waits))) : undefined, allOut && tiers.every(inBillingCooldown));
+    // Every tier needs a person (out of credits, key rejected, model retired): "unavailable", the same on the first
+    // request (which found out) and on later ones (which skip them).
+    throw new AiBusyError(allOut ? Math.min(3600, Math.ceil(Math.min(...waits))) : undefined, allOut && tiers.every(needsAPerson));
   };
 
   // Each tier gets two rounds (the reply, then one repair). A tier whose repair round also fails hands over to the next

@@ -34,15 +34,16 @@ export interface Backend {
 }
 
 /**
- * The AI stayed busy (or slow) past the deadline, on every model. Retry later. `unavailable`: every model is skipped
- * because its account is out of credits (402), so it won't come back in a minute; a person has to top up billing.
+ * The AI stayed busy (or slow) past the deadline, on every model. Retry later. `unavailable`: every model needs a
+ * person (its account is out of credits, its key was rejected, or the model is gone), so it won't come back in a
+ * minute: the app says "unavailable … try again later".
  */
 export class AiBusyError extends Error {
   constructor(
     readonly retryAfterSec = 30,
     readonly unavailable = false,
   ) {
-    super(unavailable ? "The AI is unavailable (out of credits)" : "The AI is busy");
+    super(unavailable ? "The AI is unavailable (out of credits, or a key or model a person must fix)" : "The AI is busy");
     this.name = "AiBusyError";
   }
 }
@@ -78,15 +79,16 @@ export class AiOutputError extends Error {
  * - `too_large`: this request is bigger than the model's limit (Groq's 413 against its whole per-minute token limit),
  *   so it can never fit there: move on to the next tier for this request only, with no retry and no cooldown (other,
  *   smaller requests still fit);
- * - `fatal`: a setup problem (bad key, bad request). `setup: true` when it's the provider's setup (key rejected, model
- *   unknown), which no request can fix: the chain skips that provider for a while and moves on. Other fatal errors
+ * - `fatal`: a setup problem (bad key, bad request). `setup` when no request can fix it: `"key"` (the key was rejected:
+ *   the chain skips the whole provider for a while) or `"model"` (this model doesn't exist or was retired: only this
+ *   model is skipped, so another model of the same provider still runs). Other fatal errors
  *   (a bad request) move on to the next tier without a cooldown, and are thrown when no tier is left.
  */
 export class ProviderError extends Error {
   constructor(
     message: string,
     readonly kind: "busy" | "quota" | "billing" | "bad_json" | "too_large" | "fatal",
-    readonly extra: { cooldownMs?: number; text?: string; setup?: boolean } = {},
+    readonly extra: { cooldownMs?: number; text?: string; setup?: "key" | "model" } = {},
   ) {
     super(message);
     this.name = "ProviderError";

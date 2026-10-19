@@ -157,12 +157,20 @@ describe("Groq main model", () => {
     expect(() => aiChain()).toThrow("GROQ_BASE_URL must be an http(s) address");
   });
 
-  it("a bad key (401) with no later tier fails at once, naming the setting to check", async () => {
+  it("a bad key (401) with no later tier: 'unavailable' at once, and the server log names the setting to check", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", ""); // Groq alone: nothing to move on to
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock.mockResolvedValueOnce(json(401, { error: { message: "Invalid API Key", type: "invalid_request_error" } }));
-    await expect((await run()).promise).rejects.toThrow(/groq 401: Invalid API Key \(check GROQ_API_KEY/);
+    await expect((await run()).promise).rejects.toMatchObject({ name: "AiBusyError", unavailable: true });
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/groq 401: Invalid API Key \(check GROQ_API_KEY/));
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a model OpenRouter doesn't have (404) is that model's problem: logged as such", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValueOnce(groqBusy()).mockResolvedValueOnce(groqBusy()).mockResolvedValueOnce(json(404, { error: { message: "No endpoints found for x:free" } }));
+    await expect((await run()).promise).rejects.toBeInstanceOf(AiBusyError);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/openrouter has no model google\/gemma-4-31b-it:free/));
   });
 
   it("a request too large for Groq's whole per-minute limit (413) goes to OpenRouter, and Groq stays available for smaller ones", async () => {

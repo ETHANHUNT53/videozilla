@@ -85,11 +85,32 @@ describe("generateJson", () => {
     expect(generateContent.mock.calls[2][0].config.thinkingConfig).toBeUndefined();
   });
 
-  it("a non-busy error (e.g. a bad key) is thrown at once", async () => {
+  it("a rejected key: 'unavailable' at once (the same as later requests), with one operator line; no retry", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     generateContent.mockRejectedValueOnce(new Error("400 INVALID_ARGUMENT: API key not valid"));
-    const { promise } = await run();
-    await expect(promise).rejects.toThrow("API key not valid");
+    const { promise, logs } = await run();
+    await expect(promise).rejects.toMatchObject({ name: "AiBusyError", unavailable: true, retryAfterSec: 600 });
+    // The key is the whole provider's: the fallback model is skipped too.
     expect(generateContent).toHaveBeenCalledTimes(1);
+    expect(logs).toEqual([
+      expect.objectContaining({ model: "gemini-3.8-flash", status: "failed", error: expect.stringMatching(/API key not valid/) }),
+      expect.objectContaining({ model: "gemini-3.5-flash-lite", error: expect.stringMatching(/^skipped: setup cooldown/) }),
+    ]);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/gemini rejected its key/));
+    generateContent.mockClear();
+    await expect((await run()).promise).rejects.toMatchObject({ name: "AiBusyError", unavailable: true });
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+
+  it("a retired model (404) skips only that model: the fallback model of the same key answers, and keeps answering", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    generateContent.mockRejectedValueOnce(Object.assign(new Error("models/gemini-3.8-flash is not found for API version v1beta"), { status: 404 })).mockResolvedValue(reply({ items: ["a", "b"] }));
+    await expect((await run()).promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite" });
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/gemini has no model gemini-3\.8-flash/));
+    generateContent.mockClear();
+    await expect((await run()).promise).resolves.toMatchObject({ model: "gemini-3.5-flash-lite" });
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.5-flash-lite"]);
   });
 
   it("repairs once: sends the schema errors back and accepts the fixed reply", async () => {

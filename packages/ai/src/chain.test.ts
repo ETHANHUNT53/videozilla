@@ -166,7 +166,7 @@ describe("AI_PROVIDER=chain (the default)", () => {
       generateContent.mockReset().mockRejectedValueOnce(bad);
       fetchMock.mockReset().mockResolvedValueOnce(good());
       await expect((await run()).promise).resolves.toMatchObject({ provider: "groq" });
-      expect(error).toHaveBeenCalledWith(expect.stringMatching(/gemini rejected its key or model/));
+      expect(error).toHaveBeenCalledWith(expect.stringMatching(/gemini rejected its key|gemini has no model/));
       // The next request skips Gemini at once (setup cooldown), logged as such.
       generateContent.mockClear();
       fetchMock.mockReset().mockResolvedValueOnce(good());
@@ -175,6 +175,18 @@ describe("AI_PROVIDER=chain (the default)", () => {
       expect(generateContent).not.toHaveBeenCalled();
       expect(again.logs[0]).toMatchObject({ provider: "gemini", error: expect.stringMatching(/^skipped: setup cooldown/) });
     }
+  });
+
+  it("every tier needs a person (Gemini's key, Groq's model, OpenRouter's credits): 'unavailable' on the first request and the next", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    gemini(() => Object.assign(new Error("API key not valid."), { status: 400 }));
+    http(
+      () => json(404, { error: { message: "The model `openai/gpt-oss-120b` does not exist" } }),
+      () => json(402, { error: { code: 402, message: "Insufficient credits" } }),
+    );
+    await expect((await run()).promise).rejects.toMatchObject({ name: "AiBusyError", unavailable: true });
+    await expect((await run()).promise).rejects.toMatchObject({ name: "AiBusyError", unavailable: true });
+    expect(order).toEqual(["gemini", "groq", "openrouter"]); // the second request called nobody
   });
 
   it("a bad request on every tier is that error (not 'busy'), thrown after the last tier", async () => {

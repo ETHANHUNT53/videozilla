@@ -128,8 +128,8 @@ export function httpError(cfg: Pick<OpenAiCompatConfig, "provider" | "keyName">,
   if (status === 413) return new ProviderError(message, "too_large");
   if (status === 408 || status === 422 || status === 498 || status >= 500) return new ProviderError(message, "busy");
   // The key or the model is wrong: no request can fix it, so the chain skips this provider for a while.
-  if (status === 401 || status === 403) return new ProviderError(`${message} (check ${cfg.keyName} in apps/web/.env.local)`, "fatal", { setup: true });
-  if (status === 404) return new ProviderError(`${message} (check the model name for ${cfg.provider})`, "fatal", { setup: true });
+  if (status === 401 || status === 403) return new ProviderError(`${message} (check ${cfg.keyName} in apps/web/.env.local)`, "fatal", { setup: "key" });
+  if (status === 404) return new ProviderError(`${message} (check the model name for ${cfg.provider})`, "fatal", { setup: "model" });
   return new ProviderError(message, "fatal");
 }
 
