@@ -56,6 +56,8 @@ const key = (b: Backend) => `${b.provider}:${b.model}`;
 const providerKey = (b: Backend) => `${b.provider}:*`;
 const cooldownEnd = (b: Backend) => Math.max(cooldownUntil.get(key(b)) ?? 0, cooldownUntil.get(providerKey(b)) ?? 0);
 const coolingDown = (b: Backend) => cooldownEnd(b) > Date.now();
+/** Skipped because the account is out of credits (rather than a quota). */
+const inBillingCooldown = (b: Backend) => (cooldownUntil.get(providerKey(b)) ?? 0) > Date.now();
 
 /** Forget all quota cooldowns (tests). */
 export function resetModelCooldowns(): void {
@@ -126,7 +128,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           // used, or why the request failed without a single call).
           if (!skipLogged.has(key(backend))) {
             skipLogged.add(key(backend));
-            await log({ provider, model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: quota cooldown until ${new Date(cooldownEnd(backend)).toISOString()}` });
+            await log({ provider, model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: ${inBillingCooldown(backend) ? "billing" : "quota"} cooldown until ${new Date(cooldownEnd(backend)).toISOString()}` });
           }
           break;
         }
@@ -169,11 +171,13 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           await log({ provider, model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
           if (!busy) throw err;
           const cooldown = verdict.cooldownMs ?? null;
+          // One operator line per billing cooldown per provider (not per model, nor per concurrent request).
+          const newBillingCooldown = verdict.kind === "billing" && !inBillingCooldown(backend);
           if (cooldown !== null) {
             // Out of credits is the whole account (every model of this provider); a quota is per model.
             cooldownUntil.set(verdict.kind === "billing" ? providerKey(backend) : key(backend), Date.now() + cooldown);
           }
-          if (verdict.kind === "billing") {
+          if (newBillingCooldown) {
             // Needs a person: say so loudly in the server log (ai_calls has the full error too).
             console.error(`[ai] ${provider} says the account's prepaid credits are used up (${model}); ${BILLING_HELP[provider]}. Skipping it for ${Math.round((cooldown ?? 0) / 60_000)} min.`);
           }
@@ -188,7 +192,8 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
     // Every model is out of quota: say when the first one is back (capped at an hour, since a free tier's daily reset
     // is hours away and a paid key may be added meanwhile).
     const waits = tiers.filter(coolingDown).map((b) => (cooldownEnd(b) - Date.now()) / 1000);
-    throw new AiBusyError(waits.length === tiers.length ? Math.min(3600, Math.ceil(Math.min(...waits))) : undefined);
+    const allOut = waits.length === tiers.length;
+    throw new AiBusyError(allOut ? Math.min(3600, Math.ceil(Math.min(...waits))) : undefined, allOut && tiers.every(inBillingCooldown));
   };
 
   let problem = "";

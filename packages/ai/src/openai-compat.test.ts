@@ -191,7 +191,7 @@ describe("OpenRouter backup", () => {
     fetchMock.mockReset().mockImplementation(async () => groqBusy());
     const { logs } = await run();
     expect(calls().map((c) => c.url)).toEqual([GROQ, GROQ]); // the backup is skipped
-    expect(logs.at(-1)).toMatchObject({ provider: "openrouter", error: expect.stringMatching(/^skipped: quota cooldown/) });
+    expect(logs.at(-1)).toMatchObject({ provider: "openrouter", error: expect.stringMatching(/^skipped: billing cooldown/) });
   });
 
   it("OpenRouter's moderation (403 content_policy_violation) is a block: AiBlockedError at once", async () => {

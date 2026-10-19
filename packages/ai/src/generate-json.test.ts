@@ -182,12 +182,16 @@ describe("quota circuit breaker", () => {
     expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual(["gemini-3.8-flash"]);
     expect(first.logs).toEqual([
       expect.objectContaining({ model: "gemini-3.8-flash", status: "retry", error: expect.stringMatching(/prepayment credits are depleted/) }),
-      expect.objectContaining({ model: "gemini-3.5-flash-lite", status: "retry", error: expect.stringMatching(/^skipped: quota cooldown/) }),
+      expect.objectContaining({ model: "gemini-3.5-flash-lite", status: "retry", error: expect.stringMatching(/^skipped: billing cooldown/) }),
     ]);
+    // One operator line for the provider, not one per model.
+    expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/prepaid credits are used up/));
     generateContent.mockClear();
     const again = await run();
-    await expect(again.promise).rejects.toMatchObject({ name: "AiBusyError", retryAfterSec: 1800 });
+    // Every model is out of credits: "unavailable", not just busy (the app says "try again later").
+    await expect(again.promise).rejects.toMatchObject({ name: "AiBusyError", retryAfterSec: 1800, unavailable: true });
+    expect(error).toHaveBeenCalledTimes(1); // still one line: the skips don't log again
     expect(generateContent).not.toHaveBeenCalled();
   });
 

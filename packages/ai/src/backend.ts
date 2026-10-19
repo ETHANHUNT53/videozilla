@@ -28,10 +28,16 @@ export interface Backend {
   complete(req: { system: string; turns: ChatTurn[]; temperature: number; signal: AbortSignal; mock?: () => unknown }): Promise<BackendReply>;
 }
 
-/** The AI stayed busy (or slow) past the deadline, on every model. Retry later. */
+/**
+ * The AI stayed busy (or slow) past the deadline, on every model. Retry later. `unavailable`: every model is skipped
+ * because its account is out of credits (402), so it won't come back in a minute; a person has to top up billing.
+ */
 export class AiBusyError extends Error {
-  constructor(readonly retryAfterSec = 30) {
-    super("The AI is busy");
+  constructor(
+    readonly retryAfterSec = 30,
+    readonly unavailable = false,
+  ) {
+    super(unavailable ? "The AI is unavailable (out of credits)" : "The AI is busy");
     this.name = "AiBusyError";
   }
 }

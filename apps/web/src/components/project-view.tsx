@@ -92,7 +92,7 @@ export function ProjectView({ initial, idea }: { initial: Project; idea: IdeaSes
             <span className={cx("font-mono text-xs", i <= step ? "text-cyan" : "text-dim")}>{s.n}</span>
             <span className="flex flex-col">
               <span className="text-sm font-medium">{s.label}</span>
-              <span className={cx("font-mono text-xs", i === step ? "text-cyan" : "text-dim")}>{i === step ? "// active phase" : i < step ? "// done ✓" : s.hint}</span>
+              <span className={cx("font-mono text-xs", i === step ? "text-cyan" : "text-muted")}>{i === step ? "// active phase" : i < step ? "// done ✓" : s.hint}</span>
             </span>
           </li>
         ))}

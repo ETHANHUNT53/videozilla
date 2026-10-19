@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
+import { SubmitButton } from "./submit-button";
 import { Button, Eyebrow, Field, Input } from "./ui";
 
 function ErrorText({ message }: { message: string | null }) {
@@ -87,7 +88,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Divider />
         </>
       ) : null}
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
         <Field label="Email">
           <Input name="email" type="email" autoComplete="email" required />
         </Field>
@@ -95,9 +96,9 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Input name="password" type="password" autoComplete="current-password" required />
         </Field>
         <ErrorText message={error} />
-        <Button type="submit" disabled={busy}>
+        <SubmitButton disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
-        </Button>
+        </SubmitButton>
       </form>
       <div className="flex justify-between text-sm">
         <Link href="/forgot-password" className="text-muted hover:text-fg">
@@ -143,7 +144,7 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Divider />
         </>
       ) : null}
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
         <Field label="Name">
           <Input name="name" autoComplete="name" required maxLength={60} />
         </Field>
@@ -154,9 +155,9 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Input name="password" type="password" autoComplete="new-password" minLength={8} required />
         </Field>
         <ErrorText message={error} />
-        <Button type="submit" disabled={busy}>
+        <SubmitButton disabled={busy}>
           {busy ? "Creating account…" : "Create account"}
-        </Button>
+        </SubmitButton>
       </form>
       <p className="text-sm text-muted">
         Already have an account?{" "}
@@ -221,13 +222,13 @@ export function ForgotPasswordForm() {
       {state === "sent" ? (
         <p className="text-muted">If an account exists for that email, a reset link is on its way. It expires in an hour.</p>
       ) : (
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
           <Field label="Email">
             <Input name="email" type="email" autoComplete="email" required />
           </Field>
-          <Button type="submit" disabled={state === "sending"}>
+          <SubmitButton disabled={state === "sending"}>
             {state === "sending" ? "Sending…" : "Send reset link"}
-          </Button>
+          </SubmitButton>
         </form>
       )}
       <Link href="/sign-in" className="text-sm text-muted hover:text-fg">
@@ -264,14 +265,14 @@ export function ResetPasswordForm() {
         <h1 className="text-3xl font-semibold tracking-tight">Choose a new password</h1>
       </div>
       {token ? (
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
           <Field label="New password" hint="At least 8 characters">
             <Input name="password" type="password" autoComplete="new-password" minLength={8} required />
           </Field>
           <ErrorText message={error} />
-          <Button type="submit" disabled={busy}>
+          <SubmitButton disabled={busy}>
             {busy ? "Saving…" : "Save password"}
-          </Button>
+          </SubmitButton>
         </form>
       ) : (
         <ErrorText message={error ?? "This reset link is missing its token. Request a new one."} />

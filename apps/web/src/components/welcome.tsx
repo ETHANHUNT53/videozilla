@@ -6,6 +6,7 @@ import { ApiClientError, apiCall } from "@/lib/api-client";
 import { ABOUT_MAX_CHARS } from "@/lib/profile-limits";
 import { clampChars } from "@/lib/project-client";
 import type { ProfileResource } from "@/server/api/resources";
+import { SubmitButton } from "./submit-button";
 import { Button, Logo, cx, inputStyles } from "./ui";
 
 const STEP_CARDS = [
@@ -70,6 +71,7 @@ export function WelcomeView({ profile }: { profile: ProfileResource }) {
       </ol>
 
       <form
+        method="post"
         className="flex w-full flex-col gap-6 rounded-2xl border border-line bg-surface p-6"
         onSubmit={(e) => {
           e.preventDefault();
@@ -129,9 +131,9 @@ export function WelcomeView({ profile }: { profile: ProfileResource }) {
           <Button type="button" variant="ghost" disabled={pending} onClick={() => finish(false)}>
             Skip
           </Button>
-          <Button type="submit" disabled={pending} className="px-5">
+          <SubmitButton disabled={pending} className="px-5">
             {pending ? "Saving…" : "Start creating →"}
-          </Button>
+          </SubmitButton>
         </div>
       </form>
     </div>

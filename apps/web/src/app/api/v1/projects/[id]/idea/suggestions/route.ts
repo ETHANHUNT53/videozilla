@@ -1,7 +1,7 @@
 import { AiBlockedError, AiBusyError, AiOutputError, suggestIdeas } from "@videozilla/ai";
 import { AUDIENCES, truncateChars } from "@videozilla/db";
 import { z } from "zod";
-import { BUSY_RETRY_SEC, unsafeContent as unsafe } from "@/server/api/ai-errors";
+import { aiBusy, unsafeContent as unsafe } from "@/server/api/ai-errors";
 import { ApiError } from "@/server/api/errors";
 import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
 import { projectParams as params, textField } from "@/server/api/request";
@@ -57,7 +57,7 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     await refundUsage(user.id, usage);
     if (err instanceof AiBusyError || err instanceof AiOutputError) {
       if (err instanceof AiOutputError) console.warn(`[ideas] ${err.message}`);
-      throw new ApiError("AI_BUSY", { retryAfterSec: err instanceof AiBusyError ? err.retryAfterSec : BUSY_RETRY_SEC });
+      throw aiBusy(err);
     }
     throw err;
   }

@@ -160,7 +160,9 @@ The request moves on to the next tier when a tier:
 - is **out of quota or credits** — no second try, and the **breaker** skips it on later requests:
   - **402 / out of credits** (Gemini "prepayment credits are depleted", OpenRouter "Insufficient credits", any Groq 402): skipped for **30 min**, for every model of that provider (the whole key is out), with a loud server-log line;
   - **429 quota** (Groq per-minute or daily, OpenRouter's free daily limit, Gemini quota): skipped for the time the provider gives (`retry-after`, reset time, "try again in …"), else 30 min for a daily cap and 1 min otherwise;
-  - each skip writes an `ai_calls` row (`status: "retry"`, `latencyMs: 0`, `error: "skipped: quota cooldown until …"`), once per model per request.
+  - each skip writes an `ai_calls` row (`status: "retry"`, `latencyMs: 0`, `error: "skipped: billing cooldown until …"` when the account is out of credits, `"skipped: quota cooldown until …"` otherwise), once per model per request.
+  - the operator line (`[ai] <provider> says the account's prepaid credits are used up …`) is written **once per billing cooldown per provider**, not once per model or per request.
+  - when **every** tier is out of credits, the `503 AI_BUSY` says *"AI features are unavailable right now. Please try again later."* instead of "…try again in a minute" (same code, `Retry-After` up to 30 min, the `ideas` count still given back). If any tier is only busy or on a quota, the usual busy message stays.
 
 With today's Gemini key (402), the first request after a server start makes **one** Gemini call (a fast 402), then Groq answers in the same request. Later requests go **straight to Groq** for 30 min, with no Gemini call.
 
@@ -203,7 +205,7 @@ Refunds on failure (`503` gives the `ideas` count back), `ai_calls` rows per att
 1. In `apps/web/.env.local`, set `AI_PROVIDER=chain` (or remove the line) and keep the three keys. Restart `npm run dev`.
 2. Open a video → **Find a topic** → type a topic → go. You should get 5 cards. In the terminal running `npm run dev` you should see one line `[ai] gemini says the account's prepaid credits are used up … Skipping it for 30 min.`
 3. Click **Use this** on a card (one brief). It should answer without a new Gemini line (Gemini is skipped).
-4. Optional: in MongoDB, `ai_calls` for those two requests shows `gemini` (`retry`, the 402) then `groq` (`fallback`), and for the second request `gemini` "skipped: quota cooldown" then `groq`.
+4. Optional: in MongoDB, `ai_calls` for those two requests shows `gemini` (`retry`, the 402) then `groq` (`fallback`), and for the second request `gemini` "skipped: billing cooldown" then `groq`.
 
 ## Mock mode (added 2026-10-19)
 

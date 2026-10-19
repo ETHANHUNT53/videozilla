@@ -8,6 +8,7 @@ import { ABOUT_MAX_CHARS } from "@/lib/profile-limits";
 import { clampChars } from "@/lib/project-client";
 import { AUDIENCE_OPTIONS, BOARD_OPTIONS, LANGUAGE_OPTIONS, LENGTH_OPTIONS, VOICE_OPTIONS } from "@/lib/project-options";
 import type { ProfileResource } from "@/server/api/resources";
+import { SubmitButton } from "./submit-button";
 import { Button, Field, Input, Select } from "./ui";
 
 type Profile = ProfileResource;
@@ -59,7 +60,7 @@ export function ProfileSettingsForm({ profile }: { profile: Profile }) {
   };
 
   return (
-    <form onSubmit={submit} className="grid gap-5 sm:grid-cols-2">
+    <form method="post" onSubmit={submit} className="grid gap-5 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <Field label="Display name">
           {/* 60 characters counted like the API (an emoji is one), not maxLength's UTF-16 units. */}
@@ -130,9 +131,9 @@ export function ProfileSettingsForm({ profile }: { profile: Profile }) {
         Email me when a video is ready or a post goes live
       </label>
       <div className="flex items-center gap-4 sm:col-span-2">
-        <Button type="submit" disabled={pending}>
+        <SubmitButton disabled={pending}>
           {pending ? "Saving…" : "Save changes"}
-        </Button>
+        </SubmitButton>
         {state.status === "saved" ? <span className="font-mono text-sm text-green">saved ✓</span> : null}
         {state.status === "error" ? (
           <span role="alert" className="text-sm text-red">

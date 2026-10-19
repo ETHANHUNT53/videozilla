@@ -231,7 +231,24 @@ describe("POST /api/v1/projects/{id}/idea/suggestions", () => {
     expect(res.status).toBe(503);
     expect(res.json.error.code).toBe("AI_BUSY");
     expect(res.headers.get("retry-after")).toBe("30");
+    expect(res.json.error.message).toBe("The AI is busy right now. Please try again in a minute.");
     expect(await testMongo.db.collection("ai_calls").countDocuments({ status: "retry" })).toBe(3);
+  });
+
+  it("every model out of credits (402): 503 AI_BUSY saying 'unavailable … later' (not 'in a minute'), request given back", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    generateContent.mockRejectedValue(Object.assign(new Error('{"error":{"code":402,"message":"Your prepayment credits are depleted."}}'), { status: 402 }));
+    for (const attempt of [1, 2]) {
+      const res = await post({ topic: "Plants" });
+      expect(res.status, `attempt ${attempt}`).toBe(503);
+      expect(res.json.error).toMatchObject({ code: "AI_BUSY", message: "AI features are unavailable right now. Please try again later." });
+      expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(1700);
+      expect((await testMongo.db.collection("usage_counters").findOne({ userId: ME.id }))!.ideas).toBe(0);
+    }
+    expect(generateContent).toHaveBeenCalledTimes(1); // the second request skips both models
+    const skips = await testMongo.db.collection("ai_calls").find({ error: /^skipped/ }).toArray();
+    expect(skips.length).toBeGreaterThan(0);
+    expect(skips.every((r) => /^skipped: billing cooldown/.test(r.error))).toBe(true);
   });
 
   it("an unusable reply (wrong shape twice) is also 503 AI_BUSY", async () => {

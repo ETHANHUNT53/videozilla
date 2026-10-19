@@ -207,7 +207,7 @@ describe("billing / quota breaker across the chain", () => {
     await expect(again.promise).resolves.toMatchObject({ provider: "groq" });
     expect(order).toEqual(["groq"]); // Gemini isn't called at all
     expect(again.logs.map((l) => [l.provider, l.model, l.status, l.latencyMs, l.error?.split(" until")[0]])).toEqual([
-      ["gemini", "gemini-3.8-flash", "retry", 0, "skipped: quota cooldown"],
+      ["gemini", "gemini-3.8-flash", "retry", 0, "skipped: billing cooldown"],
       ["groq", "openai/gpt-oss-120b", "fallback", expect.any(Number), undefined],
     ]);
     // With Gemini out, Groq is the first model tried, so it gets the one quick busy retry.
@@ -246,7 +246,7 @@ describe("billing / quota breaker across the chain", () => {
     http(() => json(402, { error: { code: 402, message: "Insufficient credits", metadata: { limit_source: "openrouter_credits" } } }));
     const { promise, logs } = await run();
     // Gemini's 30 min is the soonest back.
-    await expect(promise).rejects.toMatchObject({ name: "AiBusyError", retryAfterSec: 1800 });
+    await expect(promise).rejects.toMatchObject({ name: "AiBusyError", retryAfterSec: 1800, unavailable: false }); // Groq is on a quota, not out of credits
     expect(order).toEqual(["openrouter"]);
     expect(logs.map((l) => [l.provider, l.error?.split(":")[0]])).toEqual([
       ["gemini", "skipped"],
