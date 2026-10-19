@@ -307,10 +307,9 @@ export function IdeaStep(props: {
               .catch(() => {}); // the next message's answer brings it anyway
           }}
           onAnswer={(reply) => {
-            // A saved chat change rewrote the whole brief for the video's settings now.
-            const rewritten = reply.assistantMessage.changedFields.length > 0;
-            if (reply.brief)
-              setBrief((b) => ({ ...b, brief: reply.brief, updatedAt: reply.briefUpdatedAt, writtenFor: rewritten ? { language: reply.project.language, lengthSec: reply.project.lengthPreset } : b.writtenFor }));
+            // A chat change edits the brief in the language and length it was written for (as its angles are), so the
+            // settings bar stays until the brief and both angles are rewritten together.
+            if (reply.brief) setBrief((b) => ({ ...b, brief: reply.brief, updatedAt: reply.briefUpdatedAt }));
             setChanged(reply.assistantMessage.changedFields);
             onProject(reply.project);
           }}

@@ -125,14 +125,28 @@ export async function addSuggestions(userId: string, projectId: string, cards: O
   return saved;
 }
 
-export type SaveBriefResult = { idea: IdeaSessionDoc; project: ProjectDoc } | null | "invalid_state";
+export type SaveBriefResult = { idea: IdeaSessionDoc; project: ProjectDoc } | null | "invalid_state" | "brief_changed";
 
 /**
  * Saves a new brief and its 2 other angles (F2.3), replacing the previous ones. Null when the project is unknown,
  * someone else's or deleted; `invalid_state` when it left the Idea stage (e.g. while Gemini was thinking).
  */
-export async function saveBrief(userId: string, projectId: string, brief: IdeaBriefDoc, alternatives: IdeaBriefDoc[], writtenFor?: WrittenFor): Promise<SaveBriefResult> {
-  return inIdeaStage(userId, projectId, (ctx) => applyBrief(ctx, brief, alternatives, writtenFor));
+export async function saveBrief(
+  userId: string,
+  projectId: string,
+  brief: IdeaBriefDoc,
+  alternatives: IdeaBriefDoc[],
+  writtenFor?: WrittenFor,
+  /**
+   * A rewrite of the brief there is now (F2.6 follow-up): its `briefUpdatedAt`. When the brief changed meanwhile (a chat
+   * answer, an angle switch, another tab), saving would silently undo that: `brief_changed`, nothing written.
+   */
+  basedOn?: Date | null,
+): Promise<SaveBriefResult> {
+  return inIdeaStage(userId, projectId, async (ctx): Promise<SaveBriefResult> => {
+    if (basedOn !== undefined && (ctx.idea.briefUpdatedAt?.getTime() ?? null) !== (basedOn?.getTime() ?? null)) return "brief_changed";
+    return applyBrief(ctx, brief, alternatives, writtenFor);
+  });
 }
 
 /**
@@ -204,7 +218,9 @@ export async function saveChatAnswer(
       { session, returnDocument: "after" },
     );
     if (!userMessage) return "not_processing" as const;
-    const saved = answer.brief ? await applyBrief(ctx, answer.brief, ctx.idea.briefAlternatives ?? []) : { idea: ctx.idea, project: ctx.project };
+    // A chat answer edits the brief in the language and length it was written for (the angles are too), so what it was
+    // written for stays: after a settings change the bar keeps offering to rewrite the brief and both angles together.
+    const saved = answer.brief ? await applyBrief(ctx, answer.brief, ctx.idea.briefAlternatives ?? [], "keep") : { idea: ctx.idea, project: ctx.project };
     const assistantMessage: ChatMessageDoc = {
       _id: new ObjectId(),
       projectId: ctx.project._id,

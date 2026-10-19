@@ -100,8 +100,10 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
         history,
         message: body.content,
         notes,
-        language: project.language,
-        lengthSec: project.lengthPreset,
+        // The brief is edited in the language and length it was written for, like its 2 angles; after a settings change
+        // the brief card offers to rewrite them all together (F2.6 follow-up).
+        language: idea.briefLanguage ?? project.language,
+        lengthSec: idea.briefLengthSec ?? project.lengthPreset,
         audience: project.audience as (typeof AUDIENCES)[number],
         boardOrExam: project.boardOrExam ?? null,
         creatorAbout: profile?.about ?? null,

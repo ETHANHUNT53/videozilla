@@ -157,6 +157,17 @@ describe("POST …/idea/chat — answers", () => {
     expect((await getIdea(ME.id, projectId))!.briefUpdatedAt).toEqual(before);
   });
 
+  it("after a language change, a chat edit stays in the brief's language and keeps what it was written for (so the bar still offers the rewrite with both angles)", async () => {
+    await setIdea({ briefLanguage: "en", briefLengthSec: 60 });
+    await updateProject(ME.id, projectId, { language: "hi", lengthPreset: 90 });
+    generateContent.mockResolvedValueOnce(applied());
+    const res = await post({ clientMessageId: uuid(), content: "A sharper hook" });
+    expect(res.json.assistantMessage.changedFields).toContain("hook");
+    expect(sentPrompt().system).toMatch(/Write every brief field in English\./);
+    expect(sentPrompt().system).toMatch(/keyPoints 3–4/);
+    expect(await getIdea(ME.id, projectId)).toMatchObject({ briefLanguage: "en", briefLengthSec: 60 });
+  });
+
   it("a title the user typed never follows the brief", async () => {
     await updateProject(ME.id, projectId, { title: "My own title" });
     generateContent.mockResolvedValueOnce(applied({ title: "New brief title" }));

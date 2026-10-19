@@ -150,16 +150,28 @@ async function rewriteForSettings(userId: string, projectId: string, project: No
     const t = trimBrief(b, kind(alternativesNow[i]));
     return alternativesNow[i].sourceNotesSummary && !t.sourceNotesSummary ? { ...t, sourceNotesSummary: alternativesNow[i].sourceNotesSummary } : t;
   });
-  const saved = await saveBrief(userId, projectId, main, alternatives, { language: project.language, lengthSec: project.lengthPreset });
+  let saved: SaveBriefResult;
+  try {
+    saved = await saveBrief(userId, projectId, main, alternatives, { language: project.language, lengthSec: project.lengthPreset }, idea.briefUpdatedAt);
+  } catch (err) {
+    await refundUsage(userId, usage); // nothing was saved
+    throw err;
+  }
   return respond(userId, saved, usage);
 }
 
 /** The answer for a saved brief; when nothing was saved, the request goes back to the daily limit. */
 async function respond(userId: string, result: SaveBriefResult, usage?: UsageResult) {
-  if ((!result || result === "invalid_state") && usage) await refundUsage(userId, usage);
+  if ((!result || typeof result === "string") && usage) await refundUsage(userId, usage);
   if (!result) throw new ApiError("NOT_FOUND"); // deleted meanwhile
   if (result === "invalid_state") {
     throw new ApiError("INVALID_STATE", { message: "The video moved on to its storyboard while the brief was being made, so it wasn't saved." });
+  }
+  if (result === "brief_changed") {
+    throw new ApiError("PRECONDITION_FAILED", {
+      message: "The brief changed while it was being rewritten (in another tab?), so nothing was changed. Try again.",
+      details: [{ field: "brief", issue: "changed while it was being rewritten" }],
+    });
   }
   const { idea, project } = result;
   return json(

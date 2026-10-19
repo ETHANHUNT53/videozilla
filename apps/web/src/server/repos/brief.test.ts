@@ -595,6 +595,32 @@ describe("POST …/idea/brief — from: settings (F2.6 follow-up: the brief foll
     expect(res.json.alternatives[0].sourceNotesSummary).toBe("Notes on leaves.");
   });
 
+  it("the brief changed during the rewrite (a chat answer, an angle switch, another tab): 412, refunded, that change kept", async () => {
+    await englishBrief();
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockImplementationOnce(async () => {
+      await setIdea({ brief: aBrief(1, { hook: "Changed in another tab" }), briefUpdatedAt: new Date() });
+      return reply(hindi(1), [hindi(2), hindi(3)]);
+    });
+    const res = await post({ from: "settings" });
+    expect(res.status).toBe(412);
+    expect(res.json.error.code).toBe("PRECONDITION_FAILED");
+    expect((await getIdea(ME.id, projectId))!.brief!.hook).toBe("Changed in another tab");
+    expect((await getIdea(ME.id, projectId))!.briefLanguage).toBe("en"); // the bar still offers the rewrite
+    expect(await usedIdeas()).toBe(1); // only the first brief
+  });
+
+  it("the setting changes again during the rewrite: saved for what the call used, so the bar shows again", async () => {
+    await englishBrief();
+    await updateProject(ME.id, projectId, { language: "hi" });
+    generateContent.mockImplementationOnce(async () => {
+      await updateProject(ME.id, projectId, { lengthPreset: 90 });
+      return reply(hindi(1), [hindi(2), hindi(3)]);
+    });
+    expect((await post({ from: "settings" })).status).toBe(200);
+    expect(await getIdea(ME.id, projectId)).toMatchObject({ briefLanguage: "hi", briefLengthSec: 60 });
+  });
+
   it("400 when the brief already matches the settings, when there's no brief, or for a brief from before F2.6b; no AI call, nothing counted", async () => {
     expect((await post({ from: "settings" })).json.error).toMatchObject({ code: "VALIDATION_FAILED", details: [{ field: "brief" }] }); // no brief
     await englishBrief();
