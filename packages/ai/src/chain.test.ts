@@ -341,6 +341,19 @@ describe("a longer deadline (25 s, notes) keeps every later tier's reserve", () 
     }
   });
 
+  it("a slow ai_calls write between tiers (700 ms, more than the slack) doesn't starve OpenRouter on the 25 s path", async () => {
+    const slowLog = async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    };
+    gemini(never);
+    http(never, good);
+    const promise = generateJson({ system: "s", prompt: "p", schema: Shape, deadlineMs: 25_000, onCall: slowLog });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toMatchObject({ provider: "openrouter" });
+    expect(order).toEqual(["gemini", "groq", "openrouter"]);
+  });
+
   it("Gemini and Groq both never answer: 15 s, then 4 s, and OpenRouter still answers in its 6 s", async () => {
     gemini(never);
     http(never, good);

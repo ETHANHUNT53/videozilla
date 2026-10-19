@@ -146,11 +146,14 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
   const tiers = aiChain();
   const deadline = Date.now() + (opts.deadlineMs ?? 15_000);
   const turns: ChatTurn[] = [{ role: "user", text: opts.prompt }];
+  // Logging must never break the feature. Between tiers it isn't waited for (`void log`): the ai_calls write finishes
+  // while the next tier runs, so a slow database never eats a later tier's reserve (see budgetMs). Where the request
+  // ends (a usable reply, a block) it is waited for.
   const log = async (entry: AiCallLog) => {
     try {
       await opts.onCall?.(entry);
     } catch {
-      // Logging must never break the feature.
+      // ignored on purpose
     }
   };
 
@@ -172,7 +175,7 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           if (!skipLogged.has(key(backend))) {
             skipLogged.add(key(backend));
             const why = inBillingCooldown(backend) ? "billing" : inSetupCooldown(backend) ? "setup" : "quota";
-            await log({ provider, model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: ${why} cooldown until ${new Date(cooldownEnd(backend)).toISOString()}` });
+            void log({ provider, model, status: "retry", latencyMs: 0, inputTokens: null, outputTokens: null, error: `skipped: ${why} cooldown until ${new Date(cooldownEnd(backend)).toISOString()}` });
           }
           break;
         }
@@ -206,18 +209,18 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           // The model wrote text that isn't JSON (Groq won't pass it on in JSON mode): an unusable reply, which the
           // repair round answers like any other.
           if (verdict.kind === "bad_json") {
-            await log({ provider, model, status: "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
+            void log({ provider, model, status: "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
             return { text: verdict.text ?? "", backend };
           }
           // Too big for this model: the next tier, for this request only (no retry here, no cooldown for others).
           if (verdict.kind === "too_large") {
-            await log({ provider, model, status: "retry", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
+            void log({ provider, model, status: "retry", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
             sawBusy = true;
             break;
           }
           // Out of quota or credits counts as busy (move on to the next tier, answer 503 with a refund), never as a bug.
           const busy = verdict.kind !== "fatal";
-          await log({ provider, model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
+          void log({ provider, model, status: busy ? "retry" : "failed", latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: message });
           if (!busy) {
             if (verdict.setup && !((cooldownUntil.get(setupKey(backend, verdict.setup)) ?? 0) > Date.now())) {
               // The key or model is wrong: skip this provider for a while, and say so once in the server log.
