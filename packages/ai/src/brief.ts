@@ -54,7 +54,7 @@ export function ideaBriefSystemPrompt(language: IdeaLanguage, lengthSec: 60 | 90
     "- title: at most 60 characters, specific and curiosity-driven, no clickbait, no emoji, no hashtags.",
     "- hook: the narrator's spoken opening sentence, at most 20 words.",
     "- angle: one sentence on the take: what the video explains and how (an analogy, a story, a myth to bust…).",
-    `- audience: one of ${BRIEF_AUDIENCES.join(", ")}. Use the given audience unless the idea clearly targets another.`,
+    `- audience: one of ${BRIEF_AUDIENCES.join(", ")}: always the given audience (the video's setting), for the brief and both alternatives.`,
     `- keyPoints: ${points} short points the video explains, in teaching order, all fitting in about ${lengthSec} seconds.`,
     ...(notes
       ? [

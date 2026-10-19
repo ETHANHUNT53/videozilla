@@ -245,9 +245,20 @@ describe("POST …/idea/brief — switching to another angle", () => {
     const res = await post({ from: "alternative", index: 0 });
     expect(res.json.brief).toEqual({ ...aBrief(2), audience: "kids" });
     expect((await getIdea(ME.id, projectId))!.brief!.audience).toBe("kids");
-    // The angle it replaced keeps its own fields (switching back gives the setting's audience again).
-    expect(res.json.alternatives[0]).toEqual(aBrief(1));
+    // The angles carry the setting too (the user's decision: every brief and angle uses the video's audience).
+    expect(res.json.alternatives).toEqual([{ ...aBrief(1), audience: "kids" }, { ...aBrief(3), audience: "kids" }]);
     expect((await post({ from: "alternative", index: 0 })).json.brief).toEqual({ ...aBrief(1), audience: "kids" });
+  });
+
+  it("a new brief and both angles always use the video's audience setting, whatever the model chose (your decision)", async () => {
+    await updateProject(ME.id, projectId, { audience: "college" });
+    generateContent.mockResolvedValueOnce(reply(aBrief(1, { audience: "kids" }), [aBrief(2, { audience: "general" }), aBrief(3)]));
+    const res = await post({ from: "idea" });
+    expect([res.json.brief, ...res.json.alternatives].map((b: { audience: string }) => b.audience)).toEqual(["college", "college", "college"]);
+    const idea = (await getIdea(ME.id, projectId))!;
+    expect([idea.brief, ...idea.briefAlternatives!].map((b) => b!.audience)).toEqual(["college", "college", "college"]);
+    expect(sentPrompt().system).toContain("always the given audience (the video's setting), for the brief and both alternatives");
+    expect(sentPrompt().system).not.toContain("unless the idea clearly targets another");
   });
 
   it("is 400 when there's no brief or no angle at that index", async () => {

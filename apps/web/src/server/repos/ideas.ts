@@ -151,9 +151,8 @@ export async function switchToAlternative(userId: string, projectId: string, ind
     const alternatives = ctx.idea.briefAlternatives ?? [];
     const chosen = alternatives[index];
     if (!ctx.idea.brief || !chosen) return "no_alternative" as const;
-    // An angle keeps the audience it was made with; the brief takes the video's audience setting, as chat answers do
-    // (F2.5), so the brief and the settings panel agree after a switch too.
-    return applyBrief(ctx, { ...chosen, audience: ctx.project.audience }, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
+    // applyBrief gives the switched-in brief (and the angles) the video's audience setting, so they agree after a switch.
+    return applyBrief(ctx, chosen, alternatives.map((a, i) => (i === index ? ctx.idea.brief! : a)));
   });
 }
 
@@ -258,7 +257,13 @@ async function inIdeaStage<T>(userId: string, projectId: string, fn: (ctx: Brief
  * types, so a brief never makes the next autosave look like a conflict. The video's title follows the brief title while
  * the user hasn't named it (PRD F2-FR11): it's still the default, or still the title the previous brief gave it.
  */
-async function applyBrief({ session, project, idea, now }: BriefContext, brief: IdeaBriefDoc, alternatives: IdeaBriefDoc[]) {
+async function applyBrief({ session, project, idea, now }: BriefContext, briefIn: IdeaBriefDoc, alternativesIn: IdeaBriefDoc[]) {
+  // The brief and its angles always carry the video's audience setting (your decision, 2026-10-19): however the brief
+  // was made (idea, card, notes, chat, angle switch), the brief card and the settings panel agree, and a later chat
+  // answer never shows an "audience changed" nobody asked for. Read in this transaction, so a settings change at the
+  // same moment conflicts instead of slipping in between.
+  const brief = { ...briefIn, audience: project.audience };
+  const alternatives = alternativesIn.map((a) => ({ ...a, audience: project.audience }));
   const saved = await collections.ideaSessions().findOneAndUpdate(
     { _id: idea._id },
     { $set: { brief, briefAlternatives: alternatives, briefUpdatedAt: now, updatedAt: now } },
