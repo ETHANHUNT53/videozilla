@@ -37,25 +37,29 @@ export function IdeaChat(props: {
   /** A message is about to go out (the previous highlight ends). */
   onSend: () => void;
   onAnswer: (reply: ChatReply) => void;
+  /** The brief changed while a message was answered (412): reload it. */
+  onStale: () => void;
 }) {
-  const { projectId, initial, editable, ai, onSend, onAnswer } = props;
+  const { projectId, initial, editable, ai, onSend, onAnswer, onStale } = props;
   const [thread, setThread] = useState<ChatMessageResource[]>(initial.items);
   const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
-  // Read after mount: the server render has no storage, so starting empty keeps hydration consistent.
+  // Read after mount: the server render has no storage, so starting empty keeps hydration consistent. The draft is
+  // only written when it changes by hand (typing, sending), never from an effect: an effect would run with the empty
+  // first value and wipe the stored draft (in dev, StrictMode's second run then read nothing back; QA, F2.5).
   const [draft, setDraft] = useState("");
-  const loaded = useRef(false);
   const id = useId();
   const listRef = useRef<HTMLOListElement>(null);
 
   useEffect(() => {
-    // Restoring the draft from browser storage, once after mount (it isn't there during the server render).
+    // Restoring the draft from browser storage after mount (it isn't there during the server render). Reads only.
+    const saved = loadChatDraft(projectId);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(loadChatDraft(projectId));
-    loaded.current = true;
+    if (saved) setDraft((d) => d || saved);
   }, [projectId]);
-  useEffect(() => {
-    if (loaded.current) saveChatDraft(projectId, draft);
-  }, [projectId, draft]);
+  const changeDraft = (value: string) => {
+    setDraft(value);
+    saveChatDraft(projectId, value);
+  };
   useEffect(() => {
     listRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
   }, [thread.length, outgoing.length]);
@@ -72,14 +76,18 @@ export function IdeaChat(props: {
         setThread((t) => [...t.filter((m) => m.clientMessageId !== clientMessageId && m.id !== data.userMessage.id && m.id !== data.assistantMessage.id), data.userMessage, data.assistantMessage]);
         onAnswer(data);
       },
-      (error) => setOutgoing((o) => o.map((m) => (m.clientMessageId === clientMessageId ? { ...m, error } : m))),
+      (error) => {
+        setOutgoing((o) => o.map((m) => (m.clientMessageId === clientMessageId ? { ...m, error } : m)));
+        // The brief changed elsewhere (another tab, a new brief) while this was answered: show the current one.
+        if (error.code === "PRECONDITION_FAILED") onStale();
+      },
     );
   };
 
   const submit = () => {
     const content = draft.trim();
     if (!content || !ai.canAsk || !editable) return;
-    setDraft("");
+    changeDraft("");
     send(crypto.randomUUID(), content);
   };
 
@@ -152,8 +160,9 @@ export function IdeaChat(props: {
             rows={2}
             value={draft}
             maxLength={MAX * 2}
-            placeholder="Ask for a change — e.g. make it for kids, focus on the second point"
-            onChange={(e) => setDraft(Array.from(e.target.value).slice(0, MAX).join(""))}
+            // Short, so it fits a phone (360 px) on one or two lines.
+            placeholder="Ask for a change, e.g. focus on point 2"
+            onChange={(e) => changeDraft(Array.from(e.target.value).slice(0, MAX).join(""))}
             onKeyDown={(e) => {
               // Enter sends, Shift+Enter is a new line; not while an input method (Hindi typing) is composing.
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

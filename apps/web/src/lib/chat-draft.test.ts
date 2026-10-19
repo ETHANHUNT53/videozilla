@@ -28,6 +28,32 @@ describe("chat drafts", () => {
     expect(store.data.has("vz:idea-chat-draft:p1")).toBe(false);
   });
 
+  it("restoring only reads: a reload, or React StrictMode running the restore twice, never wipes the draft (QA, F2.5)", () => {
+    const store = memoryStorage();
+    const writes = { set: 0, remove: 0 };
+    vi.stubGlobal("localStorage", {
+      getItem: store.getItem,
+      setItem: (k: string, v: string) => {
+        writes.set++;
+        store.setItem(k, v);
+      },
+      removeItem: (k: string) => {
+        writes.remove++;
+        store.removeItem(k);
+      },
+    });
+    saveChatDraft("p1", "focus on the second point"); // typed, then the page reloads
+    writes.set = 0;
+    // The chat box restores in an effect after mount; StrictMode (next dev) mounts, unmounts and mounts again.
+    expect(loadChatDraft("p1")).toBe("focus on the second point");
+    expect(loadChatDraft("p1")).toBe("focus on the second point");
+    expect(writes).toEqual({ set: 0, remove: 0 });
+    // Only a change by hand writes: sending clears it.
+    saveChatDraft("p1", "");
+    expect(writes.remove).toBe(1);
+    expect(loadChatDraft("p1")).toBe("");
+  });
+
   it("missing or throwing storage: nothing kept, nothing thrown", () => {
     expect(loadChatDraft("p1")).toBe(""); // no localStorage in this environment
     vi.stubGlobal("localStorage", {

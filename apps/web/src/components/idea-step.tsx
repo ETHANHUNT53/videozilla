@@ -276,6 +276,12 @@ export function IdeaStep(props: {
           editable={editable}
           ai={ai}
           onSend={() => setChanged([])}
+          onStale={() => {
+            // Show the brief as it is now (another tab or a new brief changed it); "Send again" then works on that.
+            void apiCall<Idea>(`/api/v1/projects/${projectId}/idea`)
+              .then(({ data }) => setBrief({ brief: data.brief, alternatives: data.briefAlternatives, updatedAt: data.briefUpdatedAt }))
+              .catch(() => {}); // the next message's answer brings it anyway
+          }}
           onAnswer={(reply) => {
             if (reply.brief) setBrief((b) => ({ ...b, brief: reply.brief, updatedAt: reply.briefUpdatedAt }));
             setChanged(reply.assistantMessage.changedFields);
@@ -474,9 +480,18 @@ function TopicIdeas(props: {
  */
 function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boolean; ai: IdeaAi; onSwitch: (index: number) => void; changed: string[] }) {
   const { brief, alternatives, editable, ai, onSwitch, changed } = props;
-  // A field the last chat answer changed: outlined, with a "changed" tag that screen readers hear too.
-  const mark = (field: string) => (changed.includes(field) ? "rounded-md outline outline-1 outline-offset-2 outline-cyan" : undefined);
-  const tag = (field: string) => (changed.includes(field) ? <span className="ml-2 font-mono text-xs text-cyan">changed</span> : null);
+  // A field the last chat answer changed: outlined (with a little room), and a "changed" tag. Screen readers hear
+  // ", changed" as its own words, not run into the text ("Kids (8–12)changed").
+  const mark = (field: string) => (changed.includes(field) ? "-mx-1 rounded-md px-1 outline outline-1 outline-offset-2 outline-cyan" : undefined);
+  const tag = (field: string) =>
+    changed.includes(field) ? (
+      <>
+        <span className="sr-only">, changed</span>
+        <span aria-hidden className="ml-2 font-mono text-xs text-cyan">
+          changed
+        </span>
+      </>
+    ) : null;
   const audience = AUDIENCE_OPTIONS.find((o) => o.value === brief.audience)?.label ?? brief.audience;
   return (
     // A container query: the card is narrow beside the settings panel even on a wide screen.

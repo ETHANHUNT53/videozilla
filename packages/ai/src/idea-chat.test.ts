@@ -46,6 +46,8 @@ describe("idea chat prompt", () => {
     const sys = ideaChatSystemPrompt("hi", 90, false);
     expect(sys).toMatch(/status applied: .*Change only what the message asks for/);
     expect(sys).toMatch(/settings panel/);
+    expect(sys).toMatch(/language, length, audience, voice or style is done in the settings panel/);
+    expect(sys).toMatch(/audience exactly as in the brief now/);
     expect(sys).toMatch(/keyPoints 4–5/);
     expect(sys).toMatch(/Hindi, in Devanagari/);
     expect(sys).toMatch(/answer such a message with status unsupported/);
@@ -72,10 +74,13 @@ describe("IdeaChatReply", () => {
 });
 
 describe("mock chat", () => {
-  it("rewrites the hook ([Mock]), sets kids from the message, and the triggers work", () => {
-    const r = mockIdeaChat(input()) as { status: string; brief: IdeaBrief; reply: string };
-    expect(r).toMatchObject({ status: "applied", brief: { audience: "kids", hook: expect.stringMatching(/^\[Mock\] New hook:/) } });
+  it("rewrites the hook ([Mock]) without stacking on repeated sends; kids is unsupported (a video setting); the triggers work", () => {
+    const r = mockIdeaChat(input({ message: "shorter please" })) as { status: string; brief: IdeaBrief; reply: string };
+    expect(r).toMatchObject({ status: "applied", brief: { audience: "students", hook: "[Mock] New hook: Leaves hide their colours all summer." } });
     expect(IdeaChatReply.parse(r)).toMatchObject({ status: "applied" });
+    const again = mockIdeaChat(input({ message: "shorter please", brief: r.brief })) as { brief: IdeaBrief };
+    expect(again.brief.hook).toBe(r.brief.hook); // QA: was "New hook: New hook: …"
+    expect(mockIdeaChat(input({ message: "Make it for kids" }))).toMatchObject({ status: "unsupported", reply: expect.stringMatching(/settings panel/) });
     expect(mockIdeaChat(input({ message: "the second one [mock:ask]" }))).toMatchObject({ status: "clarification" });
     expect(mockIdeaChat(input({ message: "[mock:refuse]" }))).toMatchObject({ refused: true });
     expect(() => mockIdeaChat(input({ message: "[mock:busy]" }))).toThrow(/busy/);

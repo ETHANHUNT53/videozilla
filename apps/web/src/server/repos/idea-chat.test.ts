@@ -78,11 +78,12 @@ describe("POST …/idea/chat — answers", () => {
     const res = await post({ clientMessageId: id, content: "  Make it for kids  " });
     expect(res.status).toBe(200);
     expect(res.json.userMessage).toMatchObject({ role: "user", content: "Make it for kids", status: "applied", clientMessageId: id, thread: "idea" });
-    expect(res.json.assistantMessage).toMatchObject({ role: "assistant", content: "Made it simpler for kids.", status: "applied", changedFields: ["title", "hook", "audience"] });
-    expect(res.json.brief).toMatchObject({ title: "Why leaves blush in autumn", audience: "kids" });
+    // The audience is the video's setting: an answer that changes it is kept to the brief's (QA, F2.5).
+    expect(res.json.assistantMessage).toMatchObject({ role: "assistant", content: "Made it simpler for kids.", status: "applied", changedFields: ["title", "hook"] });
+    expect(res.json.brief).toMatchObject({ title: "Why leaves blush in autumn", audience: "students" });
     expect(res.json.project.title).toBe("Why leaves blush in autumn");
     const idea = await getIdea(ME.id, projectId);
-    expect(idea!.brief).toMatchObject({ audience: "kids" });
+    expect(idea!.brief).toMatchObject({ audience: "students", hook: "Ever wondered why leaves blush?" });
     expect(idea!.briefAlternatives).toEqual(ALTS);
     expect(idea!.rev).toBe(0);
     expect(res.json.briefUpdatedAt).toBe(idea!.briefUpdatedAt!.toISOString());
@@ -159,7 +160,7 @@ describe("POST …/idea/chat — the brief changing while the AI answers", () =>
     const again = await post({ clientMessageId: id, content: "Make it for kids" });
     expect(again.status).toBe(200);
     expect(sentPrompt().user).toContain("Another tab");
-    expect(again.json.brief).toMatchObject({ title: "Another tab's brief", audience: "kids" });
+    expect(again.json.brief).toMatchObject({ title: "Another tab's brief", hook: "Ever wondered why leaves blush?" });
   });
 
   it("two tabs sending at once: the second answer doesn't silently undo the first", async () => {
@@ -335,10 +336,10 @@ describe("POST …/idea/chat — errors", () => {
 describe("AI_PROVIDER=mock", () => {
   it("a sample answer that changes the hook, saved like a real one, with no AI call", async () => {
     vi.stubEnv("AI_PROVIDER", "mock");
-    const res = await post({ clientMessageId: uuid(), content: "Make it for kids" });
+    const res = await post({ clientMessageId: uuid(), content: "Make the hook punchier" });
     expect(res.status).toBe(200);
     expect(res.json.assistantMessage.content).toMatch(/^\[Mock\]/);
-    expect(res.json.brief).toMatchObject({ audience: "kids", hook: expect.stringMatching(/^\[Mock\]/) });
+    expect(res.json.brief).toMatchObject({ audience: "students", hook: expect.stringMatching(/^\[Mock\] New hook:/) });
     expect(generateContent).not.toHaveBeenCalled();
   });
 });

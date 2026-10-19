@@ -128,6 +128,9 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
     // A notes brief keeps its summary as it was: it describes the notes, which a chat message doesn't change (and the
     // highlight doesn't cover it, so a rewrite would go unnoticed).
     if (fromNotes) brief.sourceNotesSummary = idea.brief.sourceNotesSummary;
+    // The audience belongs to the video's settings (the panel beside the brief), so chat never changes it: the brief and
+    // the settings can't disagree on screen because of a chat answer (QA, F2.5).
+    brief.audience = idea.brief.audience;
     changedFields = changedBriefFields(idea.brief as IdeaBrief, brief as IdeaBrief);
   }
   let saved;
