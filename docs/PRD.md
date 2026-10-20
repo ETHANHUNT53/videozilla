@@ -4,8 +4,8 @@
 |---|---|
 | **Product name** | **Videozilla** *(chosen; see [Appendix E](#e-product-name-candidates) for domain status and a trademark note)* |
 | **Market (V1)** | **India** (Hindi + English creators, teachers and edtech brands). Global expansion in later versions. |
-| **Document version** | 1.3 (ElevenLabs is the V1 voice provider) |
-| **Date** | 2026-10-16 |
+| **Document version** | 1.4 (selectable video themes: Midnight default + Mentor; see F4-FR2 and §14.6) |
+| **Date** | 2026-10-16 (v1.4: 2026-10-20) |
 | **Owner** | Product owner (you) |
 | **Status** | Draft, ready for review |
 | **Platform** | Web app (desktop-first, responsive down to tablet; mobile is view-only friendly) |
@@ -205,7 +205,7 @@ Priority key: **P0** = must ship in V1. **P1** = should ship in V1 if time allow
 | **Scene** | One segment of the video (typically 5–12 s). Has narration text, a **scene type** (visual template), visual props, and **animation cues**. |
 | **Scene type** | A pre-built animated component (e.g. Flowchart, Comparison, Timeline). The AI chooses a type and fills its props. See §14. |
 | **Cue / anchor** | A link between a visual event (e.g. "show arrow 2") and a word or phrase in the narration. Used to sync animation to speech. |
-| **Style** | A visual theme: palette, fonts, background, motion feel, caption look. |
+| **Theme** (stored as `styleId`, also called "style") | A selectable video look, chosen per video: palette, fonts, background, motion feel, caption look, **and** layout and motion-graphics structure (chapter header, central diagram, HUD panels, optional presenter character). See §14.6. |
 | **Voice** | A TTS voice (provider + voice ID + language). |
 | **Voice track** | The synthesized audio for each scene plus word-level timestamps. |
 | **Timeline** | The resolved, time-stamped plan (in frames) combining storyboard, voice track and style. This is the input to the renderer. |
@@ -451,13 +451,14 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 | ID | Requirement | Priority |
 |---|---|---|
 | F4-FR1 | **Length presets**: "~60 seconds" (target 55–65 s) and "~90 seconds" (target 80–95 s). Hard limits: min 45 s, max 95 s. | P0 |
-| F4-FR2 | **Styles** (4 at launch), each with a preview thumbnail and a 3-second looping sample: (1) **Clean Light** (white background, bold sans, brand-blue accents, crisp motion); (2) **Bold Dark** (dark background, neon accents, punchy motion, high-energy captions); (3) **Chalkboard** (green-black board texture, chalk-like font for titles, hand-drawn line animations); (4) **Pastel Playful** (soft pastel colors, rounded shapes, bouncy easing; good for kids). | P0 |
-| F4-FR3 | Each style defines: palette (bg, surface, primary, accent, text, muted), heading and body font (each must support **Latin + Devanagari**), easing curves, transition type, caption style, icon style (outline/filled), background texture. | P0 |
+| F4-FR2 | **Themes**, picked per video with one click in the settings panel (and as an account default). Each has a preview thumbnail and a 3-second looping sample. Launch themes: (1) **Midnight** (**default**): the existing dark tech-explainer look from M0, which must stay as it is: near-black background, white grotesk headline with 1–2 accent-coloured keywords, dim monospace "// section" eyebrow, blur transitions between beats, one persistent "world" with camera moves, glowing HUD chips, counters and node boxes (reference: @dhruvtechbytes "Infinite System Design" reel). (2) **Mentor**: dark explainer with a recurring presenter character (lower left) whose pose changes per beat (pointing, "?" thinking, "!" alarmed, arms crossed at the end); numbered chapters ("01 / …") with a 2-word headline (second word in an accent colour), a one-line subhead and a segmented chapter progress bar; one central diagram that builds up across chapters; a side HUD panel of live counters that turn from green to red when something breaks; a bottom caption box with one accent keyword; a recap of numbered cards lighting up one by one, then a follow CTA (reference: @deeponai.labs "How Uber finds your driver" reel). References are inspiration only: we never copy a creator's branding or character. The earlier style ideas (Clean Light, Chalkboard, Pastel Playful) become optional later themes (see Q8). More reference reels can be added as new themes. | P0 |
+| F4-FR3 | Each theme defines its **tokens**: palette (bg, surface, primary, accent, text, muted), heading and body font (each must support **Latin + Devanagari**), easing curves, transition type, caption style, icon style (outline/filled), background texture. A theme can also define **structure**: scene layout variants, chapter header and progress bar, HUD panel, central-diagram behaviour, recap and CTA design, and an optional presenter character with a pose set (§14.6). The same storyboard renders in any theme. | P0 |
 | F4-FR4 | **Voices**: 2–3 per language at launch (male and female, neutral Indian and global accents). Each voice has a **"▶ Preview"** sample in the selected language. Voices come from **ElevenLabs** (model `eleven_multilingual_v2`): 2–3 English (Indian-accent first) and 2–3 Hindi voices from the ElevenLabs voice library, picked after the M0 listening test. Exact list finalized in M3. | P0 |
 | F4-FR5 | Voice and style changes after the video is built **only re-run the necessary steps** (voice → re-synthesize + re-sync; style → re-render only, no TTS). | P0 |
 | F4-FR6 | Caption toggle (on by default). | P1 |
 | F4-FR7 | Background music: one auto-selected royalty-free track per style at low volume (ducked under voice), with toggle on/off. | P1 |
 | F4-FR8 | Speaking speed: fixed per voice; the system may auto-adjust within **0.92×–1.10×** to fit duration. No user control in V1. | P0 |
+| F4-FR9 | **Theme switch** after the storyboard or build keeps the script and voice; it only re-renders (like F4-FR5). If a theme needs extra storyboard data (e.g. Mentor's presenter pose per beat, chapter numbers, central-diagram steps), the storyboard stores it for every theme up front, or a cheap theme-specific step derives it, so switching never regenerates the script. | P0 |
 
 #### Edge cases
 - Selected voice is unavailable (provider outage or deprecated) → fall back to the default voice of the same language and gender, and notify the user.
@@ -479,7 +480,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 |---|---|---|
 | F5-FR1 | A **scene-type component library** (§14.2) of **16 animated templates** covering text, lists, diagrams, comparisons, timelines, numbers, equations, icons and illustrations. | P0 |
 | F5-FR2 | Every component is **data-driven**: it takes typed props (from the storyboard) and **cue times** (from sync) and is fully deterministic for rendering. | P0 |
-| F5-FR3 | Every component supports **both languages**, **all 4 styles**, and **variable text lengths** (auto-fit font sizing with min size limits; overflow → wrap → shrink → validator split). | P0 |
+| F5-FR3 | Every component supports **both languages**, **every launch theme** (Midnight, Mentor), and **variable text lengths** (auto-fit font sizing with min size limits; overflow → wrap → shrink → validator split). | P0 |
 | F5-FR4 | **Icons**: chosen by the AI as keywords and resolved against a curated icon set (Iconify/Lucide, roughly 1,500 vetted icons) with a semantic search index (embedding or keyword synonyms). Unresolvable → generic shape fallback. | P0 |
 | F5-FR5 | **Illustrations**: (a) curated library of open-licensed SVG illustrations, tagged by topic (P0); (b) **AI-generated flat illustrations** via `gemini-nano-banana-2.1` (about $0.034 per 1K image, no free tier) in the style's palette, with transparent or solid background, for scenes that need a specific subject (e.g. "a plant cell") (P1). Generated images are cached per project and can be regenerated per scene. | P0 / P1 |
 | F5-FR6 | **Transitions** between scenes per style (cut, slide, wipe, morph-fade), ≤ 12 frames (0.4 s), so no narration word is hidden by a transition. | P0 |
@@ -498,7 +499,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 - RTL or other scripts are not supported in V1; if present in user notes, translated in narration.
 
 #### Acceptance criteria
-- AC1: All 16 scene types render correctly in all 4 styles × 2 languages (visual regression snapshots, §20.7).
+- AC1: All 16 scene types render correctly in every launch theme × 2 languages (visual regression snapshots, §20.7).
 - AC2: No on-screen text overlaps the Reels safe-zone exclusion areas in any snapshot.
 - AC3: Preview and render frames match (pixel diff below threshold) for a sample of 20 frames per scene type.
 
@@ -1123,6 +1124,15 @@ Each component defines: element IDs (for cues), default entrance animations per 
 - AI illustrations: PNG (1024×1024), background-removed or solid-style background, stored in R2 per project and scene, prefetched before render.
 - Music: 4–8 royalty-free tracks (one or two per style), licensed for social media use, looped and faded.
 
+### 14.6 Themes (theme packs)
+- A **theme pack** = the style tokens (§14.3) + structure: which layout variant each scene type uses, the persistent layout layer (chapter header, progress bar, HUD panel, brand footer), transition set, caption look, recap/CTA design, and an optional **presenter** (character art + pose set + where it sits in the safe zone).
+- The renderer is built **theme-ready from the start (M3)**: scene components read the active theme pack instead of hard-coded looks, so adding a theme doesn't change scene logic.
+- **Midnight** (default) is the M0 look turned into the first theme pack, with no visual change.
+- **Mentor** adds: the presenter with poses `point`, `think` ("?"), `alarm` ("!"), `explain`, `arms_crossed`; numbered chapters with a segmented progress bar; a central diagram that persists and builds up across chapters; HUD counters with a state colour (ok → warn → fail); a caption box with one accent keyword; a recap of numbered cards lighting up one by one.
+- **Storyboard data for themes:** each beat carries an optional `chapter` (number + 2-word headline + subhead), a `presenterPose`, and `diagramStep` hints. Themes that don't use them ignore them (F4-FR9).
+- **Presenter character:** our own original character (not a copy of any creator's). Art style and design are decided in M3 (Q8).
+- Visual regression covers every scene type × theme × language (§20.7).
+
 ---
 
 ## 15. Voiceover, synchronization and captions
@@ -1474,7 +1484,7 @@ Estimates assume 1–2 developers working with AI coding assistance. Adjust afte
 | **M0 — Technical proof** | Script → Gemini (`gemini-3.8-flash`, free tier) storyboard JSON → ElevenLabs voiceover with timings → 7 scene types in Remotion → local MP4 render; EN + HI. **Listening test:** choose the English and Hindi ElevenLabs voices. | A synced 60 s video in EN and HI rendered locally | 1–2 wks |
 | **M1 — App foundation** | Monorepo, Next.js on Vercel, MongoDB Atlas + repository layer, Better Auth (Google + email/password + verification via Resend), library CRUD, settings, Inngest wiring, R2, Sentry; **register the domain; start the Meta developer app and App Review prep** (privacy policy, terms) | User can sign in, create/rename/delete projects | 1–2 wks |
 | **M2 — Idea + Storyboard** | Idea Studio (3 modes, chat), storyboard generation, validators, storyboard screen with scene cards, version history (P1) | End-to-end idea → validated storyboard | 2 wks |
-| **M3 — Motion graphics library + styles + voices** | All 16 scene types, 4 styles, voice catalog with previews, safe zones, captions, live preview in Player, visual regression tests | Golden storyboards preview correctly in all styles | 3 wks |
+| **M3 — Motion graphics library + themes + voices** | All 16 scene types, **theme-ready renderer** with the **Midnight** (default) and **Mentor** themes (presenter character + poses, chapters, evolving diagram, HUD states; §14.6), theme picker with previews, voice catalog with previews, safe zones, captions, live preview in Player, visual regression tests | Golden storyboards preview correctly in every theme | 3–4 wks (Mentor's presenter adds about 1 wk) |
 | **M4 — Build + Export pipeline** | P2 + P3 with durable steps, progress UI, retries, cancellation, notifications, **local render agent** (job queue, leases, heartbeat, R2 upload, auto-start on Windows), output validation | Reliable export of 90 s videos within targets | 2 wks |
 | **M5 — Conversational revisions** | Revision planning, operation application, diff highlights, undo, incremental rebuild | Scene-scoped and global revisions work on both screens | 2 wks |
 | **M6 — Instagram publishing** | OAuth connect, publish now, scheduling, token refresh, error handling; App Review submission | Posts to a test Creator account; App Review submitted | 2 wks |
@@ -1526,6 +1536,7 @@ Estimates assume 1–2 developers working with AI coding assistance. Adjust afte
 | Q4 | Private beta: invite-only list or open waitlist? | Product | M7 |
 | Q5 | Background music: include in V1 (P1) or defer? | Product | M3 |
 | Q6 | Who handles Meta business verification (legal entity details)? | Product/Legal | M1 |
+| Q8 | Themes: the Mentor presenter character's design (art style, name, outfit, pose list), and which of the earlier style ideas (Clean Light, Chalkboard, Pastel Playful) to keep as later themes. Midnight (default) and Mentor are decided for launch. | Product | M3 |
 
 ---
 
