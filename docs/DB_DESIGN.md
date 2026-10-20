@@ -201,6 +201,7 @@ One per project (unique `projectId`), autosaved.
 | `briefAlternatives` | array? | | ≤ 2 briefs of the same shape: the other angles that came with the brief (F2.3). Missing on older sessions = none |
 | `briefUpdatedAt` | Date? | | |
 | `briefLanguage`, `briefLengthSec` | string?, int? | | `en` \| `hi`, 60 \| 90: what the brief was written for (F2.6 follow-up). Set when a brief is saved (new brief, chat answer, rewrite), kept by an angle switch; missing on older briefs (treated as the video's settings) |
+| `briefCardId` | string? | | `sg_…`: the idea card the brief came from (F2.7, marked "Selected"). Set by "Use this", cleared by a brief from the idea text or notes, kept by chat, edits, Regenerate and angle switches; missing on older sessions = none |
 | `rev` | int | R | |
 | `createdAt`, `updatedAt` | Date | R | |
 

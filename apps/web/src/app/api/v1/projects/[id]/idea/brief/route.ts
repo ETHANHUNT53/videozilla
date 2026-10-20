@@ -110,7 +110,9 @@ export const POST = apiRoute({ params, body }, async ({ user, params, body }) =>
   const main = trimBrief(reply.brief, field);
   // An angle without its own notes summary takes the main one, so "From your notes" stays after "Use this angle".
   const alternatives = reply.alternatives.map((b) => trimBrief(b, field)).map((b) => (main.sourceNotesSummary && !b.sourceNotesSummary ? { ...b, sourceNotesSummary: main.sourceNotesSummary } : b));
-  const saved = await saveBrief(user.id, params.id, main, alternatives, { language: project.language, lengthSec: project.lengthPreset });
+  // "Use this" remembers the card (F2.7 marks it Selected); a brief from the idea text or notes clears it.
+  const cardId = body.from === "suggestion" ? body.suggestionId : null;
+  const saved = await saveBrief(user.id, params.id, main, alternatives, { language: project.language, lengthSec: project.lengthPreset }, undefined, cardId);
   return respond(user.id, saved, usage);
 });
 
@@ -181,6 +183,7 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
       briefUpdatedAt: idea.briefUpdatedAt ? idea.briefUpdatedAt.toISOString() : null,
       briefLanguage: idea.briefLanguage ?? null,
       briefLengthSec: idea.briefLengthSec ?? null,
+      briefCardId: idea.briefCardId ?? null,
       project: toProject(project),
     },
     { headers: usage ? rateLimitHeaders(usage) : {} },

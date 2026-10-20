@@ -432,6 +432,7 @@ interface IdeaSession {
   briefAlternatives: NonNullable<IdeaSession["brief"]>[];   // the 2 other angles that came with the brief (F2.3)
   briefUpdatedAt: string | null;   // when the brief last changed; sent back with "Use this angle" (F2.3)
   briefLanguage: "en" | "hi" | null; briefLengthSec: 60 | 90 | null;   // what the brief was written for (F2.6 follow-up); null before it
+  briefCardId: string | null;               // the idea card the brief came from ("Use this"), marked Selected (F2.7)
   rev: number; updatedAt: string;
 }
 

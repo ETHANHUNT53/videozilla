@@ -79,6 +79,8 @@ export function toIdeaSession(i: IdeaSessionDoc) {
     /** What the brief was written for (F2.6 follow-up); null for briefs from before it (treated as the video's settings). */
     briefLanguage: i.brief ? (i.briefLanguage ?? null) : null,
     briefLengthSec: i.brief ? (i.briefLengthSec ?? null) : null,
+    /** The idea card the brief came from (F2.7: marked "Selected"), or null. */
+    briefCardId: i.brief ? (i.briefCardId ?? null) : null,
     rev: i.rev,
     updatedAt: i.updatedAt.toISOString(),
   };

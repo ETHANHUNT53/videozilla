@@ -181,6 +181,21 @@ describe("POST /api/v1/projects/{id}/idea/brief — from the idea", () => {
   });
 });
 
+describe("POST …/idea/brief — which card the brief came from (F2.7, \"Selected\")", () => {
+  it("Use this remembers the card; an angle switch and an edit keep it; a brief from the idea text clears it", async () => {
+    generateContent.mockResolvedValue(reply());
+    await post({ from: "suggestion", suggestionId: CARD_ID });
+    expect((await getIdea(ME.id, projectId))!.briefCardId).toBe(CARD_ID);
+    const switched = await post({ from: "alternative", index: 0 });
+    expect(switched.status).toBe(200);
+    expect((await getIdea(ME.id, projectId))!.briefCardId).toBe(CARD_ID); // another angle on the same card's idea
+    const { toIdeaSession } = await import("../api/resources");
+    expect(toIdeaSession((await getIdea(ME.id, projectId))!).briefCardId).toBe(CARD_ID);
+    await post({ from: "idea" });
+    expect((await getIdea(ME.id, projectId))!.briefCardId).toBeNull();
+  });
+});
+
 describe("POST …/idea/brief — from an idea card", () => {
   it("sends the card's title, hook, angle and key points as data", async () => {
     generateContent.mockResolvedValueOnce(reply());

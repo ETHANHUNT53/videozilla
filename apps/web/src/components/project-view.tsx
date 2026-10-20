@@ -5,34 +5,14 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { ApiClientError } from "@/lib/api-client";
 import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
-import {
-  AUDIENCE_OPTIONS,
-  BOARD_OPTIONS,
-  LANGUAGE_OPTIONS,
-  LENGTH_OPTIONS,
-  STEPS,
-  STYLE_LABELS,
-  VOICE_OPTIONS,
-  labelOf,
-  stepIndex,
-} from "@/lib/project-options";
+import { STEPS, stepIndex } from "@/lib/project-options";
 import { STATUS_DISPLAY } from "@/lib/status";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { IdeaStep } from "./idea-step";
-import { Button, Card, Chip, Eyebrow, Select, cx, inputStyles } from "./ui";
+import { SettingsPanel } from "./settings-panel";
+import { Button, Card, Chip, Eyebrow, cx, inputStyles } from "./ui";
 
 type Project = ProjectResource;
-type Settings = Pick<Project, "language" | "lengthPreset" | "audience" | "boardOrExam" | "voiceGender" | "captionsEnabled">;
-
-const SETTING_KEYS = ["language", "lengthPreset", "audience", "boardOrExam", "voiceGender", "captionsEnabled"] as const;
-const settingsOf = (p: Project): Settings => ({
-  language: p.language,
-  lengthPreset: p.lengthPreset,
-  audience: p.audience,
-  boardOrExam: p.boardOrExam,
-  voiceGender: p.voiceGender,
-  captionsEnabled: p.captionsEnabled,
-});
 
 /** What the later steps' workspaces will hold; placeholders until those milestones land. The idea step is IdeaStep. */
 const WORKSPACE = [
@@ -73,9 +53,18 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
         <Link href="/library" className="font-mono text-sm text-muted hover:text-fg">
           ← library
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <ProjectTitle project={project} onSaved={saved} />
-          <Chip color={status.color}>{status.label}</Chip>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <ProjectTitle project={project} onSaved={saved} />
+            <Chip color={status.color}>{status.label}</Chip>
+          </div>
+          {/* Stitch 09's way forward; the storyboard step arrives with F3 (your answer, F2.7). */}
+          <span className="flex items-center gap-3">
+            <span className="hidden font-mono text-xs text-muted sm:inline">{"// next milestone"}</span>
+            <Button type="button" disabled title="The storyboard step arrives in the next milestone">
+              Next: Storyboard →
+            </Button>
+          </span>
         </div>
       </div>
 
@@ -86,14 +75,23 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
             aria-current={i === step ? "step" : undefined}
             className={cx(
               "flex items-center gap-3 rounded-xl border px-4 py-3",
-              i === step ? "border-cyan/60 bg-cyan/5" : i < step ? "border-line bg-surface" : "border-line text-dim",
+              i === step ? "border-cyan/60 bg-cyan/5" : i < step ? "border-line bg-surface" : "border-line",
             )}
           >
-            <span className={cx("font-mono text-xs", i <= step ? "text-cyan" : "text-dim")}>{s.n}</span>
-            <span className="flex flex-col">
-              <span className="text-sm font-medium">{s.label}</span>
+            {/* Stitch 09: the number in a small square, then the label and its hint, and a status dot. */}
+            <span
+              className={cx(
+                "grid size-8 shrink-0 place-items-center rounded-lg border font-mono text-xs",
+                i === step ? "border-cyan/40 bg-cyan/10 text-cyan" : i < step ? "border-line text-cyan" : "border-line text-muted",
+              )}
+            >
+              {s.n}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cx("text-sm font-medium", i > step && "text-muted")}>{s.label}</span>
               <span className={cx("font-mono text-xs", i === step ? "text-cyan" : "text-muted")}>{i === step ? "// active phase" : i < step ? "// done ✓" : s.hint}</span>
             </span>
+            <span aria-hidden className={cx("size-1.5 shrink-0 rounded-full", i === step ? "bg-cyan shadow-[0_0_8px_var(--cyan)]" : i < step ? "bg-cyan/60" : "bg-line-strong")} />
           </li>
         ))}
       </ol>
@@ -105,18 +103,29 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        {step === 0 ? (
-          <IdeaStep projectId={project.id} language={project.language} lengthSec={project.lengthPreset} initial={idea} initialChat={chat} editable={project.allowedActions.includes("edit_idea")} onProject={saved} />
-        ) : (
+      {step === 0 ? (
+        // The Idea Studio (Stitch 09, F2.7) lays out both columns: ideas on the left; the brief, its chat, these settings
+        // and "Generate storyboard" on the right.
+        <IdeaStep
+          projectId={project.id}
+          language={project.language}
+          lengthSec={project.lengthPreset}
+          initial={idea}
+          initialChat={chat}
+          editable={project.allowedActions.includes("edit_idea")}
+          onProject={saved}
+          settings={<SettingsPanel project={project} onSaved={saved} />}
+        />
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
             <Eyebrow accent="text-violet">{WORKSPACE[step].eyebrow}</Eyebrow>
             <p className="text-balance text-2xl font-semibold">{WORKSPACE[step].title}</p>
             <p className="max-w-md text-balance text-muted">{WORKSPACE[step].body}</p>
           </Card>
-        )}
-        <SettingsPanel project={project} onSaved={saved} />
-      </div>
+          <SettingsPanel project={project} onSaved={saved} />
+        </div>
+      )}
     </div>
   );
 }
@@ -205,208 +214,5 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
         </p>
       ) : null}
     </div>
-  );
-}
-
-function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Project) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Settings>(settingsOf(project));
-  // Tied to the revision it is about, like the title's note: a later rename hides it.
-  const [revMessage, setMessage] = useState<RevNote<{ tone: "info" | "error"; text: string }> | null>(null);
-  const message = currentNote(revMessage, project);
-  const [pending, start] = useTransition();
-  const scriptEditable = project.allowedActions.includes("edit_script_settings");
-  const mediaEditable = project.allowedActions.includes("edit_media_settings");
-  const anyEditable = scriptEditable || mediaEditable;
-
-  const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setDraft((d) => ({ ...d, [key]: value }));
-
-  const save = () => {
-    const current = settingsOf(project);
-    const changes = Object.fromEntries(SETTING_KEYS.filter((k) => draft[k] !== current[k]).map((k) => [k, draft[k]])) as Partial<Settings>;
-    if (!Object.keys(changes).length) {
-      setEditing(false);
-      return;
-    }
-    setMessage(null);
-    start(async () => {
-      try {
-        const { project: next, requiresRegeneration } = await patchProject<Project>(project, changes);
-        onSaved(next);
-        setDraft(settingsOf(next));
-        setEditing(false);
-        // "Regenerate" / "rebuild" stay true until the video moves to another stage, so they stay on screen through
-        // unrelated saves (a rename); a plain "Saved." is about this save only.
-        if (requiresRegeneration) {
-          setMessage({ value: { tone: "info", text: "Saved. Regenerate the storyboard to use the new settings." }, rev: next.rev, status: next.status });
-        } else if (next.exportOutdated && !project.exportOutdated) {
-          setMessage({ value: { tone: "info", text: "Saved. Rebuild or re-export the video to apply it." }, rev: next.rev, status: next.status });
-        } else {
-          setMessage({ value: { tone: "info", text: "Saved." }, rev: next.rev });
-        }
-      } catch (err) {
-        const latest = conflictCopy<Project>(err);
-        if (latest) {
-          onSaved(latest);
-          setDraft(settingsOf(latest));
-          setMessage({ value: { tone: "error", text: "This video was changed in another tab. We loaded the latest settings — check them and save again." }, rev: latest.rev });
-        } else {
-          setMessage({ value: { tone: "error", text: err instanceof ApiClientError ? err.message : "Couldn't save the settings. Please try again." }, rev: project.rev });
-        }
-      }
-    });
-  };
-
-  const rows: { label: string; view: string; edit: React.ReactNode; editable: boolean }[] = [
-    {
-      label: "Language",
-      view: labelOf(LANGUAGE_OPTIONS, project.language),
-      editable: scriptEditable,
-      edit: (
-        <Select aria-label="Language" value={draft.language} disabled={!scriptEditable} onChange={(e) => set("language", e.target.value as Settings["language"])}>
-          {LANGUAGE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      label: "Length",
-      view: labelOf(LENGTH_OPTIONS, project.lengthPreset),
-      editable: scriptEditable,
-      edit: (
-        <Select aria-label="Length" value={draft.lengthPreset} disabled={!scriptEditable} onChange={(e) => set("lengthPreset", Number(e.target.value) as 60 | 90)}>
-          {LENGTH_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      label: "Audience",
-      view: labelOf(AUDIENCE_OPTIONS, project.audience as (typeof AUDIENCE_OPTIONS)[number]["value"]),
-      editable: scriptEditable,
-      edit: (
-        <Select aria-label="Audience" value={draft.audience} disabled={!scriptEditable} onChange={(e) => set("audience", e.target.value)}>
-          {AUDIENCE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      label: "Board / exam",
-      view: labelOf(BOARD_OPTIONS, project.boardOrExam as (typeof BOARD_OPTIONS)[number]["value"]),
-      editable: scriptEditable,
-      edit: (
-        <Select
-          aria-label="Board or exam"
-          value={draft.boardOrExam ?? ""}
-          disabled={!scriptEditable}
-          onChange={(e) => set("boardOrExam", (e.target.value || null) as Settings["boardOrExam"])}
-        >
-          {BOARD_OPTIONS.map((o) => (
-            <option key={o.label} value={o.value ?? ""}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      label: "Voice",
-      view: labelOf(VOICE_OPTIONS, project.voiceGender),
-      editable: mediaEditable,
-      edit: (
-        <Select aria-label="Voice" value={draft.voiceGender} disabled={!mediaEditable} onChange={(e) => set("voiceGender", e.target.value as Settings["voiceGender"])}>
-          {VOICE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      label: "Captions",
-      view: project.captionsEnabled ? "On" : "Off",
-      editable: mediaEditable,
-      edit: (
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={draft.captionsEnabled} disabled={!mediaEditable} onChange={(e) => set("captionsEnabled", e.target.checked)} />
-          Show captions
-        </label>
-      ),
-    },
-  ];
-
-  return (
-    <Card className="flex flex-col gap-4 p-5">
-      <Eyebrow>settings</Eyebrow>
-      <dl className="flex flex-col divide-y divide-line text-sm">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between gap-3 py-2.5">
-            <dt className="text-muted">{r.label}</dt>
-            <dd className={cx("text-right", editing && "w-44")}>{editing ? r.edit : r.view}</dd>
-          </div>
-        ))}
-        <div className="flex items-center justify-between gap-3 py-2.5">
-          <dt className="text-muted">Style</dt>
-          <dd>{STYLE_LABELS[project.styleId] ?? project.styleId}</dd>
-        </div>
-      </dl>
-
-      {editing ? (
-        <>
-          <p className="text-xs text-dim">
-            {!scriptEditable ? "Language, length, audience and board can't change once the video is built — duplicate it to try different ones. " : ""}
-            {!mediaEditable ? "Voice and captions can be chosen once the storyboard is ready." : ""}
-          </p>
-          <div className="flex gap-2">
-            <Button type="button" onClick={save} disabled={pending} className="flex-1">
-              {pending ? "Saving…" : "Save"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setDraft(settingsOf(project));
-                setEditing(false);
-                setMessage(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </>
-      ) : (
-        <Button
-          type="button"
-          variant="secondary"
-          className="font-mono"
-          disabled={!anyEditable}
-          title={anyEditable ? undefined : "Settings can't change at this stage of the video"}
-          onClick={() => {
-            setDraft(settingsOf(project));
-            setMessage(null);
-            setEditing(true);
-          }}
-        >
-          {"// edit parameters"}
-        </Button>
-      )}
-
-      {message ? (
-        <p role={message.tone === "error" ? "alert" : "status"} className={cx("text-sm", message.tone === "error" ? "text-red" : "text-cyan")}>
-          {message.text}
-        </p>
-      ) : null}
-    </Card>
   );
 }

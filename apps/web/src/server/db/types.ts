@@ -144,6 +144,8 @@ export interface IdeaSessionDoc {
   /** The language and length the brief was written for (F2.6 follow-up); missing on briefs from before it. */
   briefLanguage?: Language;
   briefLengthSec?: 60 | 90;
+  /** The idea card the brief was made from (F2.7, "Selected"); null or missing when it came from the idea text or notes. */
+  briefCardId?: string | null;
   rev: number;
   createdAt: Date;
   updatedAt: Date;

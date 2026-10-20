@@ -5,7 +5,7 @@ import { apiCall } from "@/lib/api-client";
 import { loadChatDraft, saveChatDraft } from "@/lib/chat-draft";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { AiError, Thinking, type AiErrorState, type IdeaAi } from "./idea-step";
-import { Button, cx, inputStyles } from "./ui";
+import { cx, inputStyles } from "./ui";
 
 type Brief = NonNullable<IdeaSessionResource["brief"]>;
 /** `POST …/idea/chat` (F2.5). */
@@ -95,16 +95,25 @@ export function IdeaChat(props: {
   const used = count(draft);
 
   return (
-    <section aria-labelledby={`${id}-title`} className="flex flex-col gap-3 rounded-xl border border-line bg-raised p-4">
-      <h4 id={`${id}-title`} className="text-sm font-medium">
-        Refine the brief
+    // Inside the brief card (Stitch 09, F2.7), under "// refine with ai".
+    <section aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
+      <h4 id={`${id}-title`} className="font-mono text-xs text-muted">
+        <span className="sr-only">Refine the brief: </span>
+        {"// refine with ai"}
       </h4>
       {initial.hasOlder ? <p className="text-xs text-muted">Older messages aren&apos;t shown here.</p> : null}
       {thread.length || outgoing.length ? (
         <ol ref={listRef} className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1" aria-label="Conversation about the brief">
           {thread.map((m) => (
             <li key={m.id} className={bubble(m.role)}>
-              <span className="sr-only">{m.role === "user" ? "You: " : "AI: "}</span>
+              {m.role === "user" ? (
+                <span className="sr-only">You: </span>
+              ) : (
+                <span className="mb-1 block font-mono text-[11px] text-violet">
+                  <span className="sr-only">AI: </span>
+                  <span aria-hidden>{"// ai"}</span>
+                </span>
+              )}
               {m.content}
               {m.role === "assistant" && m.status === "applied" && m.changedFields.length ? <span className="mt-1 block font-mono text-xs text-cyan">{"// brief updated"}</span> : null}
               {m.role === "user" && m.status === "pending" && !outgoing.some((o) => o.clientMessageId === m.clientMessageId) ? (
@@ -141,7 +150,7 @@ export function IdeaChat(props: {
           ))}
         </ol>
       ) : (
-        <p className="text-sm text-muted">Ask for a change in your own words, for example &quot;make it for kids&quot; or &quot;focus on the second point&quot;.</p>
+        <p className="text-sm text-muted">Ask for a change in your own words, for example &quot;make the hook more surprising&quot; or &quot;focus on the second point&quot;.</p>
       )}
       {editable ? (
         <form
@@ -155,32 +164,42 @@ export function IdeaChat(props: {
           <label htmlFor={`${id}-input`} className="sr-only">
             Your message
           </label>
-          <textarea
-            id={`${id}-input`}
-            rows={2}
-            value={draft}
-            maxLength={MAX * 2}
-            // Short, so it fits a phone (360 px) on one or two lines.
-            placeholder="Ask for a change, e.g. focus on point 2"
-            onChange={(e) => changeDraft(Array.from(e.target.value).slice(0, MAX).join(""))}
-            onKeyDown={(e) => {
-              // Enter sends, Shift+Enter is a new line; not while an input method (Hindi typing) is composing.
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            aria-describedby={`${id}-count`}
-            className={cx(inputStyles, "resize-y leading-relaxed")}
-          />
+          {/* Stitch 09: one line with a send arrow inside; it grows with Shift+Enter. */}
+          <div className="relative">
+            <textarea
+              id={`${id}-input`}
+              rows={1}
+              value={draft}
+              maxLength={MAX * 2}
+              // Short, so it fits a phone (360 px) on one or two lines.
+              placeholder="Ask for a change, e.g. focus on point 2"
+              onChange={(e) => changeDraft(Array.from(e.target.value).slice(0, MAX).join(""))}
+              onKeyDown={(e) => {
+                // Enter sends, Shift+Enter is a new line; not while an input method (Hindi typing) is composing.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              aria-describedby={`${id}-count`}
+              className={cx(inputStyles, "min-h-11 resize-y py-3 pr-12 leading-relaxed")}
+            />
+            <button
+              type="submit"
+              aria-label={ai.busy === "chat" ? "Thinking…" : "Send"}
+              aria-busy={ai.busy === "chat"}
+              disabled={!ai.canAsk || !draft.trim()}
+              className="absolute bottom-2 right-2 grid size-8 place-items-center rounded-lg bg-cyan text-bg transition-colors hover:bg-cyan/90 disabled:bg-surface disabled:text-muted"
+            >
+              <svg aria-hidden viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
+              </svg>
+            </button>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Button type="submit" disabled={!ai.canAsk || !draft.trim()} aria-busy={ai.busy === "chat"}>
-                {ai.busy === "chat" ? "Thinking…" : "Send"}
-              </Button>
-              <Thinking busy={ai.busy === "chat" ? "chat" : null} />
-            </div>
-            <span id={`${id}-count`} className={cx("font-mono text-xs text-muted", used >= MAX && "text-orange")}>
+            <Thinking busy={ai.busy === "chat" ? "chat" : null} />
+            {/* The count only once it matters (the limit is 1,000). */}
+            <span id={`${id}-count`} className={cx("ml-auto font-mono text-xs text-muted", used < MAX - 200 && "sr-only", used >= MAX && "text-orange")}>
               {used.toLocaleString("en-IN")} / {MAX.toLocaleString("en-IN")}
             </span>
           </div>
@@ -191,4 +210,4 @@ export function IdeaChat(props: {
 }
 
 const bubble = (role: "user" | "assistant") =>
-  cx("max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm", role === "user" ? "self-end bg-cyan/10" : "self-start border border-line bg-surface");
+  cx("max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm", role === "user" ? "self-end border border-line bg-surface" : "self-start border border-violet/40 bg-violet/10");

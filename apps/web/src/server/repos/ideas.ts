@@ -142,10 +142,15 @@ export async function saveBrief(
    * answer, an angle switch, another tab), saving would silently undo that: `brief_changed`, nothing written.
    */
   basedOn?: Date | null,
+  /**
+   * The idea card this brief came from (F2.7, "Selected"): an id for "Use this", null for a brief from the idea text or
+   * notes; left out (a rewrite of the same brief) to keep it.
+   */
+  cardId?: string | null,
 ): Promise<SaveBriefResult> {
   return inIdeaStage(userId, projectId, async (ctx): Promise<SaveBriefResult> => {
     if (basedOn !== undefined && (ctx.idea.briefUpdatedAt?.getTime() ?? null) !== (basedOn?.getTime() ?? null)) return "brief_changed";
-    return applyBrief(ctx, brief, alternatives, writtenFor);
+    return applyBrief(ctx, brief, alternatives, writtenFor, cardId);
   });
 }
 
@@ -304,7 +309,7 @@ async function inIdeaStage<T>(userId: string, projectId: string, fn: (ctx: Brief
  */
 export type WrittenFor = { language: ProjectDoc["language"]; lengthSec: 60 | 90 } | "keep";
 
-async function applyBrief({ session, project, idea, now }: BriefContext, briefIn: IdeaBriefDoc, alternativesIn: IdeaBriefDoc[], writtenFor?: WrittenFor) {
+async function applyBrief({ session, project, idea, now }: BriefContext, briefIn: IdeaBriefDoc, alternativesIn: IdeaBriefDoc[], writtenFor?: WrittenFor, cardId?: string | null) {
   const settings = writtenFor === "keep" ? {} : { briefLanguage: writtenFor?.language ?? project.language, briefLengthSec: writtenFor?.lengthSec ?? project.lengthPreset };
   // The brief and its angles always carry the video's audience setting (your decision, 2026-10-19): however the brief
   // was made (idea, card, notes, chat, angle switch), the brief card and the settings panel agree, and a later chat
@@ -314,7 +319,8 @@ async function applyBrief({ session, project, idea, now }: BriefContext, briefIn
   const alternatives = alternativesIn.map((a) => ({ ...a, audience: project.audience }));
   const saved = await collections.ideaSessions().findOneAndUpdate(
     { _id: idea._id },
-    { $set: { brief, briefAlternatives: alternatives, briefUpdatedAt: now, updatedAt: now, ...settings } },
+    // Chat answers, edits, angle switches and rewrites leave out `cardId`: still the same card's brief.
+    { $set: { brief, briefAlternatives: alternatives, briefUpdatedAt: now, updatedAt: now, ...settings, ...(cardId !== undefined ? { briefCardId: cardId } : {}) } },
     { session, returnDocument: "after" },
   );
   if (!saved) throw new Error("Idea session vanished during its own transaction");
