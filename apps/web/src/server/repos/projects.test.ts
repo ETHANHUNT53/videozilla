@@ -449,12 +449,12 @@ describe("POST /api/v1/projects", () => {
     expect(await state.db.collection("projects").countDocuments()).toBe(0);
   });
 
-  it("is protected like every write: Origin, JSON and a verified user", async () => {
+  it("is protected like every write: Origin, JSON and a session (an unverified email is fine since 2026-10-20)", async () => {
     expect((await post("{}", { origin: "https://evil.example" })).status).toBe(403);
     expect((await post("title=x", { "content-type": "application/x-www-form-urlencoded" })).status).toBe(415);
-    sessionUser.mockResolvedValue({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: false, image: null, createdAt: base });
-    expect((await post("{}")).status).toBe(403);
     expect(await state.db.collection("projects").countDocuments()).toBe(0);
+    sessionUser.mockResolvedValue({ id: ME, name: "Asha", email: "asha@example.com", emailVerified: false, image: null, createdAt: base });
+    expect((await post("{}")).status).toBe(201);
   });
 });
 

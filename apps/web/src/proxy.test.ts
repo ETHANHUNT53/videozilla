@@ -54,14 +54,19 @@ describe("proxy: Welcome redirect for the Library (F1.12)", () => {
     expect(res.headers.get("location")).toBe(`${APP}/welcome`);
   });
 
-  it("does nothing (and remembers nothing) for a stale session or an unverified user", async () => {
-    for (const session of [null, { user: { ...verified.user, emailVerified: false } }]) {
-      readSession.mockResolvedValue(session);
-      const res = await proxy(get("/library", { [SESSION]: "tok-1.sig" }));
-      expect(res.headers.get("location")).toBeNull();
-      expect(doneCookie(res)).toBeUndefined();
-    }
+  it("does nothing (and remembers nothing) for a stale session", async () => {
+    readSession.mockResolvedValue(null);
+    const res = await proxy(get("/library", { [SESSION]: "tok-1.sig" }));
+    expect(res.headers.get("location")).toBeNull();
+    expect(doneCookie(res)).toBeUndefined();
     expect(needsWelcome).not.toHaveBeenCalled();
+  });
+
+  it("an unverified user gets Welcome like anyone (no email verification since 2026-10-20)", async () => {
+    readSession.mockResolvedValue({ user: { ...verified.user, emailVerified: false } });
+    needsWelcome.mockResolvedValue(true);
+    const res = await proxy(get("/library", { [SESSION]: "tok-1.sig" }));
+    expect(res.headers.get("location")).toBe(`${APP}/welcome`);
   });
 
   it("lets the page decide if the check fails", async () => {

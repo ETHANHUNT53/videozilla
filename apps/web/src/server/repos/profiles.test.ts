@@ -101,13 +101,13 @@ describe("PATCH /api/v1/me/profile", () => {
     expect(await testMongo.db.collection("profiles").findOne({ userId: ME })).toMatchObject({ role: "user", defaultLanguage: "en", defaultStyleId: "midnight" });
   });
 
-  it("is protected like every write: verified user and our Origin", async () => {
+  it("is protected like every write: a session and our Origin (an unverified email is fine since 2026-10-20)", async () => {
     expect((await patch({ defaultLanguage: "hi" }, { origin: "https://evil.example" })).status).toBe(403);
     sessionUser.mockResolvedValue(user({ emailVerified: false }));
-    expect((await patch({ defaultLanguage: "hi" })).status).toBe(403);
+    expect((await patch({ defaultLanguage: "hi" })).status).toBe(200);
     sessionUser.mockResolvedValue(null);
     expect((await patch({ defaultLanguage: "hi" })).status).toBe(401);
-    expect(await testMongo.db.collection("profiles").countDocuments({ defaultLanguage: "hi" })).toBe(0);
+    expect(await testMongo.db.collection("profiles").countDocuments({ defaultLanguage: "hi" })).toBe(1); // only the signed-in save
   });
 
   it("answers GET with 405 (the profile comes with GET /api/v1/me)", async () => {

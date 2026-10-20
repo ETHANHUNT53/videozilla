@@ -98,7 +98,7 @@ flowchart LR
 | **Render agent** | Node.js + Remotion renderer + ffmpeg | Owner's Windows PC (V1) | Pulls render jobs, renders MP4s, uploads to R2 |
 | **Video package** | React + Remotion | Bundled into the web app (preview) and the render agent (final render) | One set of scene components for both preview and render |
 | **External AI** | Gemini (text), ElevenLabs (voice) | Vendor APIs | Script, storyboard, revisions, voiceover |
-| **Email** | Resend | Vendor | Verification, reset, notifications |
+| **Email** | Resend | Vendor | Notifications (later). No auth emails since 2026-10-20 (PRD D16) |
 | **Publishing** | Instagram API with Instagram Login | Meta | Post and schedule Reels |
 
 ### 3.3 End-to-end flow
@@ -478,7 +478,7 @@ The glow and blur filters cost about 2× compared with the light style. Planned 
 | Route | Type | Purpose |
 |---|---|---|
 | `/` | static | Landing |
-| `/sign-in`, `/sign-up`, `/verify-email`, `/forgot-password`, `/reset-password` | static shell + client forms | Auth |
+| `/sign-in`, `/sign-up` | static shell + client forms | Auth (`/verify-email`, `/forgot-password`, `/reset-password` redirect to sign-in since PRD D16) |
 | `/library` | partial prerender | Projects, filters, search, needs-attention |
 | `/projects/[id]` | partial prerender | Stepper: Idea → Storyboard → Video, chat panel, preview player, publish dialog |
 | `/settings` | partial prerender | Defaults, Instagram connection, delete account |
@@ -506,8 +506,8 @@ The dark design system matches the videos: same palette, Geist / Geist Mono, `//
 
 ### 13.1 Authentication (Better Auth + MongoDB adapter)
 
-- Email + password with **required email verification**, and password reset (via Resend; in development, emails print to the console).
-- Google sign-in; account linking for the same verified email.
+- Email + password, **no email verification and no password-reset email** (PRD D16, 2026-10-20): the account works at once. Zod checks the input in the forms and in a Better Auth `before` hook (`lib/auth-schema.ts`); passwords 8–128 characters, hashed with scrypt; sign-in 10 and sign-up 5 per minute per IP (Better Auth's limiter, stored in MongoDB).
+- Google sign-in; **no automatic linking** of Google into an existing password account (its email isn't proven since D16).
 - Database sessions in httpOnly cookies, 30-day rolling; delete account (removes all user data).
 
 ### 13.2 Authorisation

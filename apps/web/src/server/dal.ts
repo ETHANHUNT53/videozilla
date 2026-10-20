@@ -14,13 +14,12 @@ export const getSession = cache(async () => readSession(await headers()));
 /** For the sign-in / sign-up pages: send users who are really signed in to the library. */
 export async function redirectIfSignedIn() {
   const session = await getSession();
-  if (session?.user.emailVerified) redirect("/library");
+  if (session) redirect("/library");
 }
 
-/** For pages and server actions that require a signed-in, verified user. */
+/** For pages and server actions that require a signed-in user (no email verification since 2026-10-20). */
 export async function requireUser() {
   const session = await getSession();
   if (!session) redirect("/sign-in");
-  if (!session.user.emailVerified) redirect("/verify-email");
   return session.user;
 }

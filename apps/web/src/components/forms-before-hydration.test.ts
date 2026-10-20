@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth-client", () => ({ authClient: {} }));
 vi.mock("@/lib/api-client", () => ({ apiCall: async () => ({}), ApiClientError: class extends Error {} }));
 
-import { ForgotPasswordForm, ResetPasswordForm, SignInForm, SignUpForm } from "./auth-forms";
+import { authErrorText, SignInForm, SignUpForm } from "./auth-forms";
 import { ProfileSettingsForm } from "./settings";
 import { WelcomeView } from "./welcome";
 
@@ -34,8 +34,6 @@ const profile = {
 const forms: [string, ComponentType<never>, object][] = [
   ["sign in", SignInForm as ComponentType<never>, { googleEnabled: false }],
   ["sign up", SignUpForm as ComponentType<never>, { googleEnabled: false }],
-  ["forgot password", ForgotPasswordForm as ComponentType<never>, {}],
-  ["reset password", ResetPasswordForm as ComponentType<never>, {}],
   ["settings", ProfileSettingsForm as ComponentType<never>, { profile }],
   ["welcome", WelcomeView as ComponentType<never>, { profile }],
 ];
@@ -52,12 +50,18 @@ describe("forms in the server HTML (before hydration)", () => {
   });
 });
 
-describe("reset password errors", () => {
-  it("a used, expired or unknown link never shows Better Auth's raw 'Invalid token'", async () => {
-    const { resetErrorText } = await import("./auth-forms");
-    expect(resetErrorText({ code: "INVALID_TOKEN", message: "Invalid token", status: 400 })).toBe("This reset link is invalid or has expired. Request a new one.");
-    expect(resetErrorText({ message: "invalid token" })).toBe("This reset link is invalid or has expired. Request a new one.");
-    expect(resetErrorText({ code: "PASSWORD_TOO_SHORT", message: "Password too short", status: 400 })).toBe("Password too short");
-    expect(resetErrorText({ status: 500 })).toMatch(/on our side/);
+describe("sign-in and sign-up (no email step, 2026-10-20)", () => {
+  it("no 'Forgot password' link, and no verify-email step in the forms", () => {
+    const html = renderToString(createElement(SignInForm, { googleEnabled: false }));
+    expect(html).not.toMatch(/forgot-password|Forgot password/i);
+    expect(html).toContain("/sign-up");
+  });
+
+  it("Better Auth's errors in our words", () => {
+    expect(authErrorText({ status: 401, code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password" }, "x")).toBe("That email and password don't match an account.");
+    expect(authErrorText({ status: 422, code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", message: "User already exists. Use another email." }, "x")).toBe("An account with this email already exists. Sign in instead.");
+    expect(authErrorText({ status: 429, message: "Too many requests" }, "x")).toBe("Too many attempts. Wait a minute and try again.");
+    expect(authErrorText({ status: 500 }, "x")).toMatch(/on our side/);
+    expect(authErrorText({ status: 400, message: "Enter a valid email address, like name@example.com." }, "x")).toBe("Enter a valid email address, like name@example.com."); // the server's Zod message
   });
 });

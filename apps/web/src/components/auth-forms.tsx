@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
+import { firstProblem, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, signInSchema, signUpSchema } from "@/lib/auth-schema";
 import { SubmitButton } from "./submit-button";
 import { Button, Eyebrow, Field, Input } from "./ui";
 
@@ -13,6 +14,20 @@ function ErrorText({ message }: { message: string | null }) {
       {message}
     </p>
   ) : null;
+}
+
+/**
+ * Better Auth's answers in our words. Wrong email or password says just that (never which one); too many tries says to
+ * wait (the server's rate limit, server/auth.ts).
+ */
+export function authErrorText(error: { status?: number; message?: string; code?: string }, fallback: string): string {
+  if (error.status === 429) return "Too many attempts. Wait a minute and try again.";
+  if (error.status && error.status >= 500) return "Something went wrong on our side. Please try again in a minute.";
+  if (error.code === "USER_ALREADY_EXISTS" || error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" || /already exists/i.test(error.message ?? "")) {
+    return "An account with this email already exists. Sign in instead.";
+  }
+  if (error.code === "INVALID_EMAIL_OR_PASSWORD" || error.status === 401) return "That email and password don't match an account.";
+  return error.message || fallback;
 }
 
 /** Only allow same-site relative paths after sign-in (no open redirects). */
@@ -54,22 +69,23 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
-  const [error, setError] = useState<string | null>(params.get("error") === "google" ? "Google sign-in didn't complete. Please try again." : null);
+  const [error, setError] = useState<string | null>(
+    params.get("error") === "google" ? "Google sign-in didn't complete. If you made an account with a password for this email, sign in with your password." : null,
+  );
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    // The same rules as the server (lib/auth-schema.ts), so most mistakes are caught before a request.
+    const input = signInSchema.safeParse({ email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });
+    if (!input.success) return setError(firstProblem(input));
     setBusy(true);
     setError(null);
-    const { error } = await authClient.signIn.email({ email: String(form.get("email")), password: String(form.get("password")), callbackURL: next });
+    const { error } = await authClient.signIn.email({ ...input.data, callbackURL: next });
     setBusy(false);
     if (error) {
-      if (error.status === 403) {
-        router.push(`/verify-email?email=${encodeURIComponent(String(form.get("email")))}`);
-        return;
-      }
-      setError(error.message ?? "Couldn't sign you in.");
+      setError(authErrorText(error, "Couldn't sign you in."));
       return;
     }
     router.push(next);
@@ -90,20 +106,18 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
       ) : null}
       <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
         <Field label="Email">
-          <Input name="email" type="email" autoComplete="email" required />
+          <Input name="email" type="email" autoComplete="email" required maxLength={254} />
         </Field>
         <Field label="Password">
-          <Input name="password" type="password" autoComplete="current-password" required />
+          <Input name="password" type="password" autoComplete="current-password" required maxLength={PASSWORD_MAX} />
         </Field>
         <ErrorText message={error} />
         <SubmitButton disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </SubmitButton>
       </form>
-      <div className="flex justify-between text-sm">
-        <Link href="/forgot-password" className="text-muted hover:text-fg">
-          Forgot password?
-        </Link>
+      {/* No "Forgot password?" for now (2026-10-20): Videozilla sends no email, so there's no reset link to send. */}
+      <div className="flex justify-end text-sm">
         <Link href="/sign-up" className="text-cyan hover:underline">
           Create account
         </Link>
@@ -120,16 +134,19 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    const email = String(form.get("email"));
+    const input = signUpSchema.safeParse({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });
+    if (!input.success) return setError(firstProblem(input));
     setBusy(true);
     setError(null);
-    const { error } = await authClient.signUp.email({ name: String(form.get("name")), email, password: String(form.get("password")), callbackURL: "/library" });
+    // No email step (2026-10-20): the new account is signed in at once; the Library sends a first-time user to Welcome.
+    const { error } = await authClient.signUp.email({ ...input.data, callbackURL: "/library" });
     setBusy(false);
     if (error) {
-      setError(error.status >= 500 ? "Something went wrong on our side, so your account wasn't created. Please try again in a minute." : (error.message ?? "Couldn't create your account."));
+      setError(authErrorText(error, "Couldn't create your account."));
       return;
     }
-    router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+    router.push("/library");
+    router.refresh();
   }
 
   return (
@@ -146,13 +163,13 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
       ) : null}
       <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
         <Field label="Name">
-          <Input name="name" autoComplete="name" required maxLength={60} />
+          <Input name="name" autoComplete="name" required maxLength={NAME_MAX} />
         </Field>
         <Field label="Email">
-          <Input name="email" type="email" autoComplete="email" required />
+          <Input name="email" type="email" autoComplete="email" required maxLength={254} />
         </Field>
-        <Field label="Password" hint="At least 8 characters">
-          <Input name="password" type="password" autoComplete="new-password" minLength={8} required />
+        <Field label="Password" hint={`${PASSWORD_MIN} to ${PASSWORD_MAX} characters`}>
+          <Input name="password" type="password" autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX} required />
         </Field>
         <ErrorText message={error} />
         <SubmitButton disabled={busy}>
@@ -165,125 +182,6 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
           Sign in
         </Link>
       </p>
-    </div>
-  );
-}
-
-export function VerifyEmailNotice() {
-  const params = useSearchParams();
-  const email = params.get("email") ?? "";
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-
-  return (
-    <div className="flex flex-col gap-5">
-      <Eyebrow accent="text-orange">one more step</Eyebrow>
-      <h1 className="text-3xl font-semibold tracking-tight">Check your email</h1>
-      <p className="text-muted">
-        We sent a verification link{email ? <> to <span className="text-fg">{email}</span></> : null}. Open it to activate your account — you&apos;ll be signed
-        in automatically.
-      </p>
-      {email ? (
-        <Button
-          variant="secondary"
-          disabled={state === "sending" || state === "sent"}
-          onClick={async () => {
-            setState("sending");
-            const { error } = await authClient.sendVerificationEmail({ email, callbackURL: "/library" });
-            setState(error ? "error" : "sent");
-          }}
-        >
-          {state === "sent" ? "Sent again ✓" : state === "sending" ? "Sending…" : "Resend verification email"}
-        </Button>
-      ) : null}
-      {state === "error" ? <ErrorText message="Couldn't resend right now. Please try again in a minute." /> : null}
-      <Link href="/sign-in" className="text-sm text-muted hover:text-fg">
-        ← Back to sign in
-      </Link>
-    </div>
-  );
-}
-
-export function ForgotPasswordForm() {
-  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const email = String(new FormData(e.currentTarget).get("email"));
-    setState("sending");
-    // Same response whether or not the account exists, so emails can't be probed.
-    await authClient.requestPasswordReset({ email, redirectTo: "/reset-password" });
-    setState("sent");
-  }
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <Eyebrow>password reset</Eyebrow>
-        <h1 className="text-3xl font-semibold tracking-tight">Forgot your password?</h1>
-      </div>
-      {state === "sent" ? (
-        <p className="text-muted">If an account exists for that email, a reset link is on its way. It expires in an hour.</p>
-      ) : (
-        <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
-          <Field label="Email">
-            <Input name="email" type="email" autoComplete="email" required />
-          </Field>
-          <SubmitButton disabled={state === "sending"}>
-            {state === "sending" ? "Sending…" : "Send reset link"}
-          </SubmitButton>
-        </form>
-      )}
-      <Link href="/sign-in" className="text-sm text-muted hover:text-fg">
-        ← Back to sign in
-      </Link>
-    </div>
-  );
-}
-
-/** Better Auth's reset errors in our words: a used, expired or unknown link says so (never the raw "Invalid token"). */
-export function resetErrorText(error: { code?: string; message?: string; status?: number }): string {
-  if (error.code === "INVALID_TOKEN" || /invalid token|expired/i.test(error.message ?? "")) return "This reset link is invalid or has expired. Request a new one.";
-  if (error.code === "PASSWORD_TOO_SHORT" || error.code === "PASSWORD_TOO_LONG") return error.message ?? "That password isn't allowed.";
-  return error.status && error.status >= 500 ? "Something went wrong on our side. Please try again in a minute." : (error.message ?? "Couldn't reset your password.");
-}
-
-export function ResetPasswordForm() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const token = params.get("token");
-  const [error, setError] = useState<string | null>(params.get("error") ? "This reset link is invalid or has expired. Request a new one." : null);
-  const [busy, setBusy] = useState(false);
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!token) return;
-    setBusy(true);
-    const { error } = await authClient.resetPassword({ newPassword: String(new FormData(e.currentTarget).get("password")), token });
-    setBusy(false);
-    if (error) {
-      setError(resetErrorText(error));
-      return;
-    }
-    router.push("/sign-in");
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <Eyebrow>password reset</Eyebrow>
-        <h1 className="text-3xl font-semibold tracking-tight">Choose a new password</h1>
-      </div>
-      {token ? (
-        <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
-          <Field label="New password" hint="At least 8 characters">
-            <Input name="password" type="password" autoComplete="new-password" minLength={8} required />
-          </Field>
-          <ErrorText message={error} />
-          <SubmitButton disabled={busy}>
-            {busy ? "Saving…" : "Save password"}
-          </SubmitButton>
-        </form>
-      ) : (
-        <ErrorText message={error ?? "This reset link is missing its token. Request a new one."} />
-      )}
     </div>
   );
 }

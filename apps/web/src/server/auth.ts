@@ -1,16 +1,22 @@
 import "server-only";
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { db, mongoClient } from "./db/mongo";
-import { actionEmail, sendEmail } from "./email";
+import { checkAuthInput, PASSWORD_MAX, PASSWORD_MIN } from "@/lib/auth-schema";
 import { env } from "./env";
 import { requestAccountDataDeletion } from "./jobs/account-deletion";
 import { getOrCreateProfile } from "./repos/profiles";
 
 /**
- * Authentication (PRD F1, D12): email + password with verification, Google sign-in, account linking.
- * Users and sessions live in our own MongoDB (collections: user, session, account, verification).
+ * Authentication (PRD F1, D12): email + password, Google sign-in, account linking. Users and sessions live in our own
+ * MongoDB (collections: user, session, account, verification, rateLimit).
+ *
+ * No email is sent (your decision, 2026-10-20): signing up signs you in at once, nothing has to be verified, and there's
+ * no "forgot password" until email comes back. The trade-off: an address isn't proven to belong to whoever typed it,
+ * and a forgotten password needs a person (or Google sign-in). Passwords are hashed by Better Auth (scrypt) and never
+ * logged.
  */
 export const auth = betterAuth({
   appName: "Videozilla",
@@ -19,29 +25,45 @@ export const auth = betterAuth({
   database: mongodbAdapter(db(), { client: mongoClient() }),
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
-    minPasswordLength: 8,
-    revokeSessionsOnPasswordReset: true,
-    sendResetPassword: async ({ user, url }) => {
-      const mail = actionEmail("Reset your password", "Tap the button to choose a new password. The link expires in an hour.", "Reset password", url);
-      await sendEmail({ to: user.email, subject: "Reset your Videozilla password", ...mail });
-    },
+    // Accounts made before this change (some never verified) sign in the same way.
+    requireEmailVerification: false,
+    autoSignIn: true,
+    minPasswordLength: PASSWORD_MIN,
+    maxPasswordLength: PASSWORD_MAX,
   },
-  emailVerification: {
-    sendOnSignUp: true,
-    autoSignInAfterVerification: true,
-    expiresIn: 60 * 60 * 24,
-    sendVerificationEmail: async ({ user, url }) => {
-      const mail = actionEmail("Verify your email", `Welcome to Videozilla, ${user.name || "creator"}! Confirm your email to start making videos.`, "Verify email", url);
-      await sendEmail({ to: user.email, subject: "Verify your Videozilla email", ...mail });
+  // The email flows are off: nothing would send their links. (Better Auth also refuses a reset with no sender.)
+  disabledPaths: ["/request-password-reset", "/reset-password", "/reset-password/:token", "/send-verification-email", "/verify-email"],
+  // Every request is checked against the same Zod rules as the forms (lib/auth-schema.ts), so one that skips the page
+  // gets the same answer; the email is stored trimmed and lowercased.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      const checked = checkAuthInput(ctx.path, ctx.body);
+      if (!checked) return;
+      if (!checked.ok) throw new APIError("BAD_REQUEST", { message: checked.message });
+      return { context: { ...ctx, body: checked.body } };
+    }),
+  },
+  // Limits guessing and mass sign-ups (per IP, per minute), kept in MongoDB so every server instance shares them. On in
+  // development too, so the limit is visible before launch.
+  rateLimit: {
+    enabled: true,
+    storage: "database",
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 10 },
+      "/sign-up/email": { window: 60, max: 5 },
     },
   },
   socialProviders: env.google.configured
     ? { google: { clientId: env.google.clientId, clientSecret: env.google.clientSecret, prompt: "select_account" } }
     : {},
   account: {
-    // Google + password on the same verified email become one account (PRD F1 edge case).
-    accountLinking: { enabled: true, trustedProviders: ["google", "email-password"] },
+    // No automatic linking of Google into an existing account: without email verification, anyone could sign up with a
+    // password at someone else's address and wait for its owner's Google sign-in to be merged into their account. A
+    // Google sign-in for an email that already has a password account fails instead (the sign-in page says to use the
+    // password). Accounts linked before this change stay linked.
+    accountLinking: { enabled: true, disableImplicitLinking: true, requireLocalEmailVerified: true, trustedProviders: [] },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 30,

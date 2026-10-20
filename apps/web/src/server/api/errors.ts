@@ -7,7 +7,6 @@ const CATALOGUE = {
   VALIDATION_FAILED: [400, false, "Some of the information sent isn't valid."],
   INVALID_CURSOR: [400, false, "This page link has expired. Reload the list."],
   UNAUTHENTICATED: [401, false, "Please sign in to continue."],
-  EMAIL_NOT_VERIFIED: [403, false, "Please verify your email address first."],
   ORIGIN_NOT_ALLOWED: [403, false, "This request came from a page we don't recognise."],
   FORBIDDEN: [403, false, "You don't have access to this."],
   NOT_FOUND: [404, false, "We couldn't find that."],

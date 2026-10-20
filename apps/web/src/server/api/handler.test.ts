@@ -95,9 +95,9 @@ describe("apiRoute: authentication", () => {
     expect((await error(res)).code).toBe("UNAUTHENTICATED");
   });
 
-  it("403 for an unverified email, unless the route allows any session", async () => {
+  it("an unverified email is just a session (no email verification since 2026-10-20)", async () => {
     sessionUser.mockResolvedValue({ ...USER, emailVerified: false });
-    expect((await apiRoute({}, async () => ({}))(request("GET"))).status).toBe(403);
+    expect((await apiRoute({}, async () => ({ ok: true }))(request("GET"))).status).toBe(200);
     expect((await apiRoute({ auth: "session" }, async () => ({ ok: true }))(request("GET"))).status).toBe(200);
   });
 

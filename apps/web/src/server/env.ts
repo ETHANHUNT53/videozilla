@@ -34,15 +34,6 @@ export const env = {
       return required("GOOGLE_CLIENT_SECRET");
     },
   },
-  email: {
-    /** Without a Resend key, emails are printed to the server console (development). */
-    get resendKey() {
-      return process.env.RESEND_API_KEY || null;
-    },
-    get from() {
-      return process.env.EMAIL_FROM || "Videozilla <onboarding@resend.dev>";
-    },
-  },
   r2: {
     get configured() {
       return Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET);

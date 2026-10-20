@@ -318,10 +318,11 @@ describe("every route needs a session, and a verified email", () => {
     expect((await call(handler, method, url, params, method === "GET" ? undefined : { title: "x" })).status).toBe(401);
   });
 
-  it.each(HANDLERS)("%s: 403 with an unverified email (except GET /me)", async (label, handler, method, url, params) => {
+  it.each(HANDLERS)("%s: an unverified email is no longer refused (no 403; no email verification since 2026-10-20)", async (_, handler, method, url, params) => {
     as({ ...B, emailVerified: false });
-    const { status } = await call(handler, method, url, params, method === "GET" ? undefined : { title: "x" });
-    expect(status).toBe(label === "GET /me" ? 200 : 403);
+    const { status, json } = await call(handler, method, url, params, method === "GET" ? undefined : { title: "x" });
+    expect(status).not.toBe(401);
+    expect(json?.error?.code).not.toBe("EMAIL_NOT_VERIFIED");
   });
 
   it("unknown /api/v1 paths are 404 for everyone", async () => {

@@ -1,5 +1,7 @@
 # Setup guide — Sign-in, email and Google (features F1.1–F1.4)
 
+> **Not needed since 2026-10-20 (PRD D16):** Videozilla sends no auth email (no verification, no password reset), so Resend isn't used and `RESEND_API_KEY` / `EMAIL_FROM` are no longer read. The Google sign-in part (§C) still applies. The rest is kept for when email returns.
+
 **Where things stand:** Better Auth is already set up in code (`apps/web/src/server/auth.ts`), and a secret was generated in `apps/web/.env.local`. Emails "don't send" because `RESEND_API_KEY` is empty. In that case the app is in development mode and **prints each email (with its link) in the terminal running `npm run dev`**.
 
 You need three things: (A) run the app locally, (B) real email via Resend, (C) optional Google sign-in.

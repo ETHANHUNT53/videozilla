@@ -53,8 +53,8 @@ async function welcomeCheck(request: NextRequest): Promise<NextResponse> {
   if (request.cookies.get(WELCOME_DONE_COOKIE)?.value === tag) return NextResponse.next();
   try {
     const session = await readSession(request.headers);
-    // Signed out (stale cookie) or not verified yet: the page sends them to sign-in / verify; nothing to remember.
-    if (!session?.user.emailVerified) return NextResponse.next();
+    // Signed out (stale cookie): the page sends them to sign-in; nothing to remember.
+    if (!session) return NextResponse.next();
     if (await needsWelcome(session.user.id)) return NextResponse.redirect(new URL("/welcome", request.nextUrl));
     const res = NextResponse.next();
     res.cookies.set(WELCOME_DONE_COOKIE, tag, { httpOnly: true, sameSite: "lax", secure: request.nextUrl.protocol === "https:", path: "/library", maxAge: 30 * 86_400 });

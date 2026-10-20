@@ -5,7 +5,7 @@
 | **Product name** | **Videozilla** *(chosen; see [Appendix E](#e-product-name-candidates) for domain status and a trademark note)* |
 | **Market (V1)** | **India** (Hindi + English creators, teachers and edtech brands). Global expansion in later versions. |
 | **Document version** | 1.4 (selectable video themes: Midnight default + Mentor; see F4-FR2 and §14.6) |
-| **Date** | 2026-10-16 (v1.4: 2026-10-20) |
+| **Date** | 2026-10-16 (v1.4: 2026-10-20; v1.5: 2026-10-20, sign-in without email) |
 | **Owner** | Product owner (you) |
 | **Status** | Draft, ready for review |
 | **Platform** | Web app (desktop-first, responsive down to tablet; mobile is view-only friendly) |
@@ -150,6 +150,7 @@ Every step is one click forward, and every step can be revised by chatting with 
 | D13 | Billing deferred | Internal caps protect costs |
 | D14 | **India-first V1** (§5.1) | Global expansion later |
 | D15 | Instagram is linked with a **"Connect Instagram" button** (official Instagram Login), then posting is automatic on approval or at the scheduled time (§9 F9) | Decided in v1.2 |
+| D16 | **Sign-in without email (2026-10-20):** email + password accounts work at once, with no verification email, and no password-reset email for now ("Forgot password" hidden); Google sign-in stays. Resend isn't used for auth. | Trade-off: an email address isn't proven to belong to its account holder, and there's no self-serve password reset until email returns. Google isn't auto-linked to password accounts. |
 
 > **Note on D9 (Gemini):** A **Google AI Pro subscription covers the Gemini app, not the Gemini API.** API usage is billed separately through **Google AI Studio / Google Cloud**. The free tier covers `gemini-3.8-flash` and `gemini-3.5-flash-lite` only. `gemini-4-argon` and the image models have **no free tier**. Free-tier content **is used to improve Google's products**; paid-tier content is not. So:
 > - **Development:** run every text task on `gemini-3.8-flash` (free tier) using test topics only.
@@ -295,8 +296,8 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 
 | ID | Requirement | Priority |
 |---|---|---|
-| F1-FR1 | Sign-up and sign-in via **Google OAuth** and **email + password** (with email verification), via **Better Auth** with its MongoDB adapter. Verification and reset emails are sent through Resend. | P0 |
-| F1-FR2 | Password reset via email link | P0 |
+| F1-FR1 | Sign-up and sign-in via **Google OAuth** and **email + password**, via **Better Auth** with its MongoDB adapter. **No email is sent** (D16): an account works as soon as it's created, with no verification step. Email and password are checked with Zod in the form and on the server (email trimmed, lowercased and a valid format; password 8–128 characters), passwords are stored hashed, and sign-in / sign-up are rate-limited. | P0 |
+| F1-FR2 | Password reset via email link — **deferred** (D16): no "Forgot password" until email returns; a forgotten password needs support or Google sign-in. | P0 → later |
 | F1-FR3 | Session persists across browser restarts (Better Auth database sessions in an httpOnly secure cookie, 30-day rolling expiry); sign-out from the profile menu; "sign out of all devices" in settings | P0 |
 | F1-FR4 | Onboarding: a 3-card intro on first sign-in (skippable), plus collecting display name, preferred video language (Hindi / English) and what they teach or create about (optional, used to tailor idea suggestions). Time zone defaults to IST. | P0 |
 | F1-FR5 | **Library page** shows project cards: thumbnail (first frame or title card), title, status badge, language, duration, last updated | P0 |
@@ -315,8 +316,8 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 - "Needs attention" projects are pinned at the top of the library.
 
 #### Edge cases
-- Google sign-in with an email that already has a password account → Better Auth account linking joins the identities (Google is a trusted provider and the email must be verified); otherwise show "This email is registered with a password. Sign in with your password, then connect Google in settings."
-- Unverified email tries to sign in → resend verification CTA.
+- Google sign-in with an email that already has a password account → **not** linked automatically (D16: the password account's email isn't proven, so linking would let someone who pre-registered that address share the Google owner's account); show "This email is registered with a password. Sign in with your password." Accounts linked before D16 stay linked.
+- Accounts created before D16 that never verified their email sign in like any other (no verification step any more).
 - User deletes a project with a **scheduled** post → warn "This will cancel the scheduled post on <date>" → cancel the publish job on confirmation.
 - User deletes a project while it's **building or rendering** → cancel the pipeline run, then delete.
 - Duplicate of a project whose storyboard is mid-generation → duplicate the last completed version only.
@@ -747,7 +748,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 
 | # | Screen | Purpose | Key elements |
 |---|---|---|---|
-| S1 | **Sign in / Sign up** | Auth | Google button, email form, forgot password |
+| S1 | **Sign in / Sign up** | Auth | Google button, email form (no "Forgot password" until email returns, D16) |
 | S2 | **Onboarding** (first run) | Explain 3 steps | 3 cards, default language picker |
 | S3 | **Library (Dashboard)** | All projects | "+ Create video", filters, search, project cards, "Needs attention" section |
 | S4 | **Idea Studio** | Step ① | Mode tabs, input area, idea cards, brief panel, idea chat, settings panel, "Generate storyboard" |
@@ -867,7 +868,7 @@ flowchart TB
 |---|---|---|
 | Frontend + backend | **Next.js (App Router) on the Node.js runtime, TypeScript, Tailwind, shadcn/ui** | One codebase for UI and API; shared TS types with the video components |
 | Video components | **Remotion** (React) | Same components power the in-browser preview (Player) and the final render |
-| Auth | **Better Auth** + MongoDB adapter (Google OAuth, email/password, email verification, password reset, account linking) | Open source and free, TypeScript-first, built for Next.js, stores users and sessions in our own MongoDB. Auth.js (NextAuth) is now maintained by the Better Auth team, so Better Auth is the forward-looking choice. |
+| Auth | **Better Auth** + MongoDB adapter (Google OAuth, email/password, rate limiting; email verification and password reset off since D16) | Open source and free, TypeScript-first, built for Next.js, stores users and sessions in our own MongoDB. Auth.js (NextAuth) is now maintained by the Better Auth team, so Better Auth is the forward-looking choice. |
 | Database | **MongoDB Atlas** + official `mongodb` Node driver, with **Zod** schemas for validation | Storyboards and timelines are naturally JSON documents; free M0 cluster for development |
 | Live progress | **Polling** (TanStack Query) | Works on Vercel serverless; no WebSocket server needed |
 | Durable jobs | **Inngest** (functions served from the Next.js app on Vercel) | Step functions, retries, per-project concurrency, scheduling, cancellation. Each step is a separate short function call, so it fits Vercel's function time limits. |
@@ -878,7 +879,7 @@ flowchart TB
 | Timing fallback | **ElevenLabs Forced Alignment API** | Hosted, supports Hindi; no worker to run |
 | Rendering | **V1: local render agent on the owner's PC** (`@remotion/renderer` + ffmpeg). **Later: Remotion Lambda** on AWS. | Vercel functions can't run long Chromium + ffmpeg renders. A local PC costs nothing extra during V1. The render step sits behind the `Renderer` interface, so moving to Lambda later is a configuration change plus deploy, not a rewrite. |
 | Audio processing | Loudness-normalize each scene's TTS clip in an Inngest step (`ffmpeg-static`, short clips fit Vercel limits); music volume and ducking are set inside the Remotion composition | No separate media worker |
-| Email | **Resend** (auth emails + notifications) | Simple transactional email |
+| Email | **Resend** (notifications, later; **no auth emails since D16**) | Simple transactional email |
 | Monitoring | **Sentry** + structured logs | Error visibility |
 | Hosting | **Vercel** for the whole web app and job endpoints; **MongoDB Atlas** managed database; **local PC** for the render agent (V1) | Minimal infrastructure to run; no AWS account needed in V1 |
 
@@ -1334,7 +1335,7 @@ Next.js route handlers (or server actions). All require auth. JSON in/out, valid
 
 ### 20.3 Security
 - Application-level authorization on every query (§12.5); MongoDB Atlas network access restricted, with a dedicated database user that has least-privilege roles.
-- Better Auth: hashed passwords (scrypt), secure httpOnly session cookies, rate-limited sign-in and reset endpoints, email verification required before generation.
+- Better Auth: hashed passwords (scrypt), secure httpOnly session cookies, rate-limited sign-in and sign-up (per IP, shared across servers). No email verification (D16): an email address isn't proven to belong to whoever signed up with it, so nothing may trust it as proof of identity (no automatic Google linking, no emails to it).
 - Instagram tokens encrypted at rest; never sent to the client.
 - Signed, short-lived URLs for private media; publish URLs are unguessable and expire ≥ 2 h after creation.
 - API keys and secrets (Gemini, Azure, ElevenLabs, R2, MongoDB URI, Better Auth secret, Inngest, Resend, Instagram app secret, token-encryption key) only in Vercel server environment variables. The render agent has its own restricted credentials (§12.6).
@@ -1418,7 +1419,7 @@ Cross-cutting edge cases not already covered in feature sections:
 
 | # | Area | Scenario | Expected behavior |
 |---|---|---|---|
-| E1 | Auth | User signs up, never verifies email, tries to connect Instagram | Verification required before any generation; banner with resend |
+| E1 | Auth | User signs up and goes straight on (no email to verify, D16) | No banner; the account works at once |
 | E2 | Auth | User signs in on 3 devices | All sessions valid; live updates on all |
 | E3 | Library | 500+ projects | Cursor-based pagination on the `{userId, deletedAt, updatedAt}` index |
 | E4 | Idea | User pastes a URL instead of notes | V1 doesn't fetch URLs; message: "Paste the text content — links aren't supported yet" |
@@ -1482,7 +1483,7 @@ Estimates assume 1–2 developers working with AI coding assistance. Adjust afte
 | Milestone | Scope | Exit criteria | Est. |
 |---|---|---|---|
 | **M0 — Technical proof** | Script → Gemini (`gemini-3.8-flash`, free tier) storyboard JSON → ElevenLabs voiceover with timings → 7 scene types in Remotion → local MP4 render; EN + HI. **Listening test:** choose the English and Hindi ElevenLabs voices. | A synced 60 s video in EN and HI rendered locally | 1–2 wks |
-| **M1 — App foundation** | Monorepo, Next.js on Vercel, MongoDB Atlas + repository layer, Better Auth (Google + email/password + verification via Resend), library CRUD, settings, Inngest wiring, R2, Sentry; **register the domain; start the Meta developer app and App Review prep** (privacy policy, terms) | User can sign in, create/rename/delete projects | 1–2 wks |
+| **M1 — App foundation** | Monorepo, Next.js on Vercel, MongoDB Atlas + repository layer, Better Auth (Google + email/password; verification via Resend until D16, 2026-10-20), library CRUD, settings, Inngest wiring, R2, Sentry; **register the domain; start the Meta developer app and App Review prep** (privacy policy, terms) | User can sign in, create/rename/delete projects | 1–2 wks |
 | **M2 — Idea + Storyboard** | Idea Studio (3 modes, chat), storyboard generation, validators, storyboard screen with scene cards, version history (P1) | End-to-end idea → validated storyboard | 2 wks |
 | **M3 — Motion graphics library + themes + voices** | All 16 scene types, **theme-ready renderer** with the **Midnight** (default) and **Mentor** themes (presenter character + poses, chapters, evolving diagram, HUD states; §14.6), theme picker with previews, voice catalog with previews, safe zones, captions, live preview in Player, visual regression tests | Golden storyboards preview correctly in every theme | 3–4 wks (Mentor's presenter adds about 1 wk) |
 | **M4 — Build + Export pipeline** | P2 + P3 with durable steps, progress UI, retries, cancellation, notifications, **local render agent** (job queue, leases, heartbeat, R2 upload, auto-start on Windows), output validation | Reliable export of 90 s videos within targets | 2 wks |

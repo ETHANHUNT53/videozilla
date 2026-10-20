@@ -72,7 +72,7 @@
 - **Session cookie** issued by Better Auth: `better-auth.session_token` (`__Secure-` prefix in production). It is httpOnly, Secure, `SameSite=Lax`, `Path=/`, with a 30-day rolling expiry (System Design §13.1).
 - Browser clients send it automatically (`credentials: "same-origin"`). There are no bearer tokens in V1.
 - **Every `/api/v1` endpoint requires a valid session** unless marked *public*.
-- **Email must be verified.** A signed-in but unverified user gets `403 EMAIL_NOT_VERIFIED` on every `/api/v1` endpoint except `GET /me`.
+- **A session is enough.** Since 2026-10-20 (PRD D16) there's no email verification, so there's no `403 EMAIL_NOT_VERIFIED`; accounts that never verified work like any other.
 
 ### 3.2 CSRF protection
 
@@ -85,20 +85,20 @@ These endpoints are provided by Better Auth and documented here as a contract. T
 
 | Method | Path | Body | Success | Notes |
 |---|---|---|---|---|
-| POST | `/sign-up/email` | `{ name, email, password, callbackURL }` | `200 { token: null, user }` | Sends a verification email; no session until verified |
-| POST | `/sign-in/email` | `{ email, password, callbackURL?, rememberMe? }` | `200 { redirect, token, user }` + Set-Cookie | `403` if the email isn't verified (a fresh verification email is sent) |
+| POST | `/sign-up/email` | `{ name, email, password, callbackURL }` | `200 { token, user }` + Set-Cookie | Signed in at once (no email, D16). Zod-checked on the server: email trimmed, lowercased, valid; password 8–128; name 1–60 → `400` with the first problem |
+| POST | `/sign-in/email` | `{ email, password, callbackURL?, rememberMe? }` | `200 { redirect, token, user }` + Set-Cookie | `401` for a wrong email or password (never says which); no email check |
 | POST | `/sign-in/social` | `{ provider: "google", callbackURL, errorCallbackURL? }` | `200 { url, redirect: true }` | The browser follows `url` to Google; the callback is `/api/auth/callback/google` |
 | POST | `/sign-out` | `{}` | `200 { success: true }` | Clears the cookie |
 | GET | `/get-session` | — | `200 { session, user } \| null` | Used by the UI on load |
-| POST | `/send-verification-email` | `{ email, callbackURL }` | `200 { status: true }` | Rate-limited |
-| GET | `/verify-email?token=…&callbackURL=…` | — | `302` to `callbackURL` (signed in) | Link from the email |
-| POST | `/request-password-reset` | `{ email, redirectTo }` | `200 { status: true }` | **Same response whether or not the email exists** |
-| POST | `/reset-password` | `{ newPassword, token }` | `200 { status: true }` | Revokes all other sessions |
+| ~~POST~~ | ~~`/send-verification-email`~~ | | | Turned off (D16) |
+| ~~GET~~ | ~~`/verify-email`~~ | | | Turned off (D16) |
+| ~~POST~~ | ~~`/request-password-reset`~~ | | | Turned off until email returns (D16) |
+| ~~POST~~ | ~~`/reset-password`~~ | | | Turned off until email returns (D16) |
 | POST | `/delete-user` | `{ callbackURL? }` | `200 { success: true }` | Needs a fresh session (< 24 h). Starts account deletion (DB Design §6.12) |
 | GET | `/list-sessions` | — | `200 Session[]` | Settings → "signed-in devices" (P1) |
 | POST | `/revoke-other-sessions` | `{}` | `200 { status: true }` | "Sign out of other devices" |
 
-**Password rules:** 8–128 characters. **Rate limits** (Better Auth built-in): sign-in and sign-up 10 per minute per IP; verification and reset emails 3 per hour per email.
+**Password rules:** 8–128 characters, not only spaces (sign-in only checks 1–128, so older passwords still work). **Rate limits** (Better Auth's limiter, stored in MongoDB so all servers share it): sign-in 10 and sign-up 5 per minute per IP, other auth calls 100 per minute; `429` past them.
 
 ### 3.4 Roles
 
@@ -238,7 +238,7 @@ Internal details (stack traces, provider payloads, database errors) are **never*
 | 400 | `VALIDATION_FAILED` | Body, query or path parameter fails the schema | no |
 | 400 | `INVALID_CURSOR` | Bad or mismatched pagination cursor | no |
 | 401 | `UNAUTHENTICATED` | No or expired session | no |
-| 403 | `EMAIL_NOT_VERIFIED` | Session exists but the email isn't verified | no |
+| ~~403~~ | ~~`EMAIL_NOT_VERIFIED`~~ | Removed 2026-10-20 (PRD D16): no email verification | — |
 | 403 | `ORIGIN_NOT_ALLOWED` | CSRF origin check failed | no |
 | 403 | `FORBIDDEN` | Role not allowed (admin endpoints only) | no |
 | 404 | `NOT_FOUND` | Resource doesn't exist **or belongs to another user** | no |
@@ -490,7 +490,7 @@ interface Notification {
 
 ## 13. Endpoints
 
-Every endpoint requires a session and a verified email unless marked otherwise. Each one lists the request, the success response and its specific errors; the common errors (`401`, `403 EMAIL_NOT_VERIFIED`, `404`, `400 VALIDATION_FAILED`, `429`, `500`) apply everywhere and aren't repeated.
+Every endpoint requires a session unless marked otherwise (no verified email since PRD D16). Each one lists the request, the success response and its specific errors; the common errors (`401`, `403 EMAIL_NOT_VERIFIED`, `404`, `400 VALIDATION_FAILED`, `429`, `500`) apply everywhere and aren't repeated.
 
 ### 13.1 Me, profile, usage, config
 

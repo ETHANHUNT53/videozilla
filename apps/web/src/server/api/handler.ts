@@ -9,7 +9,7 @@ import { sessionUser, type SessionUser } from "./session";
  * Wrapper for every `/api/v1` route handler (API Design §2–§7). In order, it:
  * 1. gives the request an id (`X-Request-Id`, echoed or generated);
  * 2. checks `Origin` on unsafe methods (CSRF, §3.2);
- * 3. requires a session — and, by default, a verified email (§3.1);
+ * 3. requires a session (§3.1; since 2026-10-20 no verified email, as nothing sends one);
  * 4. checks `Content-Type` and the body size, parses JSON and validates body, query and path params with Zod after
  *    trimming / NFC-normalising strings (§4);
  * 5. runs the handler and returns its data as JSON (`204 No Content` when it returns nothing), or turns any error into the standard error body (§7) —
@@ -21,11 +21,11 @@ import { sessionUser, type SessionUser } from "./session";
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
 
-type Auth = "verified" | "session" | "public";
+type Auth = "session" | "public";
 type UserFor<A extends Auth> = A extends "public" ? SessionUser | null : SessionUser;
 
 export interface RouteOptions<A extends Auth, B, Q, P> {
-  /** `verified` (default): signed in with a verified email. `session`: signed in. `public`: no session needed. */
+  /** `session` (default): signed in. `public`: no session needed. */
   auth?: A;
   body?: ZodType<B>;
   query?: ZodType<Q>;
@@ -100,7 +100,7 @@ async function readBody(req: Request, limit: number): Promise<unknown> {
   }
 }
 
-export function apiRoute<A extends Auth = "verified", B = undefined, Q = undefined, P = undefined>(
+export function apiRoute<A extends Auth = "session", B = undefined, Q = undefined, P = undefined>(
   options: RouteOptions<A, B, Q, P>,
   handler: (input: RouteInput<A, B, Q, P>) => Promise<Response | unknown>,
 ) {
@@ -110,11 +110,10 @@ export function apiRoute<A extends Auth = "verified", B = undefined, Q = undefin
     try {
       if (UNSAFE.has(req.method) && !isAllowedOrigin(req.headers.get("origin"), [env.appUrl, req.url])) throw new ApiError("ORIGIN_NOT_ALLOWED");
 
-      const mode: Auth = options.auth ?? "verified";
+      const mode: Auth = options.auth ?? "session";
       // No session means null; a failing lookup (database down) is an error in every mode, never "signed out".
       const user = await sessionUser(req.headers);
       if (mode !== "public" && !user) throw new ApiError("UNAUTHENTICATED");
-      if (mode === "verified" && !user!.emailVerified) throw new ApiError("EMAIL_NOT_VERIFIED");
 
       const url = new URL(req.url);
       const query = options.query ? parseWith(options.query, sanitize(Object.fromEntries(url.searchParams)), "query") : (undefined as Q);
