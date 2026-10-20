@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { ABOUT_MAX_CHARS } from "@/lib/profile-limits";
+import { openLibrary } from "@/lib/open-library";
 import { clampChars } from "@/lib/project-client";
 import type { ProfileResource } from "@/server/api/resources";
 import { SubmitButton } from "./submit-button";
@@ -23,10 +23,9 @@ const LANGUAGES = [
 /**
  * The Welcome screen (F1.12, Stitch screen 16): the three steps, the main video language, an optional "what do you
  * teach or create about", then Start creating (saves them) or Skip. Both mark onboarding done through
- * `PATCH /api/v1/me/profile` and open the Library.
+ * `PATCH /api/v1/me/profile` and open the Library (a full page load, see lib/open-library.ts).
  */
 export function WelcomeView({ profile }: { profile: ProfileResource }) {
-  const router = useRouter();
   const [language, setLanguage] = useState<"en" | "hi">(profile.defaultLanguage);
   const [about, setAbout] = useState(profile.about ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -39,8 +38,8 @@ export function WelcomeView({ profile }: { profile: ProfileResource }) {
       try {
         const body = save ? { defaultLanguage: language, about: about.trim() || null, onboardingCompleted: true } : { onboardingCompleted: true };
         await apiCall("/api/v1/me/profile", { method: "PATCH", body });
-        router.replace("/library");
-        router.refresh();
+        // A full load, not router.replace: the router still remembers /library redirecting here (see openLibrary).
+        openLibrary();
       } catch (err) {
         setError(err instanceof ApiClientError ? err.message : "Couldn't save. Please try again.");
       }
