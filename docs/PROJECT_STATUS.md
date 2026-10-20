@@ -10,8 +10,8 @@
 |---|---|
 | **Last updated** | 2026-10-19 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **None — stop point reached.** The F2.6 follow-up is built; after its review and QA, nothing new starts until you say so |
-| **Agreed scope (2026-10-19, updated)** | Build **up to the F2.6 follow-up** ("Finish F2.6": regenerate the brief after a language change), then stop: no further feature starts until you say so |
+| **Next feature** | **F2.8 Brief edits** — design written ([note](features/F2.8-brief-edits.md)), waiting for your answers to 3 questions; stop after F2.8 |
+| **Agreed scope (2026-10-20, updated)** | Build **up to F2.8** (edit the brief directly), then stop: no further feature starts until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -103,7 +103,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F2.6 | Video settings panel (language, length, audience, board/exam, voice, style) | ✅ | Built with F1.9: "// edit parameters" saves via `PATCH /api/v1/projects/{id}` with `If-Match`; fields lock by status from `allowedActions` (script settings before the build, voice / captions after the storyboard), with "regenerate" / "rebuild" notes. Only the two approved voices; style is Midnight only (V1) |
 | F2.6b | Follow-up: the brief follows a language (and length) change (PRD F2 edge case "Regenerate brief in Hindi?") | ✅ | Done 2026-10-19 ([design note](features/F2.6-brief-follows-settings.md), approved: rewrite the current brief, length too, 1 request, Keep as is until reload). After the language or length changes, the brief card asks to update the brief; `POST …/idea/brief { from: "settings" }` rewrites the brief and its 2 angles for the new settings, keeping what they say (chat edits too); the brief remembers what it was written for (`briefLanguage`, `briefLengthSec`). 17 new tests (706). Not checked live (your step) |
 | F2.7 | Idea Studio screen (Stitch screen 09) | ⬜ | |
-| F2.8 | Direct brief edits; video title follows the brief title until renamed | ⬜ | PRD F2-FR7 / FR11 (new row from the M2 design) |
+| F2.8 | Direct brief edits; video title follows the brief title until renamed | 🔵 | Design written 2026-10-20 ([design note](features/F2.8-brief-edits.md)): Edit on the brief card, `PATCH …/idea/brief` guarded by `briefUpdatedAt` (412 + Load latest / Keep mine), no AI call; the title rule, audience pin and `briefLanguage` keep working. Waiting for your answers (fields, Save vs autosave, key-point count) |
 
 ### F3 — Storyboard
 
@@ -303,3 +303,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-19 | F2.6 follow-up design **approved** by you: rewrite the current brief (and its 2 angles), length changes too, 1 request each (refunded on failure), "Keep as is" until the next reload. |
 | 2026-10-19 | **F2.6 follow-up done** — the brief follows a language or length change ([design note](features/F2.6-brief-follows-settings.md#built-2026-10-19)): after you change the video's language or length, the brief card says so and offers **Regenerate brief in Hindi** / **Update the brief for 90 seconds** (or **Keep as is**); yes rewrites the brief and both angles for the new settings, saying the same thing, in one request. The brief now remembers the language and length it was written for. 17 new tests (706 in total), all mocked. Stop point: nothing new starts until you say so. |
 | 2026-10-19 | F2.6 follow-up review: Regenerate no longer undoes a chat answer or angle switch made while it runs (412, refunded); a chat edit keeps the brief in the language and length it was written for, so the bar keeps offering to rewrite it with both angles. 3 new tests (709 in total). |
+| 2026-10-20 | You asked for the next feature: **F2.8** (next in the approved M2 order, before F2.7). **F2.8 design** written ([note](features/F2.8-brief-edits.md)): edit the brief's text on the card (Edit → Save / Cancel), saved through `PATCH …/idea/brief` with no AI call; an edit can't overwrite a newer brief (412) and AI answers based on the older brief can't undo it; the title follows as before. 3 questions for you. Not built yet. |
