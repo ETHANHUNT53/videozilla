@@ -367,6 +367,47 @@ describe("a longer deadline (25 s, notes) keeps every later tier's reserve", () 
     expect(order).toEqual(["gemini", "groq", "groq", "openrouter"]);
   });
 
+  it("waits for its unwaited ai_calls writes before answering, so no row lands after the request (CI flake: a late skip row counted in the next test)", async () => {
+    const done: string[] = [];
+    // The early "bad reply" rows are slow to write; the final row is instant, so without the settle step the answer
+    // would come back while the early rows are still being written.
+    const log = async (l: AiCallLog) => {
+      if (l.status === "failed") await new Promise((r) => setTimeout(r, 900));
+      done.push(l.status);
+    };
+    gemini(() => geminiReply({ items: ["one"] }), () => geminiReply({ items: ["still one"] }));
+    http(good);
+    let rowsAtAnswer = -1;
+    const promise = generateJson({ system: "s", prompt: "p", schema: Shape, onCall: log }).then((r) => {
+      rowsAtAnswer = done.length;
+      return r;
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toMatchObject({ provider: "groq" });
+    expect(order).toEqual(["gemini", "gemini", "groq"]);
+    expect(rowsAtAnswer).toBe(3);
+    expect(done.sort()).toEqual(["failed", "failed", "fallback"]);
+  });
+
+  it("a stuck ai_calls write holds the answer back for at most about a second", async () => {
+    const log = async (l: AiCallLog) => {
+      if (l.status === "failed") await never();
+    };
+    gemini(() => geminiReply({ items: ["one"] }), () => geminiReply({ items: ["still one"] }));
+    http(good);
+    const started = Date.now();
+    let answeredAt = -1;
+    const promise = generateJson({ system: "s", prompt: "p", schema: Shape, onCall: log }).then((r) => {
+      answeredAt = Date.now();
+      return r;
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toMatchObject({ provider: "groq" });
+    expect(answeredAt - started).toBeLessThanOrEqual(1_100);
+  });
+
   it("Groq's repair round keeps OpenRouter's 6 s: a slow wrong shape, then a repair that never answers", async () => {
     gemini(never);
     const slowWrong = () => new Promise<Response>((r) => setTimeout(() => r(ok({ items: ["one"] })), 1_500)) as unknown as Promise<never>;

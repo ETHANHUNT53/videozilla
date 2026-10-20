@@ -141,20 +141,44 @@ const BILLING_HELP: Record<AiProvider, string> = {
   mock: "nothing to do (mock mode)",
 };
 
+/** How long a finished request waits for its unwaited ai_calls writes before answering anyway. */
+const LOG_SETTLE_MS = 1_000;
+
 export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ data: T; model: string; provider: AiProvider }> {
+  const pending = new Set<Promise<void>>();
+  try {
+    return await runChain(opts, pending);
+  } finally {
+    // Every ai_calls row of this request is written before it answers (bounded, so a stuck database can't hold the
+    // answer back): the call log is complete when the request ends, and no write lands after it, e.g. in a later test.
+    if (pending.size) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([Promise.all(pending), new Promise((r) => (timer = setTimeout(r, LOG_SETTLE_MS)))]);
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function runChain<T>(opts: GenerateJsonOptions<T>, pending: Set<Promise<void>>): Promise<{ data: T; model: string; provider: AiProvider }> {
   // The models to try in order (Gemini → Groq → OpenRouter by default); each later one backs up the one before it.
   const tiers = aiChain();
   const deadline = Date.now() + (opts.deadlineMs ?? 15_000);
   const turns: ChatTurn[] = [{ role: "user", text: opts.prompt }];
   // Logging must never break the feature. Between tiers and rounds it isn't waited for (`void log`, unusable replies
   // included): the ai_calls write finishes while the next call runs, so a slow database never eats a later tier's
-  // reserve (see budgetMs). Where the request ends (a usable reply, a block) it is waited for.
-  const log = async (entry: AiCallLog) => {
-    try {
-      await opts.onCall?.(entry);
-    } catch {
-      // ignored on purpose
-    }
+  // reserve (see budgetMs). Where the request ends (a usable reply, a block) it is waited for, and generateJson waits
+  // for the unwaited ones before answering.
+  const log = (entry: AiCallLog): Promise<void> => {
+    const write = (async () => {
+      try {
+        await opts.onCall?.(entry);
+      } catch {
+        // ignored on purpose
+      }
+    })();
+    pending.add(write);
+    void write.finally(() => pending.delete(write));
+    return write;
   };
 
   let tier = 0; // position in `tiers`; a busy model moves us on, and we stay there for the repair round
