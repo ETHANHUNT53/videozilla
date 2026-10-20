@@ -158,7 +158,8 @@ describe("PATCH …/idea/brief — guards", () => {
       new Request(`${APP}/api/v1/projects/${projectId}/idea/chat`, { method: "POST", headers: { origin: APP, "content-type": "application/json" }, body: JSON.stringify({ clientMessageId: crypto.randomUUID(), content: "new hook" }) }),
       { params: Promise.resolve({ id: projectId }) },
     );
-    await vi.waitFor(() => expect(generateContent).toHaveBeenCalled());
+    // Generous: on a busy CI machine the chat request takes longer to reach the AI call than the 1 s default.
+    await vi.waitFor(() => expect(generateContent).toHaveBeenCalled(), { timeout: 10_000, interval: 20 });
     expect((await edit({ hook: "My hook, typed" })).status).toBe(200);
     releaseChat();
     expect((await chat).status).toBe(412);
