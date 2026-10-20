@@ -64,13 +64,7 @@ jobs:
           # Fails within a second if a build ever does query the database, instead of waiting 30 s to time out.
           MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=ci-build-placeholder&serverSelectionTimeoutMS=1000
 
-      # Step logs need a GitHub sign-in; this puts the test counts on the public run page as well.
+      # Step logs need a GitHub sign-in; this puts the test counts, and each failed test by name, on the public run page.
       - name: Test summary
         if: always() && hashFiles('.cache/vitest.json') != ''
-        run: |
-          node -e '
-            const r = require("./.cache/vitest.json");
-            const line = `${r.numPassedTests} passed, ${r.numFailedTests} failed, ${r.numPendingTests} skipped (${r.testResults.length} files)`;
-            console.log(`::notice title=Unit tests::${line}`);
-            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Unit tests\n${line}\n`);
-          '
+        run: node .github/scripts/test-summary.mjs

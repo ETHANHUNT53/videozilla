@@ -254,7 +254,8 @@ export async function generateJson<T>(opts: GenerateJsonOptions<T>): Promise<{ d
           // retry per request.
           if (cooldown !== null || isTimeout(err) || retried) break;
           retried = true;
-          await sleep(1_000);
+          // The mock's "busy" is a test trigger, not a real model: nothing to wait for.
+          if (provider !== "mock") await sleep(1_000);
         }
       }
     }

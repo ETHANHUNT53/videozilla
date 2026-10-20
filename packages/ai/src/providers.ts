@@ -40,8 +40,12 @@ export function aiProvider(): AiProviderSetting {
   return value as AiProviderSetting;
 }
 
-/** How long a sample reply takes, so loading states can be seen. */
-const MOCK_DELAY_MS = 800;
+/**
+ * How long a sample reply takes, so loading states can be seen. None under tests: a test with a few mock calls (and a
+ * busy retry) otherwise waits seconds of real time, close to the 5 s test timeout on a busy CI machine (a flaky
+ * failure, F2.7 QA).
+ */
+export const MOCK_DELAY_MS = process.env.VITEST ? 0 : 800;
 
 /** Answers with the task's sample reply (or the error a test trigger asks for). */
 const mockBackend: Backend = {
