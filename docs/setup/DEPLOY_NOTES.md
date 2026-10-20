@@ -10,7 +10,7 @@ Sign-in is limited to 10 tries and sign-up to 5 per minute **per client IP** (Be
 |---|---|---|
 | **Vercel** | nothing | `x-real-ip`, which Vercel sets to the client's address (a client can't override it) |
 | Behind your own proxy or CDN (Cloudflare, nginx, a load balancer) **and only reachable through it** | `AUTH_IP_HEADERS` = the header that proxy sets, e.g. `cf-connecting-ip` or `x-real-ip` | per-client limits from that header |
-| Behind a chain of proxies that append to `X-Forwarded-For` | `AUTH_IP_HEADERS=x-forwarded-for` and `AUTH_TRUSTED_PROXIES` = the IPs or CIDR ranges of **your** proxies (comma-separated, e.g. `10.0.0.0/24`) | the chain is read from the right, skipping your proxies; the first other address is the client |
+| Behind a chain of proxies that append to `X-Forwarded-For` **and only reachable through them** | `AUTH_IP_HEADERS=x-forwarded-for` and `AUTH_TRUSTED_PROXIES` = the IPs or CIDR ranges of **your** proxies (comma-separated, e.g. `10.0.0.0/24`) | the chain is read from the right, skipping your proxies; the first other address is the client |
 | Anywhere else, with no setting (including `npm run dev`) | — | no header is trusted: every request counts against **one shared limit** (`127.0.0.1` in development). It can't be dodged, but all users share 10 sign-ins and 5 sign-ups a minute, and the server logs a warning |
 
 Don't set `AUTH_IP_HEADERS` to a header your proxy doesn't overwrite, and don't list a broad private range in `AUTH_TRUSTED_PROXIES` that also covers clients.
