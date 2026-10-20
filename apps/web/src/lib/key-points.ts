@@ -25,13 +25,16 @@ export function movePoint(points: string[], index: number, by: -1 | 1): string[]
   return next;
 }
 
-/** The edits that differ from the brief, trimmed (empty "Left out" lines dropped), ready for `PATCH …/idea/brief`. */
+/**
+ * The edits that differ from the brief, trimmed (empty key points and "Left out" lines dropped: an added point left
+ * blank isn't an error), ready for `PATCH …/idea/brief`.
+ */
 export function briefEdits<T extends { title: string; hook: string; angle: string; keyPoints: string[]; outOfScope: string[] }>(brief: T, draft: T) {
   const clean = {
     title: draft.title.trim(),
     hook: draft.hook.trim(),
     angle: draft.angle.trim(),
-    keyPoints: draft.keyPoints.map((k) => k.trim()),
+    keyPoints: draft.keyPoints.map((k) => k.trim()).filter(Boolean),
     outOfScope: draft.outOfScope.map((k) => k.trim()).filter(Boolean),
   };
   return Object.fromEntries(

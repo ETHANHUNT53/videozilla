@@ -25,5 +25,7 @@ describe("briefEdits", () => {
     expect(briefEdits(brief, { ...brief, title: "  New  ", outOfScope: ["o1", "  "] })).toEqual({ title: "New" });
     expect(briefEdits(brief, { ...brief, keyPoints: ["k2", "k1"] })).toEqual({ keyPoints: ["k2", "k1"] });
     expect(briefEdits(brief, { ...brief })).toEqual({});
+    expect(briefEdits(brief, { ...brief, keyPoints: ["k1", "k2", "  "] })).toEqual({}); // an added point left blank
+    expect(briefEdits(brief, { ...brief, keyPoints: ["k1", "", "k3"] })).toEqual({ keyPoints: ["k1", "k3"] });
   });
 });

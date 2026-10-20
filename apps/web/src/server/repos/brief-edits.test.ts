@@ -125,6 +125,18 @@ describe("PATCH …/idea/brief — edits", () => {
 });
 
 describe("PATCH …/idea/brief — guards", () => {
+  it("every field is one line (breaks and runs of spaces become one space) and needs a letter or digit, not just invisible characters", async () => {
+    const res = await edit({ title: "Why leaves\n\n  blush", keyPoints: ["Green\nhides red", "Cold   reveals it"] });
+    expect(res.status).toBe(200);
+    expect(res.json.brief).toMatchObject({ title: "Why leaves blush", keyPoints: ["Green hides red", "Cold reveals it"] });
+    expect(res.json.project.title).toBe("Why leaves blush"); // the video title that followed is one line too
+    for (const bad of ["\u200B\u200B\u200B", "...", "— — —"]) {
+      const r = await edit({ title: bad });
+      expect(r.status).toBe(400);
+      expect(r.json.error.details[0]).toMatchObject({ field: "title", issue: "Must contain a letter or digit" });
+    }
+  });
+
   it("the brief changed since (chat, angle, another tab): 412 with the current idea, nothing saved", async () => {
     const newer = new Date(SINCE.getTime() + 60_000);
     await setIdea({ brief: { ...BRIEF, title: "Another tab's brief" }, briefUpdatedAt: newer });

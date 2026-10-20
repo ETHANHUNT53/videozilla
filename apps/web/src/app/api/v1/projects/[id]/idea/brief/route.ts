@@ -188,14 +188,17 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
 }
 
 /**
- * A brief text field, trimmed, counted in characters (an emoji or a Hindi letter is one). The message matches the other
- * text limits, so a single too-long field gets a specific 400 message.
+ * A brief text field: one line (line breaks and runs of spaces become one space, as every brief field is shown and
+ * sent to the AI as a single line, and the title can become the video's), with at least one letter or digit (not just
+ * invisible or punctuation characters), counted in characters (an emoji or a Hindi letter is one). The message matches
+ * the other text limits, so a single too-long field gets a specific 400 message.
  */
 const briefText = (min: number, max: number) =>
   z.preprocess(
-    (v) => (typeof v === "string" ? v.trim() : v),
+    (v) => (typeof v === "string" ? v.replace(/\s+/gu, " ").trim() : v),
     z
       .string()
+      .refine((s) => /[\p{L}\p{N}]/u.test(s), "Must contain a letter or digit")
       .refine((s) => Array.from(s).length >= min, `Must be at least ${min} characters`)
       .refine((s) => Array.from(s).length <= max, `Must be at most ${max} characters`),
   );
