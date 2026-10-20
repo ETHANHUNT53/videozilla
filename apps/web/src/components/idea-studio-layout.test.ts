@@ -94,7 +94,10 @@ describe("Idea Studio layout (Stitch 09)", () => {
 
   it("the brief's fields sit under mono labels; key points as a list; Edit is there", () => {
     const html = render();
-    for (const label of ["// hook", "// angle", "// audience", "// key points", "// left out to fit the length", "// other angles"]) expect(html, label).toContain(label);
+    // The "// " is decoration, hidden from screen readers (F2.7 QA), so it sits in its own aria-hidden span.
+    for (const label of ["hook", "angle", "audience", "key points", "left out to fit the length", "other angles"]) {
+      expect(html, label).toContain(`<span aria-hidden="true">// </span>${label}`);
+    }
     expect(html).toMatch(/>Edit</);
   });
 
@@ -110,5 +113,35 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain("Suggest ideas");
     expect(html).toContain("Suggest 5 more");
     expect(html).toContain("[Chlorophyll]");
+  });
+
+  it("no '//' is read aloud: every '// ' in the page sits inside an aria-hidden span (F2.7 QA)", () => {
+    const html = render();
+    const visibleText = html.replace(/<span aria-hidden="true"[^>]*>[^<]*<\/span>/g, "").replace(/<[^>]+>/g, " ");
+    expect(visibleText).not.toContain("//");
+  });
+
+  it("each card's buttons say which card they're for (no 15 identical 'Use this' buttons)", () => {
+    const html = render();
+    expect(html).toContain('aria-label="Use this: Leaves as solar panels"');
+    expect(html).toContain('aria-label="More like this: Leaves as solar panels"');
+    expect(html).toContain('aria-label="Use this angle: Alt 1"');
+  });
+
+  it("a long title shortens instead of pushing 'Next: Storyboard' under it; the Generate card stays on one row at desktop width", () => {
+    const html = render({}, { title: "Biology for class 9: a real-life Indian example of photosynthesis" });
+    const header = html.slice(html.indexOf("sm:flex-nowrap"), html.indexOf("Next: Storyboard"));
+    expect(header).toContain("truncate");
+    expect(header).toContain('title="Rename: Biology for class 9: a real-life Indian example of photosynthesis"');
+    const card = html.slice(html.lastIndexOf("<div", html.indexOf("Brief ready")), html.indexOf("Generate storyboard →"));
+    expect(card).toContain("lg:flex-nowrap");
+  });
+
+  it("the chat box: a short placeholder that fits a phone, growing with its text (no scrollbar on one line)", () => {
+    const html = render();
+    const box = html.match(/<textarea[^>]*>/)?.[0] ?? "";
+    expect(box).toContain('placeholder="Ask for a change…"');
+    expect(box).toContain("[field-sizing:content]");
+    expect(box).toContain("resize-none");
   });
 });

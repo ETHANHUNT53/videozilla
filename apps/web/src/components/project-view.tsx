@@ -10,7 +10,7 @@ import { STATUS_DISPLAY } from "@/lib/status";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { IdeaStep } from "./idea-step";
 import { SettingsPanel } from "./settings-panel";
-import { Button, Card, Chip, Eyebrow, cx, inputStyles } from "./ui";
+import { Button, Card, Chip, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Project = ProjectResource;
 
@@ -53,14 +53,16 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
         <Link href="/library" className="font-mono text-sm text-muted hover:text-fg">
           ← library
         </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
+        {/* A long title shortens with "…" so "Next: Storyboard" stays top-right (F2.7 QA); on a phone it wraps under. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <ProjectTitle project={project} onSaved={saved} />
             <Chip color={status.color}>{status.label}</Chip>
           </div>
           {/* Stitch 09's way forward; the storyboard step arrives with F3 (your answer, F2.7). */}
-          <span className="flex items-center gap-3">
-            <span className="hidden font-mono text-xs text-muted sm:inline">{"// next milestone"}</span>
+          <span className="flex shrink-0 items-center gap-3">
+            <span className="hidden font-mono text-xs text-muted sm:inline"><Slashes />
+              next milestone</span>
             <Button type="button" disabled title="The storyboard step arrives in the next milestone">
               Next: Storyboard →
             </Button>
@@ -89,7 +91,8 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className={cx("text-sm font-medium", i > step && "text-muted")}>{s.label}</span>
-              <span className={cx("font-mono text-xs", i === step ? "text-cyan" : "text-muted")}>{i === step ? "// active phase" : i < step ? "// done ✓" : s.hint}</span>
+              <span className={cx("font-mono text-xs", i === step ? "text-cyan" : "text-muted")}><Slashes />
+                {i === step ? "active phase" : i < step ? "done ✓" : s.hint.replace(/^\/\/ /, "")}</span>
             </span>
             <span aria-hidden className={cx("size-1.5 shrink-0 rounded-full", i === step ? "bg-cyan shadow-[0_0_8px_var(--cyan)]" : i < step ? "bg-cyan/60" : "bg-line-strong")} />
           </li>
@@ -98,7 +101,8 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
 
       {project.attention ? (
         <div role="alert" className="flex flex-col gap-1 rounded-xl border border-red/40 bg-red/5 px-4 py-3">
-          <span className="font-mono text-xs text-red">{"// needs attention"}</span>
+          <span className="font-mono text-xs text-red"><Slashes />
+            needs attention</span>
           <span className="text-sm">{project.attention.message}</span>
         </div>
       ) : null}
@@ -198,9 +202,9 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
           aria-label="Video title"
         />
       ) : (
-        <h1 className={cx("text-3xl font-semibold tracking-tight", pending && "opacity-60")}>
+        <h1 className={cx("min-w-0 truncate text-3xl font-semibold tracking-tight", pending && "opacity-60")}>
           {canRename ? (
-            <button type="button" onClick={startEdit} className="text-left hover:text-cyan" title="Rename">
+            <button type="button" onClick={startEdit} className="block max-w-full truncate text-left hover:text-cyan" title={`Rename: ${project.title}`}>
               {pending ? title : project.title}
             </button>
           ) : (

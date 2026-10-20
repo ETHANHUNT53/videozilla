@@ -5,7 +5,7 @@ import { apiCall } from "@/lib/api-client";
 import { loadChatDraft, saveChatDraft } from "@/lib/chat-draft";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { AiError, Thinking, type AiErrorState, type IdeaAi } from "./idea-step";
-import { cx, inputStyles } from "./ui";
+import { Slashes, cx, inputStyles } from "./ui";
 
 type Brief = NonNullable<IdeaSessionResource["brief"]>;
 /** `POST …/idea/chat` (F2.5). */
@@ -99,7 +99,8 @@ export function IdeaChat(props: {
     <section aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
       <h4 id={`${id}-title`} className="font-mono text-xs text-muted">
         <span className="sr-only">Refine the brief: </span>
-        {"// refine with ai"}
+        <Slashes />
+        refine with ai
       </h4>
       {initial.hasOlder ? <p className="text-xs text-muted">Older messages aren&apos;t shown here.</p> : null}
       {thread.length || outgoing.length ? (
@@ -115,7 +116,10 @@ export function IdeaChat(props: {
                 </span>
               )}
               {m.content}
-              {m.role === "assistant" && m.status === "applied" && m.changedFields.length ? <span className="mt-1 block font-mono text-xs text-cyan">{"// brief updated"}</span> : null}
+              {m.role === "assistant" && m.status === "applied" && m.changedFields.length ? <span className="mt-1 block font-mono text-xs text-cyan"><>
+                    <Slashes />
+                    brief updated
+                  </></span> : null}
               {m.role === "user" && m.status === "pending" && !outgoing.some((o) => o.clientMessageId === m.clientMessageId) ? (
                 // Being answered by a request from another tab or an earlier visit: reload to see the answer.
                 <span className="mt-1 block font-mono text-xs text-muted">being answered… reload to see the answer</span>
@@ -171,8 +175,8 @@ export function IdeaChat(props: {
               rows={1}
               value={draft}
               maxLength={MAX * 2}
-              // Short, so it fits a phone (360 px) on one or two lines.
-              placeholder="Ask for a change, e.g. focus on point 2"
+              // Short, so it fits one line on a 360 px phone (the examples are in the text above).
+              placeholder="Ask for a change…"
               onChange={(e) => changeDraft(Array.from(e.target.value).slice(0, MAX).join(""))}
               onKeyDown={(e) => {
                 // Enter sends, Shift+Enter is a new line; not while an input method (Hindi typing) is composing.
@@ -182,7 +186,8 @@ export function IdeaChat(props: {
                 }
               }}
               aria-describedby={`${id}-count`}
-              className={cx(inputStyles, "min-h-11 resize-y py-3 pr-12 leading-relaxed")}
+              // field-sizing: grows with the text, so one line has no scrollbar (F2.7 QA); long messages scroll from 10 rem.
+              className={cx(inputStyles, "max-h-40 min-h-11 resize-none py-2.5 pr-12 leading-6 [field-sizing:content]")}
             />
             <button
               type="submit"

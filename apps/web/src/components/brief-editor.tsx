@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { addPoint, briefEdits, focusAfter, MAX_KEY_POINTS, movePoint, removePoint, type RowControl } from "@/lib/key-points";
 import type { IdeaSessionResource, ProjectResource } from "@/server/api/resources";
-import { Button, cx, inputStyles } from "./ui";
+import { Button, Slashes, cx, inputStyles } from "./ui";
 
 type Brief = NonNullable<IdeaSessionResource["brief"]>;
 /** `PATCH …/idea/brief` (F2.8): the idea session plus the project (its title may have followed the brief). */
@@ -196,7 +196,8 @@ export function BriefEditor(props: {
   return (
     <section aria-labelledby={`${id}-heading`} className="@container flex flex-col gap-4 rounded-xl border border-cyan/40 bg-cyan/5 p-5">
       <h3 id={`${id}-heading`} className="font-mono text-sm text-cyan">
-        {"// edit your brief"}
+        <Slashes />
+        edit your brief
       </h3>
       {conflict ? (
         <div role="alert" className="flex flex-col gap-3 rounded-xl border border-orange/40 bg-orange/5 px-4 py-3">

@@ -7,11 +7,21 @@ export function cx(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
+/**
+ * The "// " that starts the mono labels, as decoration: screen readers skip it instead of reading "slash slash"
+ * (F2.7 QA). `<Slashes />audience` reads "audience".
+ */
+export function Slashes() {
+  return <span aria-hidden>{"// "}</span>;
+}
+
 /** "// section" eyebrow, like the videos. */
 export function Eyebrow({ children, accent = "text-cyan" }: { children: ReactNode; accent?: string }) {
   return (
     <p className="font-mono text-sm text-muted">
-      <span className={accent}>{"// "}</span>
+      <span aria-hidden className={accent}>
+        {"// "}
+      </span>
       {children}
     </p>
   );

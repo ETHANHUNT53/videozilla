@@ -11,7 +11,7 @@ import { useAutosave } from "@/lib/use-autosave";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { BriefEditor } from "./brief-editor";
 import { IdeaChat } from "./idea-chat";
-import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
+import { Button, Card, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Idea = IdeaSessionResource;
 type Mode = Idea["mode"];
@@ -384,15 +384,16 @@ function EmptyBrief() {
 function GenerateCard({ keyPoints }: { keyPoints: number | null }) {
   const ready = keyPoints !== null;
   return (
-    <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-      <span className="flex items-center gap-3">
+    // Side by side in the right column (as Stitch 09); stacked only on a narrow phone.
+    <Card className="flex flex-wrap items-center justify-between gap-3 p-4 lg:flex-nowrap">
+      <span className="flex min-w-0 items-center gap-3">
         <span aria-hidden className={cx("size-2 rounded-full", ready ? "bg-green shadow-[0_0_8px_var(--green)]" : "bg-line-strong")} />
         <span className="flex flex-col">
           <span className="font-mono text-sm">{ready ? "Brief ready" : "No brief yet"}</span>
-          <span className="font-mono text-xs text-muted">{ready ? `${keyPoints} key point${keyPoints === 1 ? "" : "s"} · // next milestone` : "// make a brief first"}</span>
+          <span className="font-mono text-xs text-muted">{ready ? `${keyPoints} key point${keyPoints === 1 ? "" : "s"}` : "make a brief first"}</span>
         </span>
       </span>
-      <Button type="button" disabled title="The storyboard step arrives in the next milestone">
+      <Button type="button" className="shrink-0 px-3" disabled title="The storyboard step arrives in the next milestone">
         Generate storyboard →
       </Button>
     </Card>
@@ -506,7 +507,8 @@ export function Thinking({ busy }: { busy: string | null }) {
   if (!busy || busy.startsWith("angle:")) return null;
   return (
     <span role="status" className="font-mono text-xs text-violet">
-      {busy === "notes" ? "// the AI is reading your notes — up to 25 seconds" : "// the AI is thinking — usually about 10 seconds"}
+      <Slashes />
+      {busy === "notes" ? "the AI is reading your notes — up to 25 seconds" : "the AI is thinking — usually about 10 seconds"}
     </span>
   );
 }
@@ -586,7 +588,8 @@ function TopicIdeas(props: {
       {cards.length ? (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="font-mono text-sm text-violet">{`// ${cards.length} idea${cards.length === 1 ? "" : "s"}`}</p>
+            <p className="font-mono text-sm text-violet"><Slashes />
+              {`${cards.length} idea${cards.length === 1 ? "" : "s"}`}</p>
             {/* Visible, not only a tooltip: phones can't hover. */}
             <p className="text-xs text-muted">“Use this” turns an idea into your brief.</p>
           </div>
@@ -621,10 +624,10 @@ function TopicIdeas(props: {
                     ))}
                   </ul>
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
-                    <Button type="button" variant="ghost" className="font-mono text-xs" disabled={!canAsk} onClick={() => ask(c.id, c.title, cards)} aria-busy={busy === c.id}>
+                    <Button type="button" variant="ghost" className="font-mono text-xs" disabled={!canAsk} onClick={() => ask(c.id, c.title, cards)} aria-busy={busy === c.id} aria-label={`More like this: ${c.title}`}>
                       {busy === c.id ? "Thinking…" : "More like this"}
                     </Button>
-                    <Button type="button" variant={selected ? "primary" : "secondary"} disabled={!canAsk} onClick={() => onUse(c)} aria-busy={busy === `use:${c.id}`}>
+                    <Button type="button" variant={selected ? "primary" : "secondary"} disabled={!canAsk} onClick={() => onUse(c)} aria-busy={busy === `use:${c.id}`} aria-label={`Use this: ${c.title}`}>
                       {busy === `use:${c.id}` ? "Thinking…" : "Use this"}
                     </Button>
                   </div>
@@ -676,7 +679,8 @@ function BriefCard(props: {
   const audience = AUDIENCE_OPTIONS.find((o) => o.value === brief.audience)?.label ?? brief.audience;
   const label = (text: string, field?: string) => (
     <dt className="font-mono text-xs text-muted">
-      {`// ${text}`}
+      <Slashes />
+      {text}
       {field ? tag(field) : null}
     </dt>
   );
@@ -740,14 +744,15 @@ function BriefCard(props: {
 
       {alternatives.length ? (
         <div className="flex flex-col gap-2 border-t border-line pt-4">
-          <h4 className="font-mono text-xs text-muted">{"// other angles"}</h4>
+          <h4 className="font-mono text-xs text-muted"><Slashes />
+            other angles</h4>
           <ul className="flex flex-col gap-2" aria-label="Other angles">
             {alternatives.map((a, i) => (
               <li key={`${i}-${a.title}`} className="flex flex-col gap-2 rounded-xl border border-line bg-raised p-3">
                 <p className="text-sm font-medium leading-snug">{a.title}</p>
                 <p className="text-xs text-muted">{a.angle}</p>
                 <div>
-                  <Button type="button" variant="secondary" className="px-3 py-1.5 text-xs" disabled={!editable || !ai.idle} onClick={() => onSwitch(i)} aria-busy={ai.busy === `angle:${i}`}>
+                  <Button type="button" variant="secondary" className="px-3 py-1.5 text-xs" disabled={!editable || !ai.idle} onClick={() => onSwitch(i)} aria-busy={ai.busy === `angle:${i}`} aria-label={`Use this angle: ${a.title}`}>
                     {ai.busy === `angle:${i}` ? "Switching…" : "Use this angle"}
                   </Button>
                 </div>

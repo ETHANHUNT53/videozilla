@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef } from "react";
-import { cx } from "./ui";
+import { Slashes, cx } from "./ui";
 
 /**
  * A segmented control (Stitch 09's English / हिंदी and ~60s / ~90s): a radio group, so screen readers hear "1 of 2,
@@ -31,7 +31,8 @@ export function SegmentedControl<V extends string | number>(props: {
   return (
     <div className="flex flex-col gap-1.5">
       <span id={id} className="font-mono text-xs text-muted">
-        {`// ${label}`}
+        <Slashes />
+        {label}
       </span>
       <div
         role="radiogroup"
