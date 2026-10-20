@@ -41,3 +41,22 @@ export function briefEdits<T extends { title: string; hook: string; angle: strin
     (Object.keys(clean) as (keyof typeof clean)[]).filter((k) => JSON.stringify(clean[k]) !== JSON.stringify(brief[k])).map((k) => [k, clean[k]]),
   ) as Partial<typeof clean>;
 }
+
+/** A control in the editor's list rows that keyboard focus can go to. */
+export type RowControl = "input" | "up" | "down" | "remove";
+
+/**
+ * Where focus goes after a list change (F2.8, keyboard use), so it never falls to the page and never lands on a
+ * control that now belongs to another row:
+ * - a move: the same button on the moved item at its new place (so Enter again moves it further), or its input once
+ *   that button is disabled at the end of the list;
+ * - an add: the new, empty item's input;
+ * - a remove: the input of the item now in its place (or the new last one).
+ */
+export function focusAfter(change: { kind: "move"; from: number; by: -1 | 1; length: number } | { kind: "add"; length: number } | { kind: "remove"; index: number; length: number }): { index: number; control: RowControl } {
+  if (change.kind === "add") return { index: change.length - 1, control: "input" };
+  if (change.kind === "remove") return { index: Math.max(0, Math.min(change.index, change.length - 1)), control: "input" };
+  const index = Math.max(0, Math.min(change.from + change.by, change.length - 1));
+  const atEnd = change.by === -1 ? index === 0 : index === change.length - 1;
+  return { index, control: atEnd ? "input" : change.by === -1 ? "up" : "down" };
+}

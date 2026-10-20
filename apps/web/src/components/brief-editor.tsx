@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
-import { addPoint, briefEdits, MAX_KEY_POINTS, movePoint, removePoint } from "@/lib/key-points";
+import { addPoint, briefEdits, focusAfter, MAX_KEY_POINTS, movePoint, removePoint, type RowControl } from "@/lib/key-points";
 import type { IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { Button, cx, inputStyles } from "./ui";
 
@@ -38,6 +38,15 @@ export function BriefEditor(props: {
   const [conflict, setConflict] = useState<IdeaSessionResource | null>(null);
   const edits = briefEdits(brief, draft);
   const dirty = Object.keys(edits).length > 0;
+  // The control to focus once a list change has rendered (see `list`).
+  const [focusTo, setFocusTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusTo) return;
+    document.getElementById(focusTo)?.focus();
+    // Focus done: forget the target (a DOM side effect above, then clearing it; nothing else depends on it).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFocusTo(null);
+  }, [focusTo]);
 
   // Leaving with unsaved edits asks first, like the idea text boxes.
   useEffect(() => {
@@ -89,45 +98,94 @@ export function BriefEditor(props: {
 
   const list = (key: "keyPoints" | "outOfScope", label: string) => {
     const items = draft[key];
-    const set = (next: string[]) => setDraft((d) => ({ ...d, [key]: next }));
     const ordered = key === "keyPoints";
+    const controlId = (i: number, control: RowControl) => `${id}-${key}-${i}-${control}`;
+    // The change, then where keyboard focus goes (QA, F2.8): onto the moved item's button, the new input, or the item
+    // now in a removed one's place, never back to the page or onto a control that now belongs to another item.
+    const set = (next: string[], change?: Parameters<typeof focusAfter>[0]) => {
+      setDraft((d) => ({ ...d, [key]: next }));
+      if (change) setFocusTo(next.length ? controlId(focusAfter(change).index, focusAfter(change).control) : `${id}-${key}-add`);
+    };
     return (
-      <fieldset className="flex flex-col gap-2">
+      <fieldset className="flex flex-col gap-3">
         <legend className="mb-1 text-sm text-muted">{label}</legend>
-        {items.map((item, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">{ordered ? `${i + 1}.` : "–"}</span>
-            <input
-              type="text"
-              value={item}
-              aria-label={`${ordered ? "Key point" : "Left out"} ${i + 1}`}
-              onChange={(e) => set(items.map((x, j) => (j === i ? clamp(e.target.value, LIMIT.point) : x)))}
-              className={cx(inputStyles, "min-w-0 flex-1")}
-            />
-            {ordered ? (
-              <>
-                <Button type="button" variant="ghost" className="px-2" disabled={i === 0} aria-label={`Move key point ${i + 1} up`} onClick={() => set(movePoint(items, i, -1))}>
-                  ↑
+        {items.map((item, i) => {
+          const used = count(item);
+          return (
+            // On a narrow card (a phone) the buttons sit under the input, so the input keeps the full width; side by
+            // side once there's room.
+            <div key={i} className="flex flex-col gap-1 @md:flex-row @md:items-center @md:gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">{ordered ? `${i + 1}.` : "–"}</span>
+                <input
+                  id={controlId(i, "input")}
+                  type="text"
+                  value={item}
+                  aria-label={`${ordered ? "Key point" : "Left out"} ${i + 1}`}
+                  aria-describedby={`${controlId(i, "input")}-count`}
+                  onChange={(e) => set(items.map((x, j) => (j === i ? clamp(e.target.value, LIMIT.point) : x)))}
+                  className={cx(inputStyles, "min-w-0 flex-1")}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-1 pl-7 @md:pl-0">
+                <span id={`${controlId(i, "input")}-count`} className={cx("mr-auto font-mono text-xs text-muted @md:mr-1", used >= LIMIT.point && "text-orange")}>
+                  {used} / {LIMIT.point}
+                </span>
+                {ordered ? (
+                  <>
+                    <Button
+                      id={controlId(i, "up")}
+                      type="button"
+                      variant="ghost"
+                      className="px-2"
+                      disabled={i === 0}
+                      aria-label={`Move key point ${i + 1} up`}
+                      onClick={() => set(movePoint(items, i, -1), { kind: "move", from: i, by: -1, length: items.length })}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      id={controlId(i, "down")}
+                      type="button"
+                      variant="ghost"
+                      className="px-2"
+                      disabled={i === items.length - 1}
+                      aria-label={`Move key point ${i + 1} down`}
+                      onClick={() => set(movePoint(items, i, 1), { kind: "move", from: i, by: 1, length: items.length })}
+                    >
+                      ↓
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  id={controlId(i, "remove")}
+                  type="button"
+                  variant="ghost"
+                  className="px-2"
+                  disabled={ordered && items.length <= 1}
+                  aria-label={`Remove ${ordered ? "key point" : "left-out item"} ${i + 1}`}
+                  onClick={() => {
+                    const next = ordered ? removePoint(items, i) : items.filter((_, j) => j !== i);
+                    set(next, { kind: "remove", index: i, length: next.length });
+                  }}
+                >
+                  ✕
                 </Button>
-                <Button type="button" variant="ghost" className="px-2" disabled={i === items.length - 1} aria-label={`Move key point ${i + 1} down`} onClick={() => set(movePoint(items, i, 1))}>
-                  ↓
-                </Button>
-              </>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              className="px-2"
-              disabled={ordered && items.length <= 1}
-              aria-label={`Remove ${ordered ? "key point" : "left-out item"} ${i + 1}`}
-              onClick={() => set(ordered ? removePoint(items, i) : items.filter((_, j) => j !== i))}
-            >
-              ✕
-            </Button>
-          </div>
-        ))}
+              </div>
+            </div>
+          );
+        })}
         {items.length < MAX_KEY_POINTS ? (
-          <Button type="button" variant="ghost" className="self-start text-sm" onClick={() => set(ordered ? addPoint(items) : [...items, ""])}>
+          <Button
+            id={`${id}-${key}-add`}
+            type="button"
+            variant="ghost"
+            className="self-start text-sm"
+            onClick={() => {
+              const next = ordered ? addPoint(items) : [...items, ""];
+              set(next, { kind: "add", length: next.length });
+            }}
+          >
             {ordered ? "+ Add a point" : "+ Add an item"}
           </Button>
         ) : null}
@@ -136,7 +194,7 @@ export function BriefEditor(props: {
   };
 
   return (
-    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-4 rounded-xl border border-cyan/40 bg-cyan/5 p-5">
+    <section aria-labelledby={`${id}-heading`} className="@container flex flex-col gap-4 rounded-xl border border-cyan/40 bg-cyan/5 p-5">
       <h3 id={`${id}-heading`} className="font-mono text-sm text-cyan">
         {"// edit your brief"}
       </h3>
