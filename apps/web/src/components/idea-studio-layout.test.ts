@@ -128,11 +128,22 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain('aria-label="Use this angle: Alt 1"');
   });
 
-  it("a long title shortens instead of pushing 'Next: Storyboard' under it; the Generate card stays on one row at desktop width", () => {
+  it("the title: its own wrapping row below lg (chip and 'Next: Storyboard' under it), one row cut with … from lg; the Generate card stays on one row at desktop width", () => {
     const html = render({}, { title: "Biology for class 9: a real-life Indian example of photosynthesis" });
-    const header = html.slice(html.indexOf("sm:flex-nowrap"), html.indexOf("Next: Storyboard"));
-    expect(header).toContain("truncate");
+    // The header, from the title-and-chip group to the button.
+    const start = html.indexOf("contents lg:flex");
+    expect(start).toBeGreaterThan(-1);
+    const header = html.slice(start, html.indexOf("Next: Storyboard", start));
+    // Below lg: the title's wrapper takes the whole row and the title wraps (QA, F2.7: it shrank to 0 px at 768 / 360).
+    expect(header).toContain("basis-full");
+    const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
+    expect(h1).toContain("lg:truncate");
+    expect(h1).not.toMatch(/(^|[\s"])truncate/);
+    // From lg the full title is on hover.
     expect(header).toContain('title="Rename: Biology for class 9: a real-life Indian example of photosynthesis"');
+    // The chip and the button come after the title, not beside it in a row that can't wrap.
+    expect(html.indexOf("Draft")).toBeGreaterThan(html.indexOf("<h1"));
+    expect(header).not.toContain("sm:flex-nowrap");
     const card = html.slice(html.lastIndexOf("<div", html.indexOf("Brief ready")), html.indexOf("Generate storyboard →"));
     expect(card).toContain("lg:flex-nowrap");
   });
