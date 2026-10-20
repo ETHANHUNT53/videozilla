@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { ApiClientError } from "@/lib/api-client";
 import { conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
 import { AUDIENCE_OPTIONS, BOARD_OPTIONS, STYLE_LABELS, VOICE_OPTIONS } from "@/lib/project-options";
@@ -43,13 +43,18 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
   const [revMessage, setMessage] = useState<RevNote<{ tone: "info" | "error"; text: string }> | null>(null);
   const message = currentNote(revMessage, project);
   const [pending, start] = useTransition();
+  // One save at a time, also for two clicks that land before React re-renders with `pending`.
+  const saving = useRef(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const scriptEditable = project.allowedActions.includes("edit_script_settings");
   const mediaEditable = project.allowedActions.includes("edit_media_settings");
   const shown: Settings = { ...settingsOf(project), ...optimistic };
+  // While a save runs the controls stay enabled (`change` ignores input until it answers): disabling them would drop
+  // keyboard focus to the page after every arrow key or selection, so a keyboard user couldn't go on (F2.7 review).
 
   const change = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    if (pending || settingsOf(project)[key] === value) return;
+    if (pending || saving.current || settingsOf(project)[key] === value) return;
+    saving.current = true;
     setMessage(null);
     setSavedAt(null);
     setOptimistic({ [key]: value } as Partial<Settings>);
@@ -72,6 +77,7 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
           setMessage({ value: { tone: "error", text: err instanceof ApiClientError ? err.message : "Couldn't save that setting. Please try again." }, rev: project.rev });
         }
       } finally {
+        saving.current = false;
         setOptimistic({});
       }
     });
@@ -87,13 +93,13 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <SegmentedControl label="language" options={LANGUAGE_SEGMENTS} value={shown.language} disabled={!scriptEditable || pending} onChange={(v) => change("language", v)} />
-        <SegmentedControl label="duration" options={LENGTH_SEGMENTS} value={shown.lengthPreset} disabled={!scriptEditable || pending} onChange={(v) => change("lengthPreset", v)} />
+        <SegmentedControl label="language" options={LANGUAGE_SEGMENTS} value={shown.language} disabled={!scriptEditable} onChange={(v) => change("language", v)} />
+        <SegmentedControl label="duration" options={LENGTH_SEGMENTS} value={shown.lengthPreset} disabled={!scriptEditable} onChange={(v) => change("lengthPreset", v)} />
       </div>
 
       <label className="flex flex-col gap-1.5">
         <span className="font-mono text-xs text-muted">{"// audience"}</span>
-        <Select value={shown.audience} disabled={!scriptEditable || pending} onChange={(e) => change("audience", e.target.value)}>
+        <Select value={shown.audience} disabled={!scriptEditable} onChange={(e) => change("audience", e.target.value)}>
           {AUDIENCE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -104,7 +110,7 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
 
       <label className="flex flex-col gap-1.5">
         <span className="font-mono text-xs text-muted">{"// board or exam"}</span>
-        <Select value={shown.boardOrExam ?? ""} disabled={!scriptEditable || pending} onChange={(e) => change("boardOrExam", (e.target.value || null) as Settings["boardOrExam"])}>
+        <Select value={shown.boardOrExam ?? ""} disabled={!scriptEditable} onChange={(e) => change("boardOrExam", (e.target.value || null) as Settings["boardOrExam"])}>
           {BOARD_OPTIONS.map((o) => (
             <option key={o.label} value={o.value ?? ""}>
               {o.label}
@@ -113,7 +119,7 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
         </Select>
       </label>
 
-      <fieldset className="flex flex-col gap-1.5" disabled={!mediaEditable || pending}>
+      <fieldset className="flex flex-col gap-1.5" disabled={!mediaEditable}>
         <legend className="mb-1.5 font-mono text-xs text-muted">{"// voice narrator"}</legend>
         <div className="grid grid-cols-2 gap-2">
           {VOICE_OPTIONS.map((o) => {
@@ -135,10 +141,10 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
         </div>
       </fieldset>
 
-      <label className={cx("flex items-center justify-between gap-3 text-sm", (!mediaEditable || pending) && "opacity-60")}>
+      <label className={cx("flex items-center justify-between gap-3 text-sm", (!mediaEditable) && "opacity-60")}>
         <span className="font-mono text-xs text-muted">{"// captions"}</span>
         <span className="flex items-center gap-2">
-          <input type="checkbox" checked={shown.captionsEnabled} disabled={!mediaEditable || pending} onChange={(e) => change("captionsEnabled", e.target.checked)} className="size-4 accent-cyan" />
+          <input type="checkbox" checked={shown.captionsEnabled} disabled={!mediaEditable} onChange={(e) => change("captionsEnabled", e.target.checked)} className="size-4 accent-cyan" />
           {shown.captionsEnabled ? "On" : "Off"}
         </span>
       </label>
