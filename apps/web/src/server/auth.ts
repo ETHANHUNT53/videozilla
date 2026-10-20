@@ -5,6 +5,7 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { db, mongoClient } from "./db/mongo";
 import { checkAuthInput, PASSWORD_MAX, PASSWORD_MIN } from "@/lib/auth-schema";
+import { authIpOptions } from "./auth-ip";
 import { env } from "./env";
 import { requestAccountDataDeletion } from "./jobs/account-deletion";
 import { getOrCreateProfile } from "./repos/profiles";
@@ -55,6 +56,8 @@ export const auth = betterAuth({
       "/sign-up/email": { window: 60, max: 5 },
     },
   },
+  // Whose address a limit counts: only a header our host sets (never one a client can fake). See server/auth-ip.ts.
+  advanced: { ipAddress: authIpOptions() },
   socialProviders: env.google.configured
     ? { google: { clientId: env.google.clientId, clientSecret: env.google.clientSecret, prompt: "select_account" } }
     : {},

@@ -57,6 +57,21 @@ describe("sign-in and sign-up (no email step, 2026-10-20)", () => {
     expect(html).toContain("/sign-up");
   });
 
+  it("the browser's own validation is off (our Zod messages show), but the email field keeps type=email for phone keyboards", () => {
+    for (const Form of [SignInForm, SignUpForm]) {
+      const html = renderToString(createElement(Form, { googleEnabled: false }));
+      const form = html.match(/<form[^>]*>/)?.[0] ?? "";
+      expect(form.toLowerCase()).toContain('novalidate=""');
+      const email = html.match(/<input[^>]*name="email"[^>]*>/)?.[0] ?? "";
+      expect(email).toContain('type="email"');
+    }
+  });
+
+  it("losing a sign-up race (FAILED_TO_CREATE_USER) reads like any existing account", () => {
+    expect(authErrorText({ status: 422, code: "FAILED_TO_CREATE_USER", message: "Failed to create user" }, "x")).toBe("An account with this email already exists. Sign in instead.");
+    expect(authErrorText({ status: 400, message: "Failed to create user" }, "x")).toBe("An account with this email already exists. Sign in instead.");
+  });
+
   it("Better Auth's errors in our words", () => {
     expect(authErrorText({ status: 401, code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password" }, "x")).toBe("That email and password don't match an account.");
     expect(authErrorText({ status: 422, code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", message: "User already exists. Use another email." }, "x")).toBe("An account with this email already exists. Sign in instead.");

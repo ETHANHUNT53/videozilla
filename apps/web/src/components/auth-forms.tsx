@@ -23,7 +23,9 @@ function ErrorText({ message }: { message: string | null }) {
 export function authErrorText(error: { status?: number; message?: string; code?: string }, fallback: string): string {
   if (error.status === 429) return "Too many attempts. Wait a minute and try again.";
   if (error.status && error.status >= 500) return "Something went wrong on our side. Please try again in a minute.";
-  if (error.code === "USER_ALREADY_EXISTS" || error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" || /already exists/i.test(error.message ?? "")) {
+  // FAILED_TO_CREATE_USER: two sign-ups with the same email at once; the second hits the unique email index (QA).
+  const exists = ["USER_ALREADY_EXISTS", "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", "FAILED_TO_CREATE_USER"].includes(error.code ?? "");
+  if (exists || /already exists|failed to create user/i.test(error.message ?? "")) {
     return "An account with this email already exists. Sign in instead.";
   }
   if (error.code === "INVALID_EMAIL_OR_PASSWORD" || error.status === 401) return "That email and password don't match an account.";
@@ -104,7 +106,9 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Divider />
         </>
       ) : null}
-      <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
+      {/* noValidate: our Zod messages show instead of the browser's own tooltip (type="email" still gives phones the
+          email keyboard). Editing any field clears the last error. */}
+      <form method="post" noValidate onSubmit={onSubmit} onChange={() => setError(null)} className="flex flex-col gap-4">
         <Field label="Email">
           <Input name="email" type="email" autoComplete="email" required maxLength={254} />
         </Field>
@@ -161,7 +165,9 @@ export function SignUpForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Divider />
         </>
       ) : null}
-      <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
+      {/* noValidate: our Zod messages show instead of the browser's own tooltip (type="email" still gives phones the
+          email keyboard). Editing any field clears the last error. */}
+      <form method="post" noValidate onSubmit={onSubmit} onChange={() => setError(null)} className="flex flex-col gap-4">
         <Field label="Name">
           <Input name="name" autoComplete="name" required maxLength={NAME_MAX} />
         </Field>

@@ -98,7 +98,7 @@ These endpoints are provided by Better Auth and documented here as a contract. T
 | GET | `/list-sessions` | — | `200 Session[]` | Settings → "signed-in devices" (P1) |
 | POST | `/revoke-other-sessions` | `{}` | `200 { status: true }` | "Sign out of other devices" |
 
-**Password rules:** 8–128 characters, not only spaces (sign-in only checks 1–128, so older passwords still work). **Rate limits** (Better Auth's limiter, stored in MongoDB so all servers share it): sign-in 10 and sign-up 5 per minute per IP, other auth calls 100 per minute; `429` past them.
+**Password rules:** 8–128 characters, not only spaces (sign-in only checks 1–128, so older passwords still work). **Rate limits** (Better Auth's limiter, stored in MongoDB so all servers share it): sign-in 10 and sign-up 5 per minute per IP, other auth calls 100 per minute; `429` past them. The IP comes only from a header the host sets (`x-real-ip` on Vercel, or `AUTH_IP_HEADERS` / `AUTH_TRUSTED_PROXIES`), never from a client's own `X-Forwarded-For`; with none, all requests share one limit ([deploy notes](setup/DEPLOY_NOTES.md)).
 
 ### 3.4 Roles
 
