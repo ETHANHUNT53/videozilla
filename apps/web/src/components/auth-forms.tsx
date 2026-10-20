@@ -23,10 +23,14 @@ function ErrorText({ message }: { message: string | null }) {
 export function authErrorText(error: { status?: number; message?: string; code?: string }, fallback: string): string {
   if (error.status === 429) return "Too many attempts. Wait a minute and try again.";
   if (error.status && error.status >= 500) return "Something went wrong on our side. Please try again in a minute.";
-  // FAILED_TO_CREATE_USER: two sign-ups with the same email at once; the second hits the unique email index (QA).
-  const exists = ["USER_ALREADY_EXISTS", "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", "FAILED_TO_CREATE_USER"].includes(error.code ?? "");
-  if (exists || /already exists|failed to create user/i.test(error.message ?? "")) {
+  const exists = ["USER_ALREADY_EXISTS", "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"].includes(error.code ?? "");
+  if (exists || /already exists/i.test(error.message ?? "")) {
     return "An account with this email already exists. Sign in instead.";
+  }
+  // FAILED_TO_CREATE_USER: most often two sign-ups with the same email at once (the second hits the unique email
+  // index, QA), but Better Auth also uses it for any database error while creating the user, so the text fits both.
+  if (error.code === "FAILED_TO_CREATE_USER" || /failed to create user/i.test(error.message ?? "")) {
+    return "We couldn't create the account. If you already made one with this email, sign in instead; otherwise try again.";
   }
   if (error.code === "INVALID_EMAIL_OR_PASSWORD" || error.status === 401) return "That email and password don't match an account.";
   return error.message || fallback;

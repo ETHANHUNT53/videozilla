@@ -67,9 +67,10 @@ describe("sign-in and sign-up (no email step, 2026-10-20)", () => {
     }
   });
 
-  it("losing a sign-up race (FAILED_TO_CREATE_USER) reads like any existing account", () => {
-    expect(authErrorText({ status: 422, code: "FAILED_TO_CREATE_USER", message: "Failed to create user" }, "x")).toBe("An account with this email already exists. Sign in instead.");
-    expect(authErrorText({ status: 400, message: "Failed to create user" }, "x")).toBe("An account with this email already exists. Sign in instead.");
+  it("FAILED_TO_CREATE_USER (a lost sign-up race, or any database error while creating the user) suggests signing in or trying again", () => {
+    const text = "We couldn't create the account. If you already made one with this email, sign in instead; otherwise try again.";
+    expect(authErrorText({ status: 422, code: "FAILED_TO_CREATE_USER", message: "Failed to create user" }, "x")).toBe(text);
+    expect(authErrorText({ status: 400, message: "Failed to create user" }, "x")).toBe(text);
   });
 
   it("Better Auth's errors in our words", () => {
