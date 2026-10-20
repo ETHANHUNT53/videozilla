@@ -241,6 +241,30 @@ export async function saveChatAnswer(
   });
 }
 
+/** The brief fields a person may edit directly (F2.8); the audience is the video's setting, the notes summary stays. */
+export type BriefEdits = Partial<Pick<IdeaBriefDoc, "title" | "hook" | "angle" | "keyPoints" | "outOfScope">>;
+
+export type EditBriefResult = { idea: IdeaSessionDoc; project: ProjectDoc } | { conflict: IdeaSessionDoc } | null | "invalid_state" | "no_brief";
+
+/**
+ * Direct brief edits (F2.8, PRD F2-FR7), no AI call. `basedOn` is the `briefUpdatedAt` of the brief the edits were made
+ * on: when the brief has changed since (a chat answer, an angle switch, Regenerate, another tab), nothing is saved and
+ * the current idea comes back (`conflict`), so an edit never silently undoes a newer brief. An edit that changes nothing
+ * rewrites nothing (`briefUpdatedAt` stays). Otherwise the brief is saved like every brief (`applyBrief`: the audience
+ * pin and the title rule apply), keeping its 2 other angles and the language and length it was written for.
+ */
+export async function editBrief(userId: string, projectId: string, edits: BriefEdits, basedOn: Date): Promise<EditBriefResult> {
+  return inIdeaStage(userId, projectId, async (ctx) => {
+    const brief = ctx.idea.brief;
+    if (!brief) return "no_brief" as const;
+    if ((ctx.idea.briefUpdatedAt?.getTime() ?? null) !== basedOn.getTime()) return { conflict: ctx.idea };
+    const next: IdeaBriefDoc = { ...brief, ...edits };
+    const same = (Object.keys(edits) as (keyof BriefEdits)[]).every((k) => JSON.stringify(next[k]) === JSON.stringify(brief[k]));
+    if (same) return { idea: ctx.idea, project: ctx.project };
+    return applyBrief(ctx, next, ctx.idea.briefAlternatives ?? [], "keep");
+  });
+}
+
 interface BriefContext {
   session: ClientSession;
   project: ProjectDoc;

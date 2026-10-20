@@ -214,6 +214,15 @@ describe("B against A's projects (id routes)", () => {
     expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
   });
 
+  it("PATCH /projects/{id}/idea/brief: 404 like an unknown id, even with A's own briefUpdatedAt; A's brief and title unchanged", async () => {
+    const at = new Date(Date.now() - 60_000);
+    const aBrief = { title: "A's brief", hook: "hook", angle: "angle", audience: "students", keyPoints: ["one", "two", "three"], outOfScope: [] };
+    await testMongo.db.collection("idea_sessions").updateOne({ projectId: new ObjectId(a.live) }, { $set: { brief: aBrief, briefAlternatives: [], briefUpdatedAt: at } });
+    const before = await snapshotA();
+    for (const id of [a.live, a.deleted, a.attention]) await expectLikeUnknown(brief.PATCH, "PATCH", "/idea/brief", id, { briefUpdatedAt: at.toISOString(), title: "B was here" });
+    expect(await snapshotA()).toEqual(before);
+  });
+
   it("PUT /projects/{id}/idea: 404, with or without If-Match; A's idea and project are unchanged", async () => {
     const before = await snapshotA();
     for (const id of [a.live, a.deleted]) await expectLikeUnknown(idea.PUT, "PUT", "/idea", id, { mode: "idea", ideaInput: "B was here" });
@@ -298,6 +307,7 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["PUT /projects/{id}/idea", idea.PUT, "PUT", "/api/v1/projects/x/idea", { id: "x" }],
   ["POST /projects/{id}/idea/suggestions", suggestions.POST, "POST", "/api/v1/projects/x/idea/suggestions", { id: "x" }],
   ["POST /projects/{id}/idea/brief", brief.POST, "POST", "/api/v1/projects/x/idea/brief", { id: "x" }],
+  ["PATCH /projects/{id}/idea/brief", brief.PATCH, "PATCH", "/api/v1/projects/x/idea/brief", { id: "x" }],
   ["GET /projects/{id}/idea/chat", chat.GET, "GET", "/api/v1/projects/x/idea/chat", { id: "x" }],
   ["POST /projects/{id}/idea/chat", chat.POST, "POST", "/api/v1/projects/x/idea/chat", { id: "x" }],
 ];

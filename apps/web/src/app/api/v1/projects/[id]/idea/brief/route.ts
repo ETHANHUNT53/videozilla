@@ -5,10 +5,10 @@ import { aiBusy, unsafeContent } from "@/server/api/ai-errors";
 import { ApiError } from "@/server/api/errors";
 import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
 import { projectParams as params } from "@/server/api/request";
-import { toBrief, toProject } from "@/server/api/resources";
+import { toBrief, toIdeaSession, toProject } from "@/server/api/resources";
 import { collections } from "@/server/db/mongo";
 import { logAiCall } from "@/server/repos/ai-calls";
-import { getIdea, saveBrief, switchToAlternative, trimBrief, type SaveBriefResult } from "@/server/repos/ideas";
+import { editBrief, getIdea, saveBrief, switchToAlternative, trimBrief, type SaveBriefResult } from "@/server/repos/ideas";
 import { getProject } from "@/server/repos/projects";
 import { consumeUsage, rateLimitHeaders, refundUsage, type UsageResult } from "@/server/repos/usage";
 import { isAllowed } from "@/server/rules/project-actions";
@@ -187,5 +187,48 @@ async function respond(userId: string, result: SaveBriefResult, usage?: UsageRes
   );
 }
 
-const notAllowed = methodNotAllowed(["POST"]);
-export { notAllowed as GET, notAllowed as PUT, notAllowed as PATCH, notAllowed as DELETE };
+/**
+ * A brief text field, trimmed, counted in characters (an emoji or a Hindi letter is one). The message matches the other
+ * text limits, so a single too-long field gets a specific 400 message.
+ */
+const briefText = (min: number, max: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : v),
+    z
+      .string()
+      .refine((s) => Array.from(s).length >= min, `Must be at least ${min} characters`)
+      .refine((s) => Array.from(s).length <= max, `Must be at most ${max} characters`),
+  );
+
+/** Direct edits (F2.8): any of the brief's text fields, plus the brief they were made on. Same limits as the card shows. */
+const editBody = z.strictObject({
+  briefUpdatedAt: z.string().datetime(),
+  title: briefText(3, 80).optional(),
+  hook: briefText(3, 200).optional(),
+  angle: briefText(3, 300).optional(),
+  keyPoints: z.array(briefText(2, 160)).min(1).max(5).optional(),
+  outOfScope: z.array(briefText(2, 160)).max(5).optional(),
+});
+
+/**
+ * `PATCH /api/v1/projects/{id}/idea/brief` (API Design §13.3, PRD F2-FR7, F2.8): edit the brief's text directly. No AI
+ * call, nothing counted. `412` (with the current idea) when the brief changed since `briefUpdatedAt`; `400` without a
+ * brief; `409` outside the Idea stage. Answers `200 IdeaSession` plus `project` (the title may have followed).
+ */
+export const PATCH = apiRoute({ params, body: editBody }, async ({ user, params, body }) => {
+  const { briefUpdatedAt, ...edits } = body;
+  const result = await editBrief(user.id, params.id, edits, new Date(briefUpdatedAt));
+  if (!result) throw new ApiError("NOT_FOUND");
+  if (result === "invalid_state") throw new ApiError("INVALID_STATE", { message: "The brief can't be changed at this stage of the video." });
+  if (result === "no_brief") throw new ApiError("VALIDATION_FAILED", { message: "There's no brief to edit yet.", details: [{ field: "brief", issue: "there's no brief yet" }] });
+  if ("conflict" in result) {
+    throw new ApiError("PRECONDITION_FAILED", {
+      message: "The brief changed while you were editing (a chat answer, another angle or another tab), so your edits weren't saved.",
+      details: [{ field: "briefUpdatedAt", issue: "the brief has changed since", current: toIdeaSession(result.conflict) }],
+    });
+  }
+  return json({ ...toIdeaSession(result.idea), project: toProject(result.project) });
+});
+
+const notAllowed = methodNotAllowed(["POST", "PATCH"]);
+export { notAllowed as GET, notAllowed as PUT, notAllowed as DELETE };

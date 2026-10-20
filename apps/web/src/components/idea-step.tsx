@@ -9,6 +9,7 @@ import { briefSettingsChange } from "@/lib/brief-settings";
 import { AUDIENCE_OPTIONS } from "@/lib/project-options";
 import { useAutosave } from "@/lib/use-autosave";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
+import { BriefEditor } from "./brief-editor";
 import { IdeaChat } from "./idea-chat";
 import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
 
@@ -66,7 +67,11 @@ export function IdeaStep(props: {
   });
   // "Keep as is" hides the bar for these settings until the next reload (your answer, F2.6 follow-up).
   const [keptFor, setKeptFor] = useState<string | null>(null);
-  const ai = useIdeaAi();
+  const aiRunner = useIdeaAi();
+  // While the brief is being edited (F2.8), the AI requests that would replace it (chat, Use this angle, Regenerate, a
+  // new brief) are paused, so the typing isn't replaced underneath; they come back on Save or Cancel.
+  const [editingBrief, setEditingBrief] = useState(false);
+  const ai = editingBrief ? { ...aiRunner, canAsk: false, idle: false } : aiRunner;
   const suggestButton = useRef<HTMLButtonElement>(null);
   const { state, queue } = useAutosave<Draft, Idea>({
     rev: initial.rev,
@@ -274,8 +279,27 @@ export function IdeaStep(props: {
         />
       ) : null}
 
-      {brief.brief ? (
+      {brief.brief && editingBrief ? (
+        <BriefEditor
+          projectId={projectId}
+          brief={brief.brief}
+          briefUpdatedAt={brief.updatedAt}
+          onCancel={() => setEditingBrief(false)}
+          onSaved={(data) => {
+            setBrief({ brief: data.brief, alternatives: data.briefAlternatives, updatedAt: data.briefUpdatedAt, writtenFor: { language: data.briefLanguage, lengthSec: data.briefLengthSec } });
+            setChanged([]);
+            setEditingBrief(false);
+            onProject(data.project);
+          }}
+          onLatest={(idea) => {
+            setBrief({ brief: idea.brief, alternatives: idea.briefAlternatives, updatedAt: idea.briefUpdatedAt, writtenFor: { language: idea.briefLanguage, lengthSec: idea.briefLengthSec } });
+            setChanged([]);
+            setEditingBrief(false);
+          }}
+        />
+      ) : brief.brief ? (
         <BriefCard
+          onEdit={editable ? () => setEditingBrief(true) : undefined}
           brief={brief.brief}
           alternatives={brief.alternatives}
           editable={editable}
@@ -527,8 +551,8 @@ function TopicIdeas(props: {
  * The brief (F2.3): what the video will be, and 2 other angles to switch to. The current brief takes the chosen angle's
  * place, so switching back is one click. "Generate storyboard" arrives with the storyboard milestone (F3).
  */
-function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boolean; ai: IdeaAi; onSwitch: (index: number) => void; changed: string[] }) {
-  const { brief, alternatives, editable, ai, onSwitch, changed } = props;
+function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boolean; ai: IdeaAi; onSwitch: (index: number) => void; changed: string[]; onEdit?: () => void }) {
+  const { brief, alternatives, editable, ai, onSwitch, changed, onEdit } = props;
   // A field the last chat answer changed: outlined (with a little room), and a "changed" tag. Screen readers hear
   // ", changed" as its own words, not run into the text ("Kids (8–12)changed").
   const mark = (field: string) => (changed.includes(field) ? "-mx-1 rounded-md px-1 outline outline-1 outline-offset-2 outline-cyan" : undefined);
@@ -546,7 +570,15 @@ function BriefCard(props: { brief: Brief; alternatives: Brief[]; editable: boole
     // A container query: the card is narrow beside the settings panel even on a wide screen.
     <section aria-labelledby="brief-title" className="@container flex flex-col gap-5 rounded-xl border border-cyan/40 bg-cyan/5 p-5">
       <div className="flex flex-col gap-2">
-        <Eyebrow>your brief</Eyebrow>
+        <div className="flex items-center justify-between gap-3">
+          <Eyebrow>your brief</Eyebrow>
+          {onEdit ? (
+            // Not while an AI request runs: its answer would replace the brief being edited.
+            <Button type="button" variant="ghost" className="text-sm" disabled={!ai.idle} onClick={onEdit}>
+              Edit
+            </Button>
+          ) : null}
+        </div>
         <h3 id="brief-title" className={cx("text-xl font-semibold leading-snug", mark("title"))}>
           {brief.title}
           {tag("title")}

@@ -521,8 +521,8 @@ describe("POST …/idea/brief — errors", () => {
     expect(generateContent).not.toHaveBeenCalled();
   });
 
-  it("answers other methods with 405 (PATCH arrives with brief edits, F2.8)", async () => {
-    for (const handler of [route.GET, route.PATCH]) {
+  it("answers other methods with 405 (PATCH is the brief edits of F2.8, tested in brief-edits.test.ts)", async () => {
+    for (const handler of [route.GET, route.PUT, route.DELETE]) {
       const res = await handler(new Request(`${APP}/api/v1/projects/${projectId}/idea/brief`), { params: Promise.resolve({ id: projectId }) });
       expect(res.status).toBe(405);
     }
