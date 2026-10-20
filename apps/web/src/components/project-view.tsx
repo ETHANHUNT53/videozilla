@@ -53,14 +53,19 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
         <Link href="/library" className="font-mono text-sm text-muted hover:text-fg">
           ← library
         </Link>
-        {/* A long title shortens with "…" so "Next: Storyboard" stays top-right (F2.7 QA); on a phone it wraps under. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <ProjectTitle project={project} onSaved={saved} />
+        {/* Below lg the title has its own row and wraps; the status chip and "Next: Storyboard" go on the row under it
+            (QA, F2.7: in one row the title shrank to nothing at 768 and 360 px). From lg it's one row: the title, cut
+            with "…" (full text on hover), then the chip, with "Next: Storyboard" top-right. The title-and-chip group is
+            `contents` below lg, so its two parts take part in the outer rows. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:items-center lg:gap-3">
+            <div className="min-w-0 basis-full lg:basis-auto">
+              <ProjectTitle project={project} onSaved={saved} />
+            </div>
             <Chip color={status.color}>{status.label}</Chip>
           </div>
           {/* Stitch 09's way forward; the storyboard step arrives with F3 (your answer, F2.7). */}
-          <span className="flex shrink-0 items-center gap-3">
+          <span className="ml-auto flex shrink-0 items-center gap-3">
             <span className="hidden font-mono text-xs text-muted sm:inline"><Slashes />
               next milestone</span>
             <Button type="button" disabled title="The storyboard step arrives in the next milestone">
@@ -202,9 +207,11 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
           aria-label="Video title"
         />
       ) : (
-        <h1 className={cx("min-w-0 truncate text-3xl font-semibold tracking-tight", pending && "opacity-60")}>
+        // Wraps below lg (a long word breaks anywhere rather than overflow); one line with "…" from lg, the full title
+        // on hover then.
+        <h1 className={cx("min-w-0 text-3xl font-semibold tracking-tight [overflow-wrap:anywhere] lg:truncate", pending && "opacity-60")} title={canRename ? undefined : project.title}>
           {canRename ? (
-            <button type="button" onClick={startEdit} className="block max-w-full truncate text-left hover:text-cyan" title={`Rename: ${project.title}`}>
+            <button type="button" onClick={startEdit} className="block max-w-full text-left hover:text-cyan lg:truncate" title={`Rename: ${project.title}`}>
               {pending ? title : project.title}
             </button>
           ) : (
