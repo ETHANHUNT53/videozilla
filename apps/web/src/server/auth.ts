@@ -15,7 +15,7 @@ import { getOrCreateProfile } from "./repos/profiles";
  *
  * No email is sent (your decision, 2026-10-20): signing up signs you in at once, nothing has to be verified, and there's
  * no "forgot password" until email comes back. The trade-off: an address isn't proven to belong to whoever typed it,
- * and a forgotten password needs a person (or Google sign-in). Passwords are hashed by Better Auth (scrypt) and never
+ * and a forgotten password needs a person (Google sign-in can't help: it isn't linked to a password account). Passwords are hashed by Better Auth (scrypt) and never
  * logged.
  */
 export const auth = betterAuth({

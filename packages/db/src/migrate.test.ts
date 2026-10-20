@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { MongoClient, MongoServerError, ObjectId, type CollectionInfo, type Db, type Document } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { COLLECTIONS } from "./collections";
+import { AUTH_COLLECTIONS, COLLECTIONS } from "./collections";
 import * as enums from "./enums";
 import { listMigrations, migrationStatus, runMigrations } from "./migrate";
 import { assertMigrated, LATEST_MIGRATION } from "./schema-version";
@@ -104,13 +104,13 @@ describe("runMigrations", () => {
     expect(result.applied.slice(0, 2)).toEqual(["001_initial_schema", "002_profile_defaults"]);
 
     const names = (await db.listCollections().toArray()).map((c) => c.name).sort();
-    expect(names).toEqual(Object.values(COLLECTIONS).sort());
+    expect(names).toEqual([...Object.values(COLLECTIONS), ...Object.values(AUTH_COLLECTIONS)].sort());
 
     let indexCount = 0;
     for (const name of names.filter((n) => n !== COLLECTIONS.migrations)) {
       indexCount += (await db.collection(name).indexes()).filter((i) => i.name !== "_id_").length;
     }
-    expect(indexCount).toBe(36); // one per row of DB Design §8
+    expect(indexCount).toBe(38); // one per row of DB Design §8, plus user.email and rateLimit.key (004)
   });
 
   it("records each migration with a checksum and does nothing on the next run", async () => {
@@ -207,6 +207,15 @@ describe("runMigrations", () => {
     expect(await db.collection("profiles").findOne({ userId: USER })).toMatchObject({ defaultAudience: "students", role: "user" });
     const library = (await db.collection("projects").indexes()).find((i) => i.name === "library");
     expect(library?.key).toEqual({ userId: 1, deletedAt: 1, updatedAt: -1, _id: -1 });
+  });
+
+  it("004 stops with a clear message when an email already has two accounts, and drops repeated rate-limit rows", async () => {
+    await db.collection("user").insertMany([{ email: "asha@example.com" }, { email: "ASHA@example.com" }]);
+    await expect(runMigrations(db, quiet)).rejects.toThrow("belong to more than one account (for example asha@example.com)");
+    await db.collection("user").deleteOne({ email: "ASHA@example.com" });
+    await db.collection("rateLimit").insertMany([{ key: "k", count: 1 }, { key: "k", count: 2 }]);
+    await runMigrations(db, quiet);
+    expect(await db.collection("rateLimit").countDocuments({ key: "k" })).toBe(1);
   });
 
   it("gives every existing project (deleted ones too) exactly one empty idea session", async () => {
@@ -316,6 +325,13 @@ describe("unique and partial indexes", () => {
     await db.collection("renders").insertOne(render(true));
     expect(await duplicate(db.collection("renders").insertOne(render(true)))).toBe(true);
     expect(await duplicate(db.collection("renders").insertOne(render(false)))).toBe(false);
+  });
+
+  it("allows one sign-in account per email and one rate-limit row per key (Better Auth, 004)", async () => {
+    await db.collection("user").insertOne({ email: "asha@example.com", name: "Asha" });
+    expect(await duplicate(db.collection("user").insertOne({ email: "asha@example.com", name: "Someone else" }))).toBe(true);
+    await db.collection("rateLimit").insertOne({ key: "1.2.3.4|/sign-in/email", count: 1, lastRequest: Date.now() });
+    expect(await duplicate(db.collection("rateLimit").insertOne({ key: "1.2.3.4|/sign-in/email", count: 1, lastRequest: Date.now() }))).toBe(true);
   });
 
   it("allows one profile per user", async () => {

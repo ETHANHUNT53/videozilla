@@ -297,7 +297,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 | ID | Requirement | Priority |
 |---|---|---|
 | F1-FR1 | Sign-up and sign-in via **Google OAuth** and **email + password**, via **Better Auth** with its MongoDB adapter. **No email is sent** (D16): an account works as soon as it's created, with no verification step. Email and password are checked with Zod in the form and on the server (email trimmed, lowercased and a valid format; password 8–128 characters), passwords are stored hashed, and sign-in / sign-up are rate-limited. | P0 |
-| F1-FR2 | Password reset via email link — **deferred** (D16): no "Forgot password" until email returns; a forgotten password needs support or Google sign-in. | P0 → later |
+| F1-FR2 | Password reset via email link — **deferred** (D16): no "Forgot password" until email returns; a forgotten password needs support (Google sign-in isn't linked to a password account, so it can't stand in). | P0 → later |
 | F1-FR3 | Session persists across browser restarts (Better Auth database sessions in an httpOnly secure cookie, 30-day rolling expiry); sign-out from the profile menu; "sign out of all devices" in settings | P0 |
 | F1-FR4 | Onboarding: a 3-card intro on first sign-in (skippable), plus collecting display name, preferred video language (Hindi / English) and what they teach or create about (optional, used to tailor idea suggestions). Time zone defaults to IST. | P0 |
 | F1-FR5 | **Library page** shows project cards: thumbnail (first frame or title card), title, status badge, language, duration, last updated | P0 |

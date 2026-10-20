@@ -25,3 +25,9 @@ export const COLLECTIONS = {
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
+
+/**
+ * Better Auth's collections that our migrations index (004): Better Auth writes them, but its MongoDB adapter creates
+ * no indexes of its own.
+ */
+export const AUTH_COLLECTIONS = { user: "user", rateLimit: "rateLimit" } as const;

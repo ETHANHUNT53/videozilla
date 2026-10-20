@@ -676,6 +676,8 @@ To avoid "DB says running, but the job was never sent", the event payload is wri
 | `usage_counters` | `{ expiresAt: 1 }` | TTL 0 | |
 | `voice_stats` | `{ key: 1 }` | unique | |
 | `config` | `{ key: 1 }` | unique | |
+| `user` (Better Auth) | `{ email: 1 }` | unique | Migration 004: one account per email (sign-up has no verification step since D16, and Better Auth's exists-check and insert aren't atomic) |
+| `rateLimit` (Better Auth) | `{ key: 1 }` | unique | Migration 004: the sign-in / sign-up limiter's lookup, one row per IP and path |
 
 **Not indexed on purpose:**
 - Free-text search over narration (not needed in V1).
