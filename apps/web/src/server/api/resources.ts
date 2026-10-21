@@ -168,22 +168,3 @@ export function toStoryboardVersion(v: StoryboardVersionDoc, currentVersion: num
   };
 }
 export type StoryboardVersionResource = ReturnType<typeof toStoryboardVersion>;
-
-/** What the project page shows about the current storyboard before F3.3's screen: its header and chapters. */
-export function toStoryboardSummary(v: StoryboardVersionDoc) {
-  const chapters: string[] = [];
-  for (const s of v.data.scenes) {
-    const c = s.beat?.chapter;
-    if (c && chapters.length < c.index) chapters.push(c.headline);
-  }
-  return {
-    version: v.version,
-    title: v.data.title,
-    hook: v.data.hook,
-    sceneCount: v.data.scenes.length,
-    estimatedDurationSec: v.validationReport.estimatedDurationSec,
-    wordCount: v.validationReport.wordCount,
-    chapters,
-  };
-}
-export type StoryboardSummary = ReturnType<typeof toStoryboardSummary>;

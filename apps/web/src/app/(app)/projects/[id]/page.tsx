@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProjectView } from "@/components/project-view";
-import { toIdeaSession, toProject, toRun, toStoryboardSummary } from "@/server/api/resources";
+import { toIdeaSession, toProject, toRun, toStoryboardVersion } from "@/server/api/resources";
 import { requireUser } from "@/server/dal";
 import { latestIdeaChat } from "@/server/repos/chat-messages";
 import { getIdea } from "@/server/repos/ideas";
@@ -41,7 +41,7 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
       idea={toIdeaSession(idea)}
       chat={chat}
       storyboardRun={run ? toRun(run) : null}
-      storyboard={current ? toStoryboardSummary(current.version) : null}
+      storyboard={current ? toStoryboardVersion(current.version, project.currentStoryboardVersion) : null}
     />
   );
 }

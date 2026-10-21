@@ -13,6 +13,9 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/lib/api-client", () => ({ apiCall: async () => ({ data: {} }), ApiClientError: class extends Error {} }));
 
+import { mockStoryboard } from "@videozilla/ai";
+import { validateStoryboard } from "@videozilla/pipeline";
+import { RawStoryboard } from "@videozilla/schema";
 import { ProjectView } from "./project-view";
 
 const project = {
@@ -56,6 +59,13 @@ const render = (ideaOver: Record<string, unknown> = {}, projectOver: Record<stri
   renderToString(createElement(ProjectView, { initial: { ...project, ...projectOver }, idea: idea(ideaOver), chat: { items: [], hasOlder: false } } as never));
 const renderWith = (projectOver: Record<string, unknown>, extra: Record<string, unknown>) =>
   renderToString(createElement(ProjectView, { initial: { ...project, ...projectOver }, idea: idea(), chat: { items: [], hasOlder: false }, ...extra } as never));
+const STORYBOARD = validateStoryboard(
+  RawStoryboard.parse(mockStoryboard({ brief: { title: "Why leaves turn red", hook: "Leaves hide colours.", angle: "Pigments", keyPoints: ["Chlorophyll", "Carotenoids", "Anthocyanins"], outOfScope: [] }, language: "en", lengthSec: 60, audience: "students" })),
+  "en",
+  60,
+).storyboard;
+const VERSION = { version: 2, source: "generate", basedOnVersion: 1, changeSummary: "Regenerated from the brief", changedSceneIds: [], storyboard: STORYBOARD, estimatedDurationSec: 61, wordCount: 137, warnings: [], accuracyFlags: [], isCurrent: true, createdAt: "2026-10-21T08:00:00.000Z" };
+const READY = { status: "storyboard_ready", currentStoryboardVersion: 2, voiceGender: "female", allowedActions: ["rename", "edit_idea", "generate", "delete", "duplicate"] };
 const RUN = {
   id: "r1",
   projectId: "p1",
@@ -107,23 +117,50 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).not.toContain("once the video is built");
   });
 
-  it("F3.1: a ready storyboard: Next links to it, the Storyboard step shows its summary and chapters", () => {
-    const html = renderWith(
-      { status: "storyboard_ready", currentStoryboardVersion: 2, allowedActions: ["rename", "edit_idea", "generate", "delete", "duplicate"] },
-      { storyboard: { version: 2, title: "Leaves, explained", hook: "Why red?", sceneCount: 8, estimatedDurationSec: 61, wordCount: 137, chapters: ["Light", "Pigments", "Autumn"] } },
-    );
-    expect(html).toMatch(/<a[^>]*href="\/projects\/p1\/storyboard"[^>]*>Next: Storyboard →/);
-    expect(html).toContain("Leaves, explained");
-    expect(html).toContain("8<!-- --> scenes · ~<!-- -->61<!-- -->s");
-    expect(html).toContain("Pigments");
-    expect(html).toContain("Back to idea");
+  it("F3.3: the Storyboard step is the review screen: chips, scenes by chapter, on-screen text, caption, Approve disabled, the M5 card", () => {
+    const html = renderWith(READY, { storyboard: VERSION });
+    // Header: Approve shown disabled with its note, no "Next: Storyboard" here.
+    expect(html.slice(html.lastIndexOf("<button", html.indexOf("Approve &amp; create video")), html.indexOf("Approve &amp; create video"))).toMatch(/disabled=""/);
+    expect(html).toContain("Building the video arrives in M3");
+    expect(html).not.toContain("Next: Storyboard");
+    // Chips row.
+    for (const chip of ["English", "~<!-- -->60<!-- -->s · est. <!-- -->61<!-- -->s", "8<!-- --> scenes", "Female voice", "Midnight", "Version <!-- -->2"]) expect(html).toContain(chip);
+    expect(html).not.toContain("a little");
+    // Scene cards, in order, with chapters and what's on screen.
+    const at = (t: string) => html.indexOf(t);
+    expect(at("S1 · HOOK")).toBeGreaterThan(-1);
+    expect(at("chapter <!-- -->1<!-- --> · ")).toBeGreaterThan(at("S1 · HOOK"));
+    expect(at("S8 · RECAP")).toBeGreaterThan(at("chapter <!-- -->3<!-- --> · "));
+    expect(html.match(/\/\/ on screen:/g)!.length).toBe(8);
+    expect(html).toContain("TitleHook");
+    expect(html).toContain("Play scene 3 preview");
+    expect(html).toMatch(/\d\d:\d\d – \d\d:\d\d/);
+    // Caption (read-only until F3.4) and the revision chat placeholder (M5).
+    expect(html).toContain("instagram caption");
+    expect(html).toContain("#science");
+    expect(html).toContain("revise with ai");
+    expect(html).toContain("Arrives in M5");
+    // Later features are left out, not shown disabled.
+    expect(html).not.toMatch(/check fact|Re-order|Delete scene/i);
   });
 
-  it("F3.1: a failed regenerate is reported on the Storyboard step, with the current storyboard kept", () => {
+  it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {
+    const html = renderWith(READY, { storyboard: { ...VERSION, estimatedDurationSec: 72 } });
+    expect(html).toContain("a little long");
+    expect(html).toContain("Regenerate it from the Idea step");
+  });
+
+  it("F3.3: a failed regenerate is reported on the review screen, with the current storyboard kept", () => {
     const failed = { ...RUN, status: "failed", active: false, error: { code: "AI_BUSY", message: "The AI is busy right now. Try again in a minute.", retryable: true, step: "write_script" } };
-    const html = renderWith({ status: "storyboard_ready", currentStoryboardVersion: 3 }, { storyboardRun: failed, storyboard: null });
+    const html = renderWith(READY, { storyboardRun: failed, storyboard: VERSION });
     expect(html).toContain("The new storyboard couldn&#x27;t be made: ");
     expect(html).toContain("Your current storyboard is unchanged.");
+    expect(html).toContain("S1 · HOOK");
+  });
+
+  it("F3.3: ready but the storyboard not loaded yet: a loading card, not a broken screen", () => {
+    const html = renderWith(READY, { storyboard: null });
+    expect(html).toContain("Loading your storyboard…");
   });
 
   it("F3.1: after a failed generation the Idea step says why and that it didn't count", () => {

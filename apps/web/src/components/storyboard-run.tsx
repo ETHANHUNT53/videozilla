@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, type StaleAction, type StatusResponse } from "@/lib/storyboard-run";
-import type { ProjectResource, RunResource, StoryboardSummary } from "@/server/api/resources";
-import { Button, ButtonLink, Card, Eyebrow, Slashes, cx } from "./ui";
+import type { ProjectResource, RunResource } from "@/server/api/resources";
+import { Button, Card, Eyebrow, cx } from "./ui";
 
 /**
  * Generating the storyboard (F3.1) on the project page: the hook that starts a run and follows it through
@@ -201,9 +201,9 @@ export function GenerateCard(props: { keyPoints: number | null; status: string; 
   );
 }
 
-/** The Storyboard step's main card: progress while the storyboard is written, then a short summary of it. */
-export function StoryboardWorkspace(props: { projectId: string; status: string; summary: StoryboardSummary | null; storyboard: StoryboardRun; onBackToIdea: () => void }) {
-  const { projectId, status, summary, storyboard, onBackToIdea } = props;
+/** The Storyboard step while the storyboard is written (its steps and progress); the review screen (F3.3) once it's there. */
+export function StoryboardWorkspace(props: { status: string; storyboard: StoryboardRun }) {
+  const { status, storyboard } = props;
   const run = storyboard.run;
   if (status === "storyboard_generating") {
     const now = currentStep(run);
@@ -230,53 +230,11 @@ export function StoryboardWorkspace(props: { projectId: string; status: string; 
       </Card>
     );
   }
-  // A regenerate that failed lands back here (the earlier version stays current), so say so here too.
-  const failure = runFailure(run);
+  // Ready, but this page's copy of the storyboard is still loading (it refreshes after the run).
   return (
-    <Card className="flex min-h-80 flex-col gap-5 p-6">
-      <Eyebrow accent="text-violet">storyboard ready</Eyebrow>
-      {failure ? (
-        <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-red/40 bg-red/5 px-3 py-2 text-sm">
-          <p>
-            <span className="text-red">The new storyboard couldn&apos;t be made: {failure.message}</span>{" "}
-            <span className="text-muted">
-              Your current storyboard is unchanged. {failure.counted ? "This counted against today's limit." : "This didn't count against today's limit."}
-            </span>
-          </p>
-          <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={storyboard.dismiss} aria-label="Dismiss">
-            ✕
-          </button>
-        </div>
-      ) : null}
-      {summary ? (
-        <>
-          <div className="flex flex-col gap-2">
-            <p className="text-2xl font-semibold text-balance">{summary.title}</p>
-            <p className="text-muted">{summary.hook}</p>
-          </div>
-          <p className="font-mono text-sm text-muted">
-            <Slashes />
-            {summary.sceneCount} scenes · ~{summary.estimatedDurationSec}s · {summary.wordCount} words · version {summary.version}
-          </p>
-          {summary.chapters.length ? (
-            <ol className="flex flex-col gap-1 text-sm">
-              {summary.chapters.map((c, i) => (
-                <li key={i}>
-                  <span className="font-mono text-cyan">{String(i + 1).padStart(2, "0")}</span> {c}
-                </li>
-              ))}
-            </ol>
-          ) : null}
-        </>
-      ) : (
-        <p className="text-muted">Your storyboard is saved.</p>
-      )}
-      <div className="mt-auto flex flex-wrap gap-3">
-        <ButtonLink href={`/projects/${projectId}/storyboard`}>Open storyboard →</ButtonLink>
-        <Button type="button" variant="ghost" onClick={onBackToIdea}>
-          ← Back to idea
-        </Button>
-      </div>
+    <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center" aria-live="polite">
+      <Eyebrow accent="text-violet">storyboard</Eyebrow>
+      <p className="text-muted">Loading your storyboard…</p>
     </Card>
   );
 }

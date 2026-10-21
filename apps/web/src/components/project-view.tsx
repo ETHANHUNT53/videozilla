@@ -8,11 +8,12 @@ import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } fro
 import { STEPS, stepIndex } from "@/lib/project-options";
 import { staleMessage, type StaleAction } from "@/lib/storyboard-run";
 import { STATUS_DISPLAY } from "@/lib/status";
-import type { ChatMessageResource, IdeaSessionResource, ProjectResource, RunResource, StoryboardSummary } from "@/server/api/resources";
+import type { ChatMessageResource, IdeaSessionResource, ProjectResource, RunResource, StoryboardVersionResource } from "@/server/api/resources";
 import { IdeaStep } from "./idea-step";
 import { SettingsPanel } from "./settings-panel";
+import { StoryboardReview } from "./storyboard-review";
 import { StoryboardWorkspace, useStoryboardRun } from "./storyboard-run";
-import { Button, ButtonLink, Card, Chip, Eyebrow, Slashes, cx, inputStyles } from "./ui";
+import { Button, Card, Chip, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Project = ProjectResource;
 
@@ -33,10 +34,10 @@ export function ProjectView(props: {
   chat: { items: ChatMessageResource[]; hasOlder: boolean };
   /** The latest storyboard generation run (F3.1), to follow one that is running or show why the last one failed. */
   storyboardRun?: RunResource | null;
-  /** The current storyboard's header, once there is one. */
-  storyboard?: StoryboardSummary | null;
+  /** The current storyboard version, once there is one (the Storyboard Review screen, F3.3). */
+  storyboard?: StoryboardVersionResource | null;
 }) {
-  const { initial, idea, chat, storyboard = null } = props;
+  const { initial, idea, chat, storyboard: version = null } = props;
   const [project, setProject] = useState(initial);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
@@ -83,6 +84,8 @@ export function ProjectView(props: {
     },
   };
   const hasStoryboard = Boolean(project.currentStoryboardVersion) && project.status !== "storyboard_generating";
+  // The Storyboard Review screen (F3.3) shows on the Storyboard step once the storyboard is there.
+  const reviewing = shown === 1 && hasStoryboard && version !== null && version.version === project.currentStoryboardVersion;
 
   return (
     <div className="flex flex-col gap-8">
@@ -101,10 +104,23 @@ export function ProjectView(props: {
             </div>
             <Chip color={status.color}>{status.label}</Chip>
           </div>
-          {/* Stitch 09's way forward: the storyboard, once there is one (F3.1; F3.3 makes it the review screen). */}
+          {/* The way forward: on the Idea step, to the storyboard once there is one; on the Storyboard step (Stitch 10),
+              "Approve & create video", shown disabled until building arrives in M3 (your answer, F3.3). */}
           <span className="ml-auto flex shrink-0 items-center gap-3">
-            {hasStoryboard ? (
-              <ButtonLink href={`/projects/${project.id}/storyboard`}>Next: Storyboard →</ButtonLink>
+            {reviewing ? (
+              <>
+                <span id="approve-note" className="hidden font-mono text-xs text-muted sm:inline">
+                  <Slashes />
+                  Building the video arrives in M3
+                </span>
+                <Button type="button" disabled aria-describedby="approve-note" title="Building the video arrives in M3">
+                  Approve &amp; create video →
+                </Button>
+              </>
+            ) : hasStoryboard ? (
+              <Button type="button" onClick={() => setViewing(null)}>
+                Next: Storyboard →
+              </Button>
             ) : (
               <Button type="button" disabled title={project.status === "storyboard_generating" ? "Your storyboard is being written" : "Generate the storyboard first"}>
                 Next: Storyboard →
@@ -191,8 +207,10 @@ export function ProjectView(props: {
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-          {shown === 1 ? (
-            <StoryboardWorkspace projectId={project.id} status={project.status} summary={storyboard} storyboard={storyboardRun} onBackToIdea={() => setViewing(0)} />
+          {reviewing ? (
+            <StoryboardReview project={project} version={version!} storyboard={storyboardRun} onBackToIdea={() => setViewing(0)} />
+          ) : shown === 1 ? (
+            <StoryboardWorkspace status={project.status} storyboard={storyboardRun} />
           ) : (
             <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
               <Eyebrow accent="text-violet">{VIDEO_WORKSPACE.eyebrow}</Eyebrow>
@@ -200,7 +218,16 @@ export function ProjectView(props: {
               <p className="max-w-md text-balance text-muted">{VIDEO_WORKSPACE.body}</p>
             </Card>
           )}
-          <SettingsPanel project={project} onSaved={saved} />
+          <div className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-4 lg:self-start">
+            <SettingsPanel project={project} onSaved={saved} />
+            {reviewing ? (
+              // Stitch 10's chat column: the revision chat arrives in M5 (your answer, F3.3).
+              <Card className="flex flex-col gap-2 p-5">
+                <Eyebrow accent="text-violet">revise with ai</Eyebrow>
+                <p className="text-sm text-muted">Ask for changes in plain words, for the whole video or one scene. Arrives in M5; until then, edit the brief and regenerate.</p>
+              </Card>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
