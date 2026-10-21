@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunResource } from "@/server/api/resources";
 import { ApiClientError } from "./api-client";
-import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, staleMessage } from "./storyboard-run";
+import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, splitTags, staleMessage } from "./storyboard-run";
 
 const run = (over: Partial<RunResource> = {}): RunResource => ({
   id: "r1",
@@ -72,5 +72,14 @@ describe("storyboard run helpers (F3.1)", () => {
     expect(staleMessage("generate")).toMatch(/so nothing was started./);
     expect(staleMessage("request")).toMatch(/so your request wasn't sent./);
     expect(staleMessage("caption_edit")).toMatch(/so your caption edit wasn't saved./);
+  });
+});
+
+describe("splitTags (F3.4)", () => {
+  it("splits at commas, keeps a multi-word tag together, splits a pasted list of #tags", () => {
+    expect(splitTags("study with me")).toEqual(["study with me"]);
+    expect(splitTags("a, b,")).toEqual(["a", "b"]);
+    expect(splitTags("#science #physics")).toEqual(["#science", "#physics"]);
+    expect(splitTags("#one two")).toEqual(["#one two"]);
   });
 });

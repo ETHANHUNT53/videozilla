@@ -3,7 +3,7 @@
 import { hashtagHint, normalizeHashtag, normalizeHashtags, postedText, SOCIAL_LIMITS, socialCounts, socialProblems, type Social } from "@videozilla/schema";
 import { useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
-import { isStaleState, type StaleAction } from "@/lib/storyboard-run";
+import { isStaleState, splitTags, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
 import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
 
@@ -207,7 +207,7 @@ function SocialForm({ draft, onChange, aiNote }: { draft: Social; onChange: (s: 
   const problems = socialProblems(draft);
 
   const addTags = (raw: string) => {
-    const parts = raw.split(/[,\s]+/).map((p) => normalizeHashtag(p)).filter((t): t is string => t !== null);
+    const parts = splitTags(raw).map((p) => normalizeHashtag(p)).filter((t): t is string => t !== null);
     if (!parts.length) return;
     onChange({ ...draft, hashtags: normalizeHashtags([...draft.hashtags, ...parts]) });
     setTagInput("");
@@ -256,9 +256,9 @@ function SocialForm({ draft, onChange, aiNote }: { draft: Social; onChange: (s: 
           value={tagInput}
           placeholder="Add a hashtag and press Enter"
           onChange={(e) => {
-            // A comma or space finishes a tag (pasting "#a #b" adds both).
+            // A comma finishes a tag; spaces inside one are removed ("study with me" → #studywithme).
             const v = e.target.value;
-            if (/[,\s]$/.test(v) && v.trim()) addTags(v);
+            if (/,$/.test(v) && v.trim()) addTags(v);
             else setTagInput(v);
           }}
           onKeyDown={(e) => {

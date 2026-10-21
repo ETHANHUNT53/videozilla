@@ -70,3 +70,15 @@ export function staleMessage(action: StaleAction): string {
           : "your request wasn't sent";
   return `This video moved on in another tab, so ${what}. You're seeing it as it is now.`;
 }
+
+/**
+ * What the "add hashtag" box holds, as separate tags (F3.4): split at commas; a pasted list of #tags ("#a #b") also
+ * splits at spaces; otherwise spaces stay inside the tag, for normalising to remove ("study with me" → one tag).
+ */
+export function splitTags(raw: string): string[] {
+  return raw
+    .split(",")
+    .flatMap((part) => ((part.trim().match(/#/g) ?? []).length > 1 ? part.split(/\s+/) : [part]))
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
