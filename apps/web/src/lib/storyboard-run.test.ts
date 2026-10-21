@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunResource } from "@/server/api/resources";
 import { ApiClientError } from "./api-client";
-import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure } from "./storyboard-run";
+import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, staleMessage } from "./storyboard-run";
 
 const run = (over: Partial<RunResource> = {}): RunResource => ({
   id: "r1",
@@ -65,5 +65,11 @@ describe("storyboard run helpers (F3.1)", () => {
     expect(isStaleState(new ApiClientError(409, "RUN_IN_PROGRESS", "x"))).toBe(false);
     expect(isStaleState(new ApiClientError(429, "LIMIT_REACHED", "x"))).toBe(false);
     expect(isStaleState(new Error("x"))).toBe(false);
+  });
+
+  it("after a re-sync, says what didn't happen (nothing is dropped silently)", () => {
+    expect(staleMessage("brief_edit")).toBe("This video moved on in another tab, so your brief edit wasn't saved. You're seeing it as it is now.");
+    expect(staleMessage("generate")).toMatch(/so nothing was started./);
+    expect(staleMessage("request")).toMatch(/so your request wasn't sent./);
   });
 });

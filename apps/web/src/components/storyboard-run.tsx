@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
-import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, type StatusResponse } from "@/lib/storyboard-run";
+import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, type StaleAction, type StatusResponse } from "@/lib/storyboard-run";
 import type { ProjectResource, RunResource, StoryboardSummary } from "@/server/api/resources";
 import { Button, ButtonLink, Card, Eyebrow, Slashes, cx } from "./ui";
 
@@ -25,7 +25,7 @@ export interface StoryboardRun {
  * Starts a generation and polls `/status` while it runs (every `pollAfterMs`, paused while the tab is hidden). When it
  * ends, `onProject` gets the project as it is now (ready, or back where it was).
  */
-export function useStoryboardRun(projectId: string, initialRun: RunResource | null, onProject: (p: ProjectResource) => void, onStale: () => Promise<void>): StoryboardRun {
+export function useStoryboardRun(projectId: string, initialRun: RunResource | null, onProject: (p: ProjectResource) => void, onStale: (action: StaleAction) => Promise<void>): StoryboardRun {
   const [run, setRun] = useState<RunResource | null>(initialRun);
   // A newer run from the server (the page refreshed, e.g. after another tab started one) replaces the one followed here.
   const [seenInitial, setSeenInitial] = useState(initialRun);
@@ -99,7 +99,7 @@ export function useStoryboardRun(projectId: string, initialRun: RunResource | nu
       } catch (err) {
         setError(err instanceof ApiClientError ? err.message : "Couldn't start the storyboard. Try again.");
         // 409: this tab is behind (another tab generated or changed the video): show the video as it is now.
-        if (isStaleState(err)) await resyncRef.current();
+        if (isStaleState(err)) await resyncRef.current("generate");
       } finally {
         setStarting(false);
       }

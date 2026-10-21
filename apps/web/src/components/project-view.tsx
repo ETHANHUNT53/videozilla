@@ -6,6 +6,7 @@ import { useRef, useState, useTransition } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
 import { STEPS, stepIndex } from "@/lib/project-options";
+import { staleMessage, type StaleAction } from "@/lib/storyboard-run";
 import { STATUS_DISPLAY } from "@/lib/status";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource, RunResource, StoryboardSummary } from "@/server/api/resources";
 import { IdeaStep } from "./idea-step";
@@ -60,15 +61,27 @@ export function ProjectView(props: {
   };
   // A 409 from an action means this tab is behind (another tab generated a storyboard, say): load the video as it is
   // now; the refresh also brings the latest run and storyboard summary (QA, F3.1).
-  const resync = async () => {
+  // A line says what happened (nothing is dropped silently); it stays until dismissed or the next Generate, even when
+  // the other tab's storyboard finishes meanwhile.
+  const [staleText, setStaleNote] = useState<string | null>(null);
+  const resync = async (action: StaleAction) => {
     try {
       const { data } = await apiCall<Project>(`/api/v1/projects/${project.id}`);
       saved(data);
+      setStaleNote(staleMessage(action));
     } catch {
       router.refresh();
+      setStaleNote(staleMessage(action));
     }
   };
-  const storyboardRun = useStoryboardRun(project.id, props.storyboardRun ?? null, saved, resync);
+  const run = useStoryboardRun(project.id, props.storyboardRun ?? null, saved, resync);
+  const storyboardRun = {
+    ...run,
+    start: (regenerate: boolean) => {
+      setStaleNote(null); // the user's next action
+      return run.start(regenerate);
+    },
+  };
   const hasStoryboard = Boolean(project.currentStoryboardVersion) && project.status !== "storyboard_generating";
 
   return (
@@ -139,6 +152,18 @@ export function ProjectView(props: {
           </li>
         ))}
       </ol>
+
+      {/* Polite: it follows the user's own action, and the page around it has just changed. */}
+      <div aria-live="polite">
+        {staleText ? (
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-orange/40 bg-orange/5 px-4 py-3 text-sm">
+            <p>{staleText}</p>
+            <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={() => setStaleNote(null)} aria-label="Dismiss">
+              ✕
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       {project.attention ? (
         <div role="alert" className="flex flex-col gap-1 rounded-xl border border-red/40 bg-red/5 px-4 py-3">

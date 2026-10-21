@@ -12,7 +12,7 @@ import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "
 import { BriefEditor } from "./brief-editor";
 import { IdeaChat } from "./idea-chat";
 import { GenerateCard, type StoryboardRun } from "./storyboard-run";
-import { isStaleState } from "@/lib/storyboard-run";
+import { isStaleState, type StaleAction } from "@/lib/storyboard-run";
 import { Button, Card, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Idea = IdeaSessionResource;
@@ -74,7 +74,7 @@ export function IdeaStep(props: {
   /** Starting and following the storyboard generation (F3.1). */
   storyboard: StoryboardRun;
   /** A request answered 409 (the video moved on in another tab): reload the video. */
-  onStale?: () => void;
+  onStale?: (action: StaleAction) => void;
 }) {
   const { projectId, language, lengthSec, initial, initialChat, editable, onProject, settings, status, storyboard, onStale } = props;
   // Brief fields the last chat answer changed (F2.5), highlighted until the next message or a new brief.
@@ -293,7 +293,7 @@ export function IdeaStep(props: {
             projectId={projectId}
             brief={brief.brief}
             briefUpdatedAt={brief.updatedAt}
-            onStale={onStale}
+            onStale={() => onStale?.("brief_edit")}
             onCancel={() => setEditingBrief(false)}
             onSaved={(data) => {
               setBrief(briefStateOf(data));
@@ -420,7 +420,7 @@ export type AiErrorState = { message: string; reason?: string; code?: string } |
  * shared daily `ideas` limit, so a second click before the re-render must not send another. After `429 LIMIT_REACHED`
  * — or on load, when `GET /me/usage` says today's ideas are used up — asking stays off until the limit resets.
  */
-function useIdeaAi(onStale?: () => void) {
+function useIdeaAi(onStale?: (action: StaleAction) => void) {
   const staleRef = useRef(onStale);
   useEffect(() => {
     staleRef.current = onStale;
@@ -482,7 +482,7 @@ function useIdeaAi(onStale?: () => void) {
         show({ message: err.message, code: err.code, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
         const resetsAt = err.code === "LIMIT_REACHED" ? Date.parse(String(err.details[0]?.resetsAt ?? "")) : NaN;
         if (Number.isFinite(resetsAt)) setLockedUntil(resetsAt);
-        if (isStaleState(err)) staleRef.current?.();
+        if (isStaleState(err)) staleRef.current?.("request");
       }
     } finally {
       asking.current = false;

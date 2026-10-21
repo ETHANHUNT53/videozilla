@@ -54,3 +54,12 @@ export function generateBlocked(o: { hasBrief: boolean; editable: boolean; aiIdl
 export function isStaleState(err: unknown): boolean {
   return err instanceof ApiClientError && err.code === "INVALID_STATE";
 }
+
+/** What the user was doing when the page found out it was behind. */
+export type StaleAction = "brief_edit" | "generate" | "request";
+
+/** The line shown after the page re-synced, so nothing is dropped silently (QA, F3.1). */
+export function staleMessage(action: StaleAction): string {
+  const what = action === "brief_edit" ? "your brief edit wasn't saved" : action === "generate" ? "nothing was started" : "your request wasn't sent";
+  return `This video moved on in another tab, so ${what}. You're seeing it as it is now.`;
+}
