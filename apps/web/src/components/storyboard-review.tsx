@@ -52,7 +52,7 @@ export function StoryboardReview(props: {
     <div className="flex min-w-0 flex-col gap-4">
       {/* Stitch 10's chips row. */}
       {/* A list, each chip with a sentence for screen readers ("~60s · est. 59s" read aloud is noise). */}
-      <ul className="flex flex-wrap items-center gap-2 font-mono text-xs" aria-label="Storyboard details">
+      <ul className="relative flex flex-wrap items-center gap-2 font-mono text-xs" aria-label="Storyboard details">
         <ChipBox spoken={`Language: ${labelOf(LANGUAGE_OPTIONS, sb.language)}`}>{labelOf(LANGUAGE_OPTIONS, sb.language)}</ChipBox>
         <ChipBox
           tone={model.durationOff ? "warn" : undefined}

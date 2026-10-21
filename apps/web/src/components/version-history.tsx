@@ -66,7 +66,9 @@ export function VersionMenu(props: { projectId: string; current: number; viewing
   };
 
   return (
-    <div className="relative">
+    // The panel is placed against the chips row (its positioned ancestor), full width: it never runs off the screen,
+    // wherever the chip lands in the row (and on a phone it reads as a sheet under the chips).
+    <div>
       <button
         ref={chip}
         type="button"
@@ -84,7 +86,7 @@ export function VersionMenu(props: { projectId: string; current: number; viewing
         <div
           ref={panel}
           id={id}
-          className="absolute left-0 z-20 mt-2 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-1 rounded-xl border border-line bg-[#080B12] p-2 shadow-2xl"
+          className="absolute inset-x-0 top-full z-20 mt-2 flex flex-col gap-1 rounded-xl border border-line bg-[#080B12] p-2 shadow-2xl"
         >
           <p className="px-2 py-1 font-mono text-xs text-muted">{"// version history"}</p>
           {error ? <p className="px-2 text-sm text-red">{error}</p> : null}
