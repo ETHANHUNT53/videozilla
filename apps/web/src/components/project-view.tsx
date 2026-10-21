@@ -108,12 +108,12 @@ export function ProjectView(props: {
               "Approve & create video", shown disabled until building arrives in M3 (your answer, F3.3). */}
           <span className="ml-auto flex shrink-0 items-center gap-3">
             {reviewing ? (
-              // The note shows under the button on narrow screens (no hover on a phone), beside it from xl.
-              <span className="flex flex-col items-end gap-1 xl:flex-row xl:items-center xl:gap-3">
-                <Button type="button" disabled aria-describedby="approve-note" title="Building the video arrives in M3" className="xl:order-2">
+              // The note sits under the button at every width, so the title keeps its room (QA, F3.3).
+              <span className="flex flex-col items-end gap-1">
+                <Button type="button" disabled aria-describedby="approve-note" title="Building the video arrives in M3">
                   Approve &amp; create video →
                 </Button>
-                <span id="approve-note" className="font-mono text-xs text-muted xl:order-1">
+                <span id="approve-note" className="font-mono text-xs text-muted">
                   <Slashes />
                   Building the video arrives in M3
                 </span>
@@ -170,8 +170,9 @@ export function ProjectView(props: {
         ))}
       </ol>
 
-      {/* Polite: it follows the user's own action, and the page around it has just changed. */}
-      <div aria-live="polite">
+      {/* Polite: it follows the user's own action, and the page around it has just changed. `contents`: an empty
+          region takes no slot in the page's column, so it adds no gap (QA, F3.3). */}
+      <div aria-live="polite" className="contents">
         {staleText ? (
           <div className="flex items-start justify-between gap-3 rounded-xl border border-orange/40 bg-orange/5 px-4 py-3 text-sm">
             <p>{staleText}</p>
@@ -304,11 +305,11 @@ function ProjectTitle({ project, onSaved }: { project: Project; onSaved: (p: Pro
           aria-label="Video title"
         />
       ) : (
-        // Wraps below lg (a long word breaks anywhere rather than overflow); one line with "…" from lg, the full title
-        // on hover then.
-        <h1 className={cx("min-w-0 text-3xl font-semibold tracking-tight [overflow-wrap:anywhere] lg:truncate", pending && "opacity-60")} title={canRename ? undefined : project.title}>
+        // Wraps below lg (a long word breaks anywhere rather than overflow); from lg up to 2 lines, then "…" (as Stitch 10;
+        // one line left too little room beside "Approve & create video", QA F3.3), the full title on hover then.
+        <h1 className={cx("min-w-0 text-3xl font-semibold tracking-tight [overflow-wrap:anywhere] lg:line-clamp-2", pending && "opacity-60")} title={canRename ? undefined : project.title}>
           {canRename ? (
-            <button type="button" onClick={startEdit} className="block max-w-full text-left hover:text-cyan lg:truncate" title={`Rename: ${project.title}`}>
+            <button type="button" onClick={startEdit} className="block max-w-full text-left hover:text-cyan lg:line-clamp-2" title={`Rename: ${project.title}`}>
               {pending ? title : project.title}
             </button>
           ) : (

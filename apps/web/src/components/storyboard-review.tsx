@@ -31,18 +31,20 @@ export function StoryboardReview(props: { project: ProjectResource; version: Sto
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {/* Stitch 10's chips row. */}
-      <div className="flex flex-wrap items-center gap-2 font-mono text-xs" aria-label="Storyboard details">
-        <ChipBox>{labelOf(LANGUAGE_OPTIONS, sb.language)}</ChipBox>
-        <ChipBox tone={model.durationOff ? "warn" : undefined}>
+      {/* A list, each chip with a sentence for screen readers ("~60s · est. 59s" read aloud is noise). */}
+      <ul className="flex flex-wrap items-center gap-2 font-mono text-xs" aria-label="Storyboard details">
+        <ChipBox spoken={`Language: ${labelOf(LANGUAGE_OPTIONS, sb.language)}`}>{labelOf(LANGUAGE_OPTIONS, sb.language)}</ChipBox>
+        <ChipBox
+          tone={model.durationOff ? "warn" : undefined}
+          spoken={`Estimated ${version.estimatedDurationSec} seconds of a ${sb.targetDurationSec}-second target${model.durationOff ? `, a little ${model.durationOff}` : ""}`}
+        >
           ~{sb.targetDurationSec}s · est. {version.estimatedDurationSec}s{model.durationOff ? ` · a little ${model.durationOff}` : ""}
         </ChipBox>
-        <ChipBox>
-          {sb.scenes.length} scenes
-        </ChipBox>
-        <ChipBox>{labelOf(VOICE_OPTIONS, project.voiceGender)}</ChipBox>
-        <ChipBox>{theme}</ChipBox>
-        <ChipBox>Version {version.version}</ChipBox>
-      </div>
+        <ChipBox spoken={`${sb.scenes.length} scenes`}>{sb.scenes.length} scenes</ChipBox>
+        <ChipBox spoken={labelOf(VOICE_OPTIONS, project.voiceGender)}>{labelOf(VOICE_OPTIONS, project.voiceGender)}</ChipBox>
+        <ChipBox spoken={`Theme: ${theme}`}>{theme}</ChipBox>
+        <ChipBox spoken={`Version ${version.version}`}>Version {version.version}</ChipBox>
+      </ul>
 
       {model.durationOff ? (
         <p role="status" className="rounded-xl border border-orange/40 bg-orange/5 px-4 py-3 text-sm">
@@ -107,9 +109,12 @@ export function StoryboardReview(props: { project: ProjectResource; version: Sto
   );
 }
 
-function ChipBox({ children, tone }: { children: React.ReactNode; tone?: "warn" }) {
+function ChipBox({ children, tone, spoken }: { children: React.ReactNode; tone?: "warn"; spoken: string }) {
   return (
-    <span className={cx("rounded-lg border px-2.5 py-1", tone === "warn" ? "border-orange/50 bg-orange/10 text-orange" : "border-line bg-surface text-fg")}>{children}</span>
+    <li className={cx("rounded-lg border px-2.5 py-1", tone === "warn" ? "border-orange/50 bg-orange/10 text-orange" : "border-line bg-surface text-fg")}>
+      <span aria-hidden>{children}</span>
+      <span className="sr-only">{spoken}</span>
+    </li>
   );
 }
 
@@ -154,9 +159,10 @@ function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; t
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <h3 className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="font-semibold text-cyan">{card.label}</span>
-          <span className="rounded-md border border-line bg-surface px-2 py-0.5 text-muted">{card.type}</span>
-          <span className="text-muted">{card.length}</span>
+          {/* Read once, as the sentence below (QA: the visible parts were read too). */}
+          <span aria-hidden className="font-semibold text-cyan">{card.label}</span>
+          <span aria-hidden className="rounded-md border border-line bg-surface px-2 py-0.5 text-muted">{card.type}</span>
+          <span aria-hidden className="text-muted">{card.length}</span>
           <span className="sr-only">{`Scene ${number}, ${card.role}, ${card.type}, about ${card.length.replace("~", "")}`}</span>
         </h3>
         <p className="text-[15px] leading-relaxed">{card.narration}</p>

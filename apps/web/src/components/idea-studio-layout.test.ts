@@ -146,6 +146,23 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).not.toMatch(/check fact|Re-order|Delete scene/i);
   });
 
+  it("F3.3 QA: chips are a list with spoken sentences, card headings read once, the M3 note under Approve, no empty slot", () => {
+    const html = renderWith(READY, { storyboard: VERSION });
+    expect(html).toMatch(/<ul[^>]*aria-label="Storyboard details"/);
+    expect(html.match(/<li class="rounded-lg border px-2.5 py-1/g)).toHaveLength(6);
+    expect(html).toContain("Estimated 61 seconds of a 60-second target");
+    expect(html).toContain("Language: English");
+    // Card headings: the visible parts are hidden from screen readers; the sentence is read.
+    const h3 = html.slice(html.indexOf("<h3"), html.indexOf("</h3>"));
+    expect(h3.match(/aria-hidden="true"/g)).toHaveLength(3);
+    expect(h3).toContain("Scene 1, Hook, TitleHook, about");
+    // The note is in the column under the button, not beside it.
+    const head = html.slice(html.lastIndexOf("<span", html.indexOf("Approve &amp; create video")), html.indexOf("Approve &amp; create video"));
+    expect(head).not.toMatch(/xl:flex-row/);
+    // The empty live region takes no slot in the page column.
+    expect(html).toContain('<div aria-live="polite" class="contents"></div>');
+  });
+
   it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {
     const html = renderWith(READY, { storyboard: { ...VERSION, estimatedDurationSec: 72 } });
     expect(html).toContain("a little long");
@@ -234,7 +251,7 @@ describe("Idea Studio layout (Stitch 09)", () => {
     // Below lg: the title's wrapper takes the whole row and the title wraps (QA, F2.7: it shrank to 0 px at 768 / 360).
     expect(header).toContain("basis-full");
     const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
-    expect(h1).toContain("lg:truncate");
+    expect(h1).toContain("lg:line-clamp-2"); // up to 2 lines from lg (QA, F3.3; was one line)
     expect(h1).not.toMatch(/(^|[\s"])truncate/);
     // From lg the full title is on hover.
     expect(header).toContain('title="Rename: Biology for class 9: a real-life Indian example of photosynthesis"');
