@@ -44,14 +44,14 @@ export function openAiCompatBackend(cfg: OpenAiCompatConfig): Backend {
     model: cfg.model,
     reserveMs: cfg.reserveMs,
     typicalMs: cfg.typicalMs,
-    async complete({ system, turns, temperature, signal }) {
+    async complete({ system, turns, temperature, signal, maxOutputTokens }) {
       const body = {
         model: cfg.model,
         messages: [{ role: "system", content: system }, ...turns.map((t) => ({ role: t.role === "model" ? "assistant" : "user", content: t.text }))],
         response_format: { type: "json_object" },
         temperature,
         // Groq's current name for the output cap; OpenRouter's is max_tokens.
-        [cfg.provider === "groq" ? "max_completion_tokens" : "max_tokens"]: MAX_OUTPUT_TOKENS,
+        [cfg.provider === "groq" ? "max_completion_tokens" : "max_tokens"]: maxOutputTokens ?? MAX_OUTPUT_TOKENS,
         ...modelParams(cfg.provider, cfg.model),
         ...cfg.body,
       };

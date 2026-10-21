@@ -39,11 +39,11 @@ export function geminiBackend(apiKey: string, model: string): Backend {
     reserveMs: GEMINI_RESERVE_MS,
     // Measured 2026-10-17: gemini-3.8-flash 9–12 s for 5 Hindi idea cards, the flash-lite models about 2 s.
     typicalMs: /lite/.test(model) ? 3_000 : 9_000,
-    async complete({ system, turns, temperature, signal }) {
+    async complete({ system, turns, temperature, signal, maxOutputTokens }) {
       const res = await ai.models.generateContent({
         model,
         contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
-        config: { systemInstruction: system, responseMimeType: "application/json", temperature, ...MODEL_CONFIG[model], abortSignal: signal },
+        config: { systemInstruction: system, responseMimeType: "application/json", temperature, ...MODEL_CONFIG[model], ...(maxOutputTokens ? { maxOutputTokens } : {}), abortSignal: signal },
       });
       const inputTokens = res.usageMetadata?.promptTokenCount ?? null;
       const blocked = blockReason(res);

@@ -31,6 +31,8 @@ export interface GenerateJsonOptions<T> {
   deadlineMs?: number;
   temperature?: number;
   onCall?: (log: AiCallLog) => void | Promise<void>;
+  /** Output cap for long replies (a storyboard); the provider default otherwise (4,096 on Groq / OpenRouter). */
+  maxOutputTokens?: number;
   /** The sample reply for `AI_PROVIDER=mock` (mock.ts). Without it, mock mode fails for this task. */
   mock?: () => unknown;
 }
@@ -211,7 +213,7 @@ async function runChain<T>(opts: GenerateJsonOptions<T>, pending: Set<Promise<vo
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const res = await Promise.race([
-            backend.complete({ system: opts.system, turns, temperature: opts.temperature ?? 0.8, signal: AbortSignal.timeout(remaining), mock: opts.mock }),
+            backend.complete({ system: opts.system, turns, temperature: opts.temperature ?? 0.8, signal: AbortSignal.timeout(remaining), mock: opts.mock, maxOutputTokens: opts.maxOutputTokens }),
             new Promise<never>((_, reject) => {
               timer = setTimeout(() => reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })), remaining);
             }),

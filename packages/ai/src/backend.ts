@@ -30,7 +30,7 @@ export interface Backend {
    * that still leaves it this much; otherwise only the next tier's (see `generateJson`).
    */
   typicalMs: number;
-  complete(req: { system: string; turns: ChatTurn[]; temperature: number; signal: AbortSignal; mock?: () => unknown }): Promise<BackendReply>;
+  complete(req: { system: string; turns: ChatTurn[]; temperature: number; signal: AbortSignal; mock?: () => unknown; maxOutputTokens?: number }): Promise<BackendReply>;
 }
 
 /**

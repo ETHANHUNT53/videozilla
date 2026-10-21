@@ -60,7 +60,7 @@ You turn a topic into a ~${targetSec}-second animated explainer, planned scene b
 
 ${langRules}
 
-LENGTH: total narration must be ${minW}-${maxW} words. ${targetSec === 60 ? "6-10" : "8-14"} scenes. Each scene 8-35 words of narration.
+LENGTH: total narration must be ${minW}-${maxW} words. ${targetSec === 60 ? "7-9" : "10-13"} scenes. Each scene 8-35 words of narration.
 
 STRUCTURE:
 - Scene 1 role "hook", type TitleHook: a surprising question, fact or bold claim in the first sentence. No "In this video we will...".
@@ -77,7 +77,12 @@ SYNC CUES (very important): each scene has "cues" that make visual elements appe
 - Start each scene's narration by naming its main visual (e.g. "The sun heats the ocean…"), so the screen fills immediately.
 - The on-screen text is SHORTER than the narration: key words only, never full sentences.
 
-HEADLINES (the visual style is a dark, premium tech explainer: a short headline at the top of the screen carries the message, the animation underneath shows it):
+STORY STRUCTURE (describes the content, never the look; every scene has a "beat"):
+- "chapter": group the explain/example scenes into ${targetSec === 60 ? "2-3" : "3-4"} chapters in teaching order (usually one per key point). Every explain/example scene has {"index": 1, 2, 3…, "headline": at most ${language === "hi" ? 6 : 5} words in the video language, "subhead"?: one short line}. Scenes of the same chapter repeat its index and headline. The hook and the recap/outro have no chapter.
+- "mood" for every scene: "curious" (a question or surprise), "explain", "problem" (a difficulty, myth or danger), "solution" (the answer or fix), "recap".
+- "diagram": when the topic is a process or a system, ONE central diagram that grows across the explain/example scenes: {"id": "main", "step": 1, 2, 3…}, one step per scene that adds to it. Leave it out for scenes that do not add to it, and for topics that are not a process.
+
+HEADLINES (a short headline on screen carries the message, the animation underneath shows it):
 - Every scene has a "section": a tiny lowercase label of 1-4 words shown like a code comment (e.g. "the setup", "how it works", "solution 1 · photosynthesis", "recap"). Write it in the video language.
 - Every scene has 1-3 "beats". Each beat is a punchy headline of at most ${language === "hi" ? 7 : 6} words that changes as the narration moves on — like the on-screen titles of a high-end explainer, NOT a transcript.
   Wrap the 1-2 most important words in *asterisks* to colour them, e.g. "Only *50* online", "*Artificial* scarcity", "पौधों की *रसोई*".
@@ -92,7 +97,7 @@ OUTPUT: only a JSON object with this shape:
   "title": string,
   "hook": string,
   "social": {"caption": string (2-3 lines, may include emoji), "hashtags": [5-12 strings starting with #], "coverText": string (<=5 words)},
-  "scenes": [{"role": "hook"|"explain"|"example"|"recap"|"outro", "section": string, "beats": [{"headline": string, "accent": "cyan"|"orange"|"violet"|"green", "anchor"?: string}], "narration": string, "type": one of the scene types, "props": {...}, "cues": [{"target": string, "anchor": string, "occurrence"?: number}]}]
+  "scenes": [{"role": "hook"|"explain"|"example"|"recap"|"outro", "section": string, "beats": [{"headline": string, "accent": "cyan"|"orange"|"violet"|"green", "anchor"?: string}], "narration": string, "type": one of the scene types, "props": {...}, "cues": [{"target": string, "anchor": string, "occurrence"?: number}], "beat": {"chapter"?: {"index": number, "headline": string, "subhead"?: string}, "mood": "curious"|"explain"|"problem"|"solution"|"recap", "diagram"?: {"id": string, "step": number}}}]
 }`;
 }
 
