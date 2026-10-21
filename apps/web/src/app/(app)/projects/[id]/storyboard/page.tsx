@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 
+/** It reads the route params before answering, like the project page (see there): no prerendering. */
+export const instant = false;
+
 /**
  * The F3.1 "Storyboard ready" list lived here; since F3.3 the Storyboard Review screen is the project page's Storyboard
  * step (your answer), so old links go there. The project page does the sign-in and 404 checks.
