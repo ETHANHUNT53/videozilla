@@ -134,6 +134,8 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html.match(/\/\/ on screen:/g)!.length).toBe(8);
     expect(html).toContain("TitleHook");
     expect(html).toContain("Play scene 3 preview");
+    // The label says Play / Pause; no aria-pressed as well (it would be announced twice).
+    expect(html.match(/<button[^>]*Play scene 3 preview[^>]*>/)?.[0]).not.toContain("aria-pressed");
     expect(html).toMatch(/\d\d:\d\d – \d\d:\d\d/);
     // Caption (read-only until F3.4) and the revision chat placeholder (M5).
     expect(html).toContain("instagram caption");

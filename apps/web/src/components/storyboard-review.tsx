@@ -119,6 +119,7 @@ function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; t
   const box = useRef<HTMLDivElement>(null);
   const near = useNearViewport(box);
   const reduced = useReducedMotion();
+  usePauseOffScreen(box, playing, () => onPlay(false));
   const number = card.index + 1;
 
   return (
@@ -143,8 +144,8 @@ function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; t
           <button
           type="button"
           className="absolute bottom-1.5 right-1.5 grid size-7 place-items-center rounded-full border border-line bg-[#030407]/80 font-mono text-xs text-fg hover:text-cyan"
+          // The label says what a press does (no aria-pressed as well: "Pause …, pressed" would say it twice, oddly).
           aria-label={playing ? `Pause scene ${number} preview` : `Play scene ${number} preview`}
-          aria-pressed={playing}
           onClick={() => onPlay(!playing)}
         >
             {playing ? "❚❚" : "▶"}
@@ -189,6 +190,26 @@ function useNearViewport(ref: React.RefObject<HTMLElement | null>): boolean {
     return () => io.disconnect();
   }, [ref, near]);
   return near;
+}
+
+/**
+ * Stops a playing preview once its card scrolls off the screen (a tap on ▶ on a phone, then scrolling on), so a hidden
+ * scene doesn't keep animating in a loop.
+ */
+function usePauseOffScreen(ref: React.RefObject<HTMLElement | null>, playing: boolean, pause: () => void): void {
+  const pauseRef = useRef(pause);
+  useEffect(() => {
+    pauseRef.current = pause;
+  });
+  useEffect(() => {
+    const el = ref.current;
+    if (!playing || !el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.every((e) => !e.isIntersecting)) pauseRef.current();
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref, playing]);
 }
 
 function useReducedMotion(): boolean {
