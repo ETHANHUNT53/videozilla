@@ -1,8 +1,9 @@
 "use client";
 
 import { hashtagHint, normalizeHashtag, normalizeHashtags, postedText, SOCIAL_LIMITS, socialCounts, socialProblems, type Social } from "@videozilla/schema";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
+import { keepCaptionDraft, takeCaptionDraft } from "@/lib/caption-draft";
 import { isStaleState, splitTags, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
 import { Button, Card, Eyebrow, cx, inputStyles } from "./ui";
@@ -28,6 +29,17 @@ export function SocialPanel(props: {
   const [copied, setCopied] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [asking, setAsking] = useState(false);
+
+  // An edit refused with 412 before the reload (see save): back in the form, on the newer storyboard.
+  const [restored, setRestored] = useState(false);
+  useEffect(() => {
+    const kept = takeCaptionDraft(projectId);
+    if (!kept) return;
+    // Restoring from browser storage, once after mount (it isn't there during the server render).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft(kept);
+    setRestored(true);
+  }, [projectId]);
 
   const shown = draft ?? saved;
   const counts = socialCounts(shown);
@@ -55,11 +67,14 @@ export function SocialPanel(props: {
       });
       setDraft(null);
       setAiNote(false);
+      setRestored(false);
       onSaved(data.version, data.project);
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Couldn't save the caption. Please try again.");
-      // The storyboard moved on (regenerated, or edited in another tab): show it as it is now.
+      // The storyboard moved on (regenerated, or edited in another tab): show it as it is now. A 412 keeps the edit for
+      // this tab, so it's back in the form once the newer storyboard has loaded (this panel remounts with it).
       if (err instanceof ApiClientError && (err.code === "PRECONDITION_FAILED" || isStaleState(err))) {
+        if (err.code === "PRECONDITION_FAILED") keepCaptionDraft(projectId, draft);
         setDraft(null);
         onStale("caption_edit");
       }
@@ -151,6 +166,13 @@ export function SocialPanel(props: {
 
       <Counters chars={counts.chars} hashtags={counts.hashtags} hint={hint} />
 
+      {restored && draft ? (
+        <p role="status" className="text-sm text-cyan">
+          The storyboard changed (another tab or a regenerate), so your edit wasn&apos;t saved. It&apos;s back in the form: Save to keep it on
+          the newer storyboard, or Cancel to see the new caption.
+        </p>
+      ) : null}
+
       {error ? (
         <p role="alert" className="text-sm text-red">
           {error}
@@ -169,6 +191,7 @@ export function SocialPanel(props: {
             onClick={() => {
               setDraft(null);
               setAiNote(false);
+              setRestored(false);
               setError(null);
             }}
           >
