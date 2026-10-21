@@ -117,14 +117,19 @@ export function GenerateCard(props: { keyPoints: number | null; status: string; 
   const trigger = useRef<HTMLButtonElement>(null);
   const dialogId = useId();
   const cancelButton = useRef<HTMLButtonElement>(null);
-  // The confirm takes focus when it opens (Cancel: the safe choice); closing it gives focus back to the button (QA, F3.1).
+  // The confirm takes focus when it opens (Cancel: the safe choice); cancelling gives focus back to the button (QA,
+  // F3.1), after the render that enables it again (the button is disabled while the confirm is open).
+  const refocus = useRef(false);
   useEffect(() => {
     if (confirming) cancelButton.current?.focus();
+    else if (refocus.current) {
+      refocus.current = false;
+      trigger.current?.focus();
+    }
   }, [confirming]);
   const cancel = () => {
+    refocus.current = true;
     setConfirming(false);
-    // The trigger is disabled while the confirm is open; focus it once it's enabled again.
-    requestAnimationFrame(() => trigger.current?.focus());
   };
   const ready = keyPoints !== null;
   const regenerate = status === "storyboard_ready";
