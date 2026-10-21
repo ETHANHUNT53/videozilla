@@ -1,6 +1,6 @@
 "use client";
 
-import { hashtagHint, normalizeHashtag, normalizeHashtags, postedText, SOCIAL_LIMITS, socialCounts, socialProblems, type Social } from "@videozilla/schema";
+import { checkHashtag, hashtagHint, postedText, SOCIAL_LIMITS, socialCounts, socialProblems, type Social } from "@videozilla/schema";
 import { useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
 import { keepCaptionDraft, takeCaptionDraft } from "@/lib/caption-draft";
@@ -18,9 +18,11 @@ export function SocialPanel(props: {
   projectId: string;
   version: StoryboardVersionResource;
   onSaved: (version: StoryboardVersionResource, project: ProjectResource) => void;
-  onStale: (action: StaleAction) => void;
+  onStale: (action: StaleAction, opts?: { quiet?: boolean }) => void;
+  /** Edit opened or a save went through: the page's "moved on in another tab" line is old news. */
+  onActivity: () => void;
 }) {
-  const { projectId, version, onSaved, onStale } = props;
+  const { projectId, version, onSaved, onStale, onActivity } = props;
   const saved = version.storyboard.social;
   const [draft, setDraft] = useState<Social | null>(null);
   const [aiNote, setAiNote] = useState(false);
@@ -29,6 +31,22 @@ export function SocialPanel(props: {
   const [copied, setCopied] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [asking, setAsking] = useState(false);
+  // The clipboard was blocked: the text is shown selected, ready for Ctrl+C (QA, F3.4).
+  const [copyBox, setCopyBox] = useState(false);
+  const copyArea = useRef<HTMLTextAreaElement>(null);
+  // Focus: into the caption when the form opens, back to Edit when it closes (QA, F3.4).
+  const editButton = useRef<HTMLButtonElement>(null);
+  const captionBox = useRef<HTMLTextAreaElement>(null);
+  const focusAfter = useRef<"caption" | "edit" | null>(null);
+  const editing = draft !== null;
+  useEffect(() => {
+    if (focusAfter.current === "caption" && editing) captionBox.current?.focus();
+    if (focusAfter.current === "edit" && !editing) editButton.current?.focus();
+    focusAfter.current = null;
+  }, [editing]);
+  useEffect(() => {
+    if (copyBox) copyArea.current?.select();
+  }, [copyBox]);
 
   // An edit refused with 412 before the reload (see save): back in the form, on the newer storyboard.
   const [restored, setRestored] = useState(false);
@@ -51,8 +69,17 @@ export function SocialPanel(props: {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError("Couldn't copy here. Select the caption and copy it yourself.");
+      // Blocked (permissions, an embedded page): show the text selected, so Ctrl+C / Copy copies it.
+      setCopyBox(true);
     }
+  };
+
+  const openEdit = () => {
+    setCopyBox(false);
+    setError(null);
+    onActivity();
+    focusAfter.current = "caption";
+    setDraft({ ...saved, hashtags: [...saved.hashtags] });
   };
 
   const save = async () => {
@@ -62,21 +89,30 @@ export function SocialPanel(props: {
     try {
       const { data } = await apiCall<{ version: StoryboardVersionResource; project: ProjectResource }>(`/api/v1/projects/${projectId}/storyboard/social`, {
         method: "PATCH",
-        body: draft,
+        body: aiNote ? { ...draft, fromRewrite: true } : draft,
         headers: { "If-Match": `"${version.version}"` },
       });
+      focusAfter.current = "edit";
       setDraft(null);
       setAiNote(false);
       setRestored(false);
+      onActivity();
       onSaved(data.version, data.project);
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Couldn't save the caption. Please try again.");
       // The storyboard moved on (regenerated, or edited in another tab): show it as it is now. A 412 keeps the edit for
-      // this tab, so it's back in the form once the newer storyboard has loaded (this panel remounts with it).
-      if (err instanceof ApiClientError && (err.code === "PRECONDITION_FAILED" || isStaleState(err))) {
-        if (err.code === "PRECONDITION_FAILED") keepCaptionDraft(projectId, draft);
+      // this tab and puts it back in the form once the newer storyboard has loaded, with its own note; the page then
+      // adds no "wasn't saved" line of its own (QA: the two contradicted each other).
+      if (err instanceof ApiClientError && err.code === "PRECONDITION_FAILED") {
+        keepCaptionDraft(projectId, draft);
         setDraft(null);
-        onStale("caption_edit");
+        setError(null);
+        onStale("caption_edit", { quiet: true });
+      } else {
+        setError(err instanceof ApiClientError ? err.message : "Couldn't save the caption. Please try again.");
+        if (isStaleState(err)) {
+          setDraft(null);
+          onStale("caption_edit");
+        }
       }
     } finally {
       setBusy(null);
@@ -91,9 +127,12 @@ export function SocialPanel(props: {
         method: "POST",
         body: instruction.trim() ? { instruction: instruction.trim() } : {},
       });
+      focusAfter.current = "caption";
       setDraft(data.social);
       setAiNote(true);
       setAsking(false);
+      setCopyBox(false);
+      onActivity();
     } catch (err) {
       setError(err instanceof ApiClientError ? (err.code === "UNSAFE_CONTENT" ? `${err.message} ${err.details[0]?.issue ?? ""}`.trim() : err.message) : "Couldn't rewrite the caption. Please try again.");
       if (isStaleState(err)) onStale("request");
@@ -111,7 +150,7 @@ export function SocialPanel(props: {
             <Button type="button" variant="ghost" className="px-2.5 py-1 font-mono text-xs" onClick={copy}>
               {copied ? "Copied ✓" : "Copy text"}
             </Button>
-            <Button type="button" variant="ghost" className="px-2.5 py-1 font-mono text-xs" onClick={() => setDraft({ ...saved, hashtags: [...saved.hashtags] })}>
+            <Button ref={editButton} type="button" variant="ghost" className="px-2.5 py-1 font-mono text-xs" onClick={openEdit}>
               Edit
             </Button>
             <Button type="button" variant="secondary" className="px-2.5 py-1 font-mono text-xs" onClick={() => setAsking((a) => !a)} aria-expanded={asking} disabled={busy !== null}>
@@ -147,7 +186,7 @@ export function SocialPanel(props: {
       ) : null}
 
       {draft ? (
-        <SocialForm draft={draft} onChange={setDraft} aiNote={aiNote} />
+        <SocialForm draft={draft} onChange={setDraft} aiNote={aiNote} captionRef={captionBox} />
       ) : (
         <>
           <p className="whitespace-pre-line text-sm leading-relaxed">{saved.caption}</p>
@@ -161,6 +200,21 @@ export function SocialPanel(props: {
           <p className="font-mono text-xs text-muted">
             <span className="text-cyan">{"// on the cover:"}</span> {saved.coverText}
           </p>
+          {copyBox ? (
+            <div className="flex flex-col gap-1.5">
+              <p role="status" className="text-sm text-orange">
+                Couldn&apos;t copy automatically. The text below is selected: press Ctrl+C (⌘C on a Mac), or long-press and Copy.
+              </p>
+              <textarea
+                ref={copyArea}
+                readOnly
+                aria-label="Caption and hashtags to copy"
+                className={cx(inputStyles, "min-h-24 resize-none font-mono text-xs [field-sizing:content]")}
+                value={postedText(saved)}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            </div>
+          ) : null}
         </>
       )}
 
@@ -189,6 +243,7 @@ export function SocialPanel(props: {
             variant="ghost"
             disabled={busy === "save"}
             onClick={() => {
+              focusAfter.current = "edit";
               setDraft(null);
               setAiNote(false);
               setRestored(false);
@@ -223,17 +278,36 @@ function Counters({ chars, hashtags, hint }: { chars: number; hashtags: number; 
 }
 
 /** The edit form: caption, hashtag chips with an add box, cover text; the problems that block Save. */
-function SocialForm({ draft, onChange, aiNote }: { draft: Social; onChange: (s: Social) => void; aiNote: boolean }) {
+function SocialForm(props: { draft: Social; onChange: (s: Social) => void; aiNote: boolean; captionRef: React.RefObject<HTMLTextAreaElement | null> }) {
+  const { draft, onChange, aiNote, captionRef } = props;
   const id = useId();
   const [tagInput, setTagInput] = useState("");
+  // Why a typed hashtag wasn't added (refused, or already there): never silent (QA, F3.4).
+  const [tagNote, setTagNote] = useState<string[]>([]);
   const tagBox = useRef<HTMLInputElement>(null);
   const problems = socialProblems(draft);
 
   const addTags = (raw: string) => {
-    const parts = splitTags(raw).map((p) => normalizeHashtag(p)).filter((t): t is string => t !== null);
-    if (!parts.length) return;
-    onChange({ ...draft, hashtags: normalizeHashtags([...draft.hashtags, ...parts]) });
-    setTagInput("");
+    if (!raw.trim()) return;
+    const notes: string[] = [];
+    const rejected: string[] = [];
+    const tags = [...draft.hashtags];
+    for (const part of splitTags(raw)) {
+      const r = checkHashtag(part);
+      if (!r) continue;
+      if ("error" in r) {
+        notes.push(`${r.error}.`);
+        rejected.push(part);
+      } else if (tags.some((t) => t.toLowerCase() === r.tag.toLowerCase())) {
+        notes.push(`${r.tag} is already there.`);
+      } else {
+        tags.push(r.tag);
+      }
+    }
+    setTagNote(notes);
+    if (tags.length !== draft.hashtags.length) onChange({ ...draft, hashtags: tags });
+    // What couldn't be added stays in the box, to fix.
+    setTagInput(rejected.join(", "));
   };
 
   return (
@@ -244,6 +318,7 @@ function SocialForm({ draft, onChange, aiNote }: { draft: Social; onChange: (s: 
           caption
         </label>
         <textarea
+          ref={captionRef}
           id={`${id}-caption`}
           className={cx(inputStyles, "min-h-28 resize-none [field-sizing:content]")}
           value={draft.caption}
@@ -291,7 +366,17 @@ function SocialForm({ draft, onChange, aiNote }: { draft: Social; onChange: (s: 
             }
           }}
           onBlur={() => addTags(tagInput)}
+          aria-describedby={tagNote.length ? `${id}-tag-note` : undefined}
         />
+        <div id={`${id}-tag-note`} aria-live="polite" className="contents">
+          {tagNote.length ? (
+            <ul className="flex flex-col gap-0.5 text-sm text-orange">
+              {tagNote.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-cover`} className="font-mono text-xs text-muted">

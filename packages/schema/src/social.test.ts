@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countChars, hashtagHint, normalizeHashtag, normalizeHashtags, postedText, socialCounts, socialProblems } from "./social";
+import { checkHashtag, countChars, hashtagErrors, hashtagHint, normalizeHashtag, normalizeHashtags, postedText, socialCounts, socialProblems } from "./social";
 
 const ok = { caption: "Why is the sky blue? 🌅", hashtags: ["#science", "#physics"], coverText: "Why blue?" };
 
@@ -12,10 +12,21 @@ describe("social rules (F3.4)", () => {
   it("normalises hashtags: # added, spaces and stray # removed, Unicode kept, duplicates dropped", () => {
     expect(normalizeHashtag("science")).toBe("#science");
     expect(normalizeHashtag("# sky blue")).toBe("#skyblue");
-    expect(normalizeHashtag("##CBSE!")).toBe("#CBSE");
+    expect(normalizeHashtag("##CBSE")).toBe("#CBSE");
     expect(normalizeHashtag("विज्ञान")).toBe("#विज्ञान");
     expect(normalizeHashtag("#!!")).toBeNull();
     expect(normalizeHashtags(["science", "#Science", "", "physics"])).toEqual(["#science", "#physics"]);
+  });
+
+  it("refuses what Instagram wouldn't keep, with a reason, instead of changing it (QA)", () => {
+    expect(checkHashtag("#a-b")).toEqual({ error: expect.stringMatching(/#a-b can't have "-".*try #a_b/) });
+    expect(checkHashtag("#123")).toEqual({ error: "#123: hashtags need at least one letter" });
+    expect(checkHashtag("#" + "a".repeat(100))).toEqual({ error: expect.stringMatching(/longer than 100 characters/) });
+    expect(checkHashtag("#" + "a".repeat(99))).toEqual({ tag: "#" + "a".repeat(99) });
+    expect(checkHashtag("study with me")).toEqual({ tag: "#studywithme" });
+    expect(checkHashtag("  ")).toBeNull();
+    expect(normalizeHashtag("#a-b")).toBeNull();
+    expect(hashtagErrors(["#ok", "#1", "#a-b"])).toHaveLength(2);
   });
 
   it("the posted text is the caption, a blank line and the hashtags", () => {

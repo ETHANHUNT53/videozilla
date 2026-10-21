@@ -68,15 +68,15 @@ export function ProjectView(props: {
   // A line says what happened (nothing is dropped silently); it stays until dismissed or the next Generate, even when
   // the other tab's storyboard finishes meanwhile.
   const [staleText, setStaleNote] = useState<string | null>(null);
-  const resync = async (action: StaleAction) => {
+  // `quiet`: the part of the page that hit the 409 / 412 says it itself (the caption panel), so no second line.
+  const resync = async (action: StaleAction, opts: { quiet?: boolean } = {}) => {
     try {
       const { data } = await apiCall<Project>(`/api/v1/projects/${project.id}`);
       saved(data);
-      setStaleNote(staleMessage(action));
     } catch {
       router.refresh();
-      setStaleNote(staleMessage(action));
     }
+    setStaleNote(opts.quiet ? null : staleMessage(action));
   };
   const run = useStoryboardRun(project.id, props.storyboardRun ?? null, saved, resync);
   const storyboardRun = {
@@ -224,6 +224,7 @@ export function ProjectView(props: {
                 saved(nextProject);
               }}
               onStale={resync}
+              onActivity={() => setStaleNote(null)}
             />
           ) : shown === 1 ? (
             <StoryboardWorkspace status={project.status} storyboard={storyboardRun} />

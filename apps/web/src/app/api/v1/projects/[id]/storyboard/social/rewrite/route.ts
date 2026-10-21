@@ -6,6 +6,7 @@ import { ApiError } from "@/server/api/errors";
 import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
 import { projectParams as params, textUpTo } from "@/server/api/request";
 import { logAiCall } from "@/server/repos/ai-calls";
+import { getProject } from "@/server/repos/projects";
 import { getCurrentStoryboard } from "@/server/repos/storyboards";
 import { consumeUsage, rateLimitHeaders, refundUsage } from "@/server/repos/usage";
 
@@ -23,7 +24,8 @@ export const maxDuration = 30;
 
 export const POST = apiRoute({ params, body }, async ({ user, params, body }) => {
   const current = await getCurrentStoryboard(user.id, params.id);
-  if (!current) throw new ApiError("NOT_FOUND");
+  // A video that has no storyboard yet: 409, as for an edit (only an unknown video is 404).
+  if (!current) throw (await getProject(user.id, params.id)) ? new ApiError("INVALID_STATE", { message: "The caption can be rewritten once the storyboard is ready." }) : new ApiError("NOT_FOUND");
   const { project, version } = current;
   if (project.status !== "storyboard_ready") throw new ApiError("INVALID_STATE", { message: "The caption can be rewritten once the storyboard is ready." });
 

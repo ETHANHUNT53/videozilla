@@ -1,4 +1,4 @@
-import { normalizeHashtags, socialProblems, type Social } from "@videozilla/schema";
+import { hashtagErrors, normalizeHashtags, socialProblems, type Social } from "@videozilla/schema";
 import { z } from "zod";
 import { ApiError } from "@/server/api/errors";
 import { apiRoute, json, methodNotAllowed } from "@/server/api/handler";
@@ -18,6 +18,8 @@ const body = z
     caption: textUpTo(4000).optional(),
     hashtags: z.array(textUpTo(200)).max(60).optional(),
     coverText: textUpTo(200).optional(),
+    /** The values came from "Rewrite with AI" (the version then says so). */
+    fromRewrite: z.literal(true).optional(),
   })
   .refine((b) => b.caption !== undefined || b.hashtags !== undefined || b.coverText !== undefined, "Send the caption, the hashtags or the cover text");
 
@@ -33,6 +35,10 @@ export const PATCH = apiRoute({ params, body, maxBodyBytes: 32 * 1024 }, async (
   if (basedOn === undefined) throw new ApiError("VALIDATION_FAILED", { details: [{ field: "If-Match", issue: 'is required: the storyboard version you edited, e.g. "3"' }] });
 
   // The page sends the whole edit; fields left out keep their saved value (read inside the save's transaction).
+  // A hashtag Instagram wouldn't keep as typed is refused with the reason, never changed silently (QA, F3.4).
+  const badTags = body.hashtags ? hashtagErrors(body.hashtags) : [];
+  if (badTags.length) throw new ApiError("CAPTION_INVALID", { message: "Some hashtags can't be used.", details: badTags.map((issue) => ({ field: "hashtags", issue })) });
+
   const result = await saveSocialEdit(user.id, params.id, basedOn, (current) => {
     const social: Social = {
       caption: (body.caption ?? current.caption).trim(),
@@ -42,7 +48,7 @@ export const PATCH = apiRoute({ params, body, maxBodyBytes: 32 * 1024 }, async (
     const problems = socialProblems(social);
     if (problems.length) throw new ApiError("CAPTION_INVALID", { message: "This is over Instagram's limits.", details: problems.map((p) => ({ ...p })) });
     const changed = (["caption", "hashtags", "coverText"] as const).filter((k) => JSON.stringify(social[k]) !== JSON.stringify(current[k]));
-    return { social, summary: summaryOf(changed) };
+    return { social, summary: body.fromRewrite ? "Rewrote the caption with AI" : summaryOf(changed) };
   });
 
   if (result === "not_found") throw new ApiError("NOT_FOUND");

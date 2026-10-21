@@ -29,14 +29,31 @@ export const countChars = (s: string) => Array.from(s).length;
 const HASHTAG = /#[\p{L}\p{M}\p{N}_]+/gu;
 const MENTION = /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_.]+/gu;
 
-/** "#science", "science", "# sky blue" → "#science" / "#skyblue"; null when nothing usable is left. */
-export function normalizeHashtag(raw: string): string | null {
-  const body = raw
-    .normalize("NFC")
-    .replace(/[\s#]+/g, "")
-    .replace(/[^\p{L}\p{M}\p{N}_]/gu, "");
+/**
+ * One hashtag as typed: "science", "#Science", "study with me" → "#science" / "#Science" / "#studywithme" (a leading
+ * `#` and spaces are handled for you). Anything else Instagram wouldn't keep in the tag is refused with a reason, never
+ * changed silently (QA, F3.4): another symbol ("#a-b": Instagram would stop the tag at "-"), digits only, or longer
+ * than 100 characters.
+ */
+export function checkHashtag(raw: string): { tag: string } | { error: string } | null {
+  const body = raw.normalize("NFC").replace(/\s+/g, "").replace(/^#+/, "");
   if (!body) return null;
-  return `#${Array.from(body).slice(0, SOCIAL_LIMITS.hashtagChars - 1).join("")}`;
+  const odd = body.match(/[^\p{L}\p{M}\p{N}_]/u);
+  if (odd) return { error: `#${body} can't have "${odd[0]}": hashtags use only letters, numbers and _ (try #${body.replace(/[^\p{L}\p{M}\p{N}_]+/gu, "_")})` };
+  if (!/\p{L}/u.test(body)) return { error: `#${body}: hashtags need at least one letter` };
+  if (countChars(body) + 1 > SOCIAL_LIMITS.hashtagChars) return { error: `#${Array.from(body).slice(0, 12).join("")}… is longer than ${SOCIAL_LIMITS.hashtagChars} characters` };
+  return { tag: `#${body}` };
+}
+
+/** A valid hashtag in its normal form, or null (empty or refused, see checkHashtag). */
+export function normalizeHashtag(raw: string): string | null {
+  const r = checkHashtag(raw);
+  return r && "tag" in r ? r.tag : null;
+}
+
+/** The hashtags that `checkHashtag` refuses, with why (empty when all are fine). */
+export function hashtagErrors(list: string[]): string[] {
+  return list.map((t) => checkHashtag(t)).flatMap((r) => (r && "error" in r ? [r.error] : []));
 }
 
 /** Normalised, without duplicates (ignoring case), in order. */

@@ -100,6 +100,19 @@ describe("PATCH …/storyboard/social", () => {
     expect((await patch({ caption: "Hindi हिंदी ".repeat(150).trim(), hashtags: [] }, '"3"')).status).toBe(201); // 1,799 characters, more UTF-16 units
   });
 
+  it("422 for hashtags Instagram wouldn't keep as typed, with the reason (QA): a symbol, digits only, over 100 characters", async () => {
+    const res = await patch({ hashtags: ["#ok", "#a-b", "#123", `#${"a".repeat(100)}`] });
+    expect(res.status).toBe(422);
+    expect(res.json.error.code).toBe("CAPTION_INVALID");
+    expect(res.json.error.details.map((d: { issue: string }) => d.issue)).toEqual([expect.stringMatching(/#a-b can't have "-"/), "#123: hashtags need at least one letter", expect.stringMatching(/longer than 100/)]);
+    expect(await versionsOf()).toHaveLength(1);
+  });
+
+  it("a save of rewritten values says so in the version", async () => {
+    const res = await patch({ caption: "From the AI", fromRewrite: true });
+    expect(res.json.version.changeSummary).toBe("Rewrote the caption with AI");
+  });
+
   it("If-Match: required (400), and a stale version gets 412 with the current version", async () => {
     expect((await patch({ coverText: "New" }, null)).status).toBe(400);
     const stale = await patch({ coverText: "New" }, '"7"');
@@ -155,6 +168,11 @@ describe("POST …/storyboard/social/rewrite", () => {
     expect((await rewriteIt()).status).toBe(409);
     await testMongo.db.collection("projects").updateOne({ _id: oid() }, { $set: { status: "storyboard_ready" } });
     expect((await rewriteIt({ instruction: "x".repeat(301) })).status).toBe(400);
+    // A video with no storyboard yet: 409, like an edit (QA: was 404).
+    await testMongo.db.collection("projects").updateOne({ _id: oid() }, { $set: { status: "idea_draft", currentStoryboardVersion: null } });
+    expect((await rewriteIt()).status).toBe(409);
+    expect((await patch({ coverText: "x" })).status).toBe(409);
+    await testMongo.db.collection("projects").updateOne({ _id: oid() }, { $set: { status: "storyboard_ready", currentStoryboardVersion: 1 } });
     await testMongo.db.collection("usage_counters").updateMany({ userId: ME.id }, { $set: { revisions: 100 } });
     expect((await rewriteIt()).json.error.code).toBe("LIMIT_REACHED");
   });

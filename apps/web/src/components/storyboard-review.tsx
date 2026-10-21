@@ -28,9 +28,11 @@ export function StoryboardReview(props: {
   onBackToIdea: () => void;
   /** A caption edit saved a new version (F3.4). */
   onSaved: (version: StoryboardVersionResource, project: ProjectResource) => void;
-  onStale: (action: StaleAction) => void;
+  onStale: (action: StaleAction, opts?: { quiet?: boolean }) => void;
+  /** The user did something in the caption panel: the page's "moved on in another tab" line is no longer news. */
+  onActivity: () => void;
 }) {
-  const { project, version, storyboard, onBackToIdea, onSaved, onStale } = props;
+  const { project, version, storyboard, onBackToIdea, onSaved, onStale, onActivity } = props;
   const sb = version.storyboard;
   const model = useMemo(() => reviewModel(sb, project.styleId, version.estimatedDurationSec), [sb, project.styleId, version.estimatedDurationSec]);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export function StoryboardReview(props: {
         ))}
       </ol>
 
-      <SocialPanel projectId={project.id} version={version} onSaved={onSaved} onStale={onStale} />
+      <SocialPanel projectId={project.id} version={version} onSaved={onSaved} onStale={onStale} onActivity={onActivity} />
     </div>
   );
 }
