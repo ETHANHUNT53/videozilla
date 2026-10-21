@@ -17,6 +17,7 @@ import { mockStoryboard } from "@videozilla/ai";
 import { validateStoryboard } from "@videozilla/pipeline";
 import { RawStoryboard } from "@videozilla/schema";
 import { ProjectView } from "./project-view";
+import { SettingsPanel } from "./settings-panel";
 import { StoryboardReview } from "./storyboard-review";
 
 const project = {
@@ -211,6 +212,13 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).not.toContain("Rewrite with AI");
     expect(html).toContain("a little long");
     expect(html).not.toContain("Regenerate it from the Idea step");
+  });
+
+  it("F3.5 QA: while another version is viewed, the settings are locked with a note", () => {
+    const html = renderToString(createElement(SettingsPanel, { project: { ...project, ...READY, allowedActions: ["edit_script_settings", "edit_media_settings", "edit_idea"] }, onSaved: () => {}, lockedNote: "These settings belong to the current storyboard (version 2), not the one you're viewing." } as never));
+    expect(html).toContain("These settings belong to the current storyboard (version 2)");
+    expect(html).toMatch(/<fieldset[^>]*disabled=""/);
+    expect(html.match(/<select[^>]*disabled=""/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
   it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {

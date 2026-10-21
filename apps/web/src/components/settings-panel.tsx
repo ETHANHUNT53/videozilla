@@ -37,7 +37,7 @@ const LENGTH_SEGMENTS = [
  * and goes back if the save fails. Another tab's change (412) loads the latest settings and says the change wasn't
  * saved. Fields lock by stage from the project's `allowedActions`, as before (F2.6).
  */
-export function SettingsPanel({ project, onSaved }: { project: Project; onSaved: (p: Project) => void }) {
+export function SettingsPanel({ project, onSaved, lockedNote }: { project: Project; onSaved: (p: Project) => void; lockedNote?: string }) {
   // Values chosen but not saved yet (being saved, or waiting for the save before them), shown at once.
   const [optimistic, setOptimistic] = useState<Partial<Settings>>({});
   // Tied to the revision it is about: a later save (or rename) hides it.
@@ -45,8 +45,9 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
   const message = currentNote(revMessage, project);
   const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const scriptEditable = project.allowedActions.includes("edit_script_settings");
-  const mediaEditable = project.allowedActions.includes("edit_media_settings");
+  // `lockedNote` (F3.5): another storyboard version is being viewed; the settings belong to the current one.
+  const scriptEditable = !lockedNote && project.allowedActions.includes("edit_script_settings");
+  const mediaEditable = !lockedNote && project.allowedActions.includes("edit_media_settings");
   const shown: Settings = { ...settingsOf(project), ...optimistic };
   // The newest project for each save's If-Match (a queued save runs after the one before it has answered), and the
   // newest onSaved; kept in refs because the queue lives across renders.
@@ -190,7 +191,9 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
 
       {!scriptEditable || !mediaEditable ? (
         <p className="text-xs text-muted">
-          {project.status === "storyboard_generating"
+          {lockedNote
+            ? lockedNote
+            : project.status === "storyboard_generating"
             ? "Settings are locked while your storyboard is being written. They unlock when it's ready."
             : (!scriptEditable ? "Language, length, audience and board can't change once the video is built — duplicate it to try different ones. " : "") +
               (!mediaEditable ? "Voice and captions can be chosen once the storyboard is ready." : "")}

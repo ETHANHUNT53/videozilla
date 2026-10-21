@@ -71,6 +71,7 @@ export function VersionMenu(props: { projectId: string; current: number; viewing
     <div>
       <button
         ref={chip}
+        id={`version-chip-${projectId}`}
         type="button"
         className="rounded-lg border border-line-strong px-2.5 py-1 text-fg hover:border-cyan/60"
         aria-expanded={open}
@@ -136,6 +137,26 @@ export function ViewingBanner(props: {
 }) {
   const { projectId, project, viewing, onBack, onRestored, onStale } = props;
   const [confirming, setConfirming] = useState(false);
+  // Focus (QA, F3.5): the banner's "Back to current" when a version opens; Cancel when the confirm opens; back to
+  // "Restore this version" when it closes. Effects after the render, as the F3.1 regenerate confirm does.
+  const backButton = useRef<HTMLButtonElement>(null);
+  const restoreButton = useRef<HTMLButtonElement>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    backButton.current?.focus();
+  }, [viewing.version]);
+  useEffect(() => {
+    if (confirming) cancelButton.current?.focus();
+    else if (refocus.current) {
+      refocus.current = false;
+      restoreButton.current?.focus();
+    }
+  }, [confirming]);
+  const cancel = () => {
+    refocus.current = true;
+    setConfirming(false);
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sb = viewing.storyboard;
@@ -168,7 +189,14 @@ export function ViewingBanner(props: {
         </span>
       </p>
       {confirming ? (
-        <div role="alertdialog" aria-label="Restore this version?" className="flex flex-col gap-2">
+        <div
+          role="alertdialog"
+          aria-label="Restore this version?"
+          className="flex flex-col gap-2"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") cancel();
+          }}
+        >
           <p className="text-sm">
             Make version {viewing.version} the current storyboard? Version {project.currentStoryboardVersion} stays in the history, so you can switch back.
             {settingsChange
@@ -179,17 +207,17 @@ export function ViewingBanner(props: {
             <Button type="button" onClick={restore} disabled={busy} aria-busy={busy}>
               {busy ? "Restoring…" : "Restore"}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+            <Button ref={cancelButton} type="button" variant="ghost" onClick={cancel} disabled={busy}>
               Cancel
             </Button>
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => setConfirming(true)}>
+          <Button ref={restoreButton} type="button" onClick={() => setConfirming(true)}>
             Restore this version
           </Button>
-          <Button type="button" variant="ghost" onClick={onBack}>
+          <Button ref={backButton} type="button" variant="ghost" onClick={onBack}>
             Back to current
           </Button>
         </div>

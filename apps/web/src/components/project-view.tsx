@@ -45,11 +45,16 @@ export function ProjectView(props: {
   const [version, setVersion] = useState(props.storyboard ?? null);
   // F3.5: another version opened read-only from the history.
   const [viewingVersion, setViewingVersion] = useState<StoryboardVersionResource | null>(null);
+  // "Version N is now the current storyboard." after a restore, for screen readers (QA, F3.5).
+  const [restoredNote, setRestoredNote] = useState("");
+  // The history chip, to return focus to after Back to current / a restore (it re-renders, so it's found by id).
+  const focusChip = () => setTimeout(() => document.getElementById(`version-chip-${project.id}`)?.focus(), 0);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
   if (initial.rev > project.rev) setProject(initial);
   const router = useRouter();
   if (props.storyboard && props.storyboard.version === project.currentStoryboardVersion && version?.version !== props.storyboard.version) setVersion(props.storyboard);
+  const viewingOther = viewingVersion !== null && viewingVersion.version !== project.currentStoryboardVersion;
   const step = stepIndex(project.status, project.attention?.kind);
   const status = STATUS_DISPLAY[project.status];
   // The step being looked at: the video's own step, or an earlier one opened in the stepper ("Back to idea"). When the
@@ -74,13 +79,15 @@ export function ProjectView(props: {
   const [staleText, setStaleNote] = useState<string | null>(null);
   // `quiet`: the part of the page that hit the 409 / 412 says it itself (the caption panel), so no second line.
   const resync = async (action: StaleAction, opts: { quiet?: boolean } = {}) => {
+    let status: string | undefined;
     try {
       const { data } = await apiCall<Project>(`/api/v1/projects/${project.id}`);
       saved(data);
+      status = data.status;
     } catch {
       router.refresh();
     }
-    setStaleNote(opts.quiet ? null : staleMessage(action));
+    setStaleNote(opts.quiet ? null : staleMessage(action, status));
   };
   const run = useStoryboardRun(project.id, props.storyboardRun ?? null, saved, resync);
   const storyboardRun = {
@@ -177,6 +184,10 @@ export function ProjectView(props: {
         ))}
       </ol>
 
+      <p className="sr-only" aria-live="polite">
+        {restoredNote}
+      </p>
+
       {/* Polite: it follows the user's own action, and the page around it has just changed. `contents`: an empty
           region takes no slot in the page's column, so it adds no gap (QA, F3.3). */}
       <div aria-live="polite" className="contents">
@@ -229,19 +240,25 @@ export function ProjectView(props: {
               }}
               onStale={resync}
               onActivity={() => setStaleNote(null)}
-              viewing={viewingVersion && viewingVersion.version !== project.currentStoryboardVersion ? viewingVersion : null}
+              viewing={viewingOther ? viewingVersion : null}
               onView={(v) => setViewingVersion(v)}
               banner={
-                viewingVersion && viewingVersion.version !== project.currentStoryboardVersion ? (
+                viewingOther && viewingVersion ? (
                   <ViewingBanner
                     projectId={project.id}
                     project={project}
                     viewing={viewingVersion}
-                    onBack={() => setViewingVersion(null)}
+                    onBack={() => {
+                      setViewingVersion(null);
+                      focusChip();
+                    }}
                     onRestored={(next, nextProject) => {
                       setViewingVersion(null);
                       setVersion(next);
                       saved(nextProject);
+                      // Said politely, and focus goes back to the chip (now "Version N") (QA, F3.5).
+                      setRestoredNote(`Version ${next.version} is now the current storyboard.`);
+                      focusChip();
                     }}
                     onStale={() => {
                       setViewingVersion(null);
@@ -261,7 +278,11 @@ export function ProjectView(props: {
             </Card>
           )}
           <div className={cx("flex min-w-0 flex-col gap-6", reviewing ? "xl:sticky xl:top-4 xl:self-start" : "lg:sticky lg:top-4 lg:self-start")}>
-            <SettingsPanel project={project} onSaved={saved} />
+            <SettingsPanel
+              project={project}
+              onSaved={saved}
+              lockedNote={viewingOther ? `These settings belong to the current storyboard (version ${project.currentStoryboardVersion}), not the one you're viewing.` : undefined}
+            />
             {reviewing ? (
               // Stitch 10's chat column: the revision chat arrives in M5 (your answer, F3.3).
               <Card className="flex flex-col gap-2 p-5">

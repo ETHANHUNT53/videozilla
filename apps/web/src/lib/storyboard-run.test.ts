@@ -73,6 +73,9 @@ describe("storyboard run helpers (F3.1)", () => {
     expect(staleMessage("request")).toMatch(/so your request wasn't sent./);
     expect(staleMessage("caption_edit")).toMatch(/so your caption edit wasn't saved./);
     expect(staleMessage("restore")).toMatch(/so nothing was restored./);
+    // While a storyboard is being written (maybe by this very tab), no "another tab" (QA, F3.5).
+    expect(staleMessage("generate", "storyboard_generating")).toBe("Your storyboard is being written, so nothing was started. Its progress shows here.");
+    expect(staleMessage("generate", "storyboard_ready")).toMatch(/^This video moved on in another tab/);
   });
 });
 

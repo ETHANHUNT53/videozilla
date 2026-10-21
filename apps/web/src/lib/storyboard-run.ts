@@ -59,7 +59,7 @@ export function isStaleState(err: unknown): boolean {
 export type StaleAction = "brief_edit" | "caption_edit" | "generate" | "request" | "restore";
 
 /** The line shown after the page re-synced, so nothing is dropped silently (QA, F3.1). */
-export function staleMessage(action: StaleAction): string {
+export function staleMessage(action: StaleAction, status?: string): string {
   const what =
     action === "brief_edit"
       ? "your brief edit wasn't saved"
@@ -70,6 +70,8 @@ export function staleMessage(action: StaleAction): string {
           : action === "restore"
             ? "nothing was restored"
           : "your request wasn't sent";
+  // While a storyboard is being written the cause may be this very tab (QA, F3.5): say what's happening, not "another tab".
+  if (status === "storyboard_generating") return `Your storyboard is being written, so ${what}. Its progress shows here.`;
   return `This video moved on in another tab, so ${what}. You're seeing it as it is now.`;
 }
 
