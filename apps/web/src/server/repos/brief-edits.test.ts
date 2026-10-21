@@ -86,6 +86,14 @@ describe("PATCH …/idea/brief — edits", () => {
     expect((await edit({ title: "New brief title" })).json.project.title).toBe("My own title");
   });
 
+  it("once the video has a storyboard, a brief edit no longer renames it (it only feeds the next regenerate, F3.1)", async () => {
+    await testMongo.db.collection("projects").updateOne({ _id: oid() }, { $set: { status: "storyboard_ready", currentStoryboardVersion: 1 } });
+    const res = await edit({ title: "New brief title" });
+    expect(res.status).toBe(200);
+    expect(res.json.brief.title).toBe("New brief title");
+    expect(res.json.project.title).toBe(BRIEF.title);
+  });
+
   it("the audience stays the video's setting; a notes summary stays", async () => {
     await setIdea({ brief: { ...BRIEF, sourceNotesSummary: "Notes on leaves." } });
     await updateProject(ME.id, projectId, { audience: "kids" });

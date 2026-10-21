@@ -378,10 +378,14 @@ export async function getStatus(userId: string, projectId: string): Promise<{ pr
   const exists = await collections.projects().countDocuments({ _id, userId, deletedAt: null }, { limit: 1 });
   if (!exists) return null;
   await recoverStaleRuns(userId, _id);
-  const project = await collections.projects().findOne({ _id, userId, deletedAt: null });
-  if (!project) return null;
-  const recent = await runs().find({ projectId: _id, userId }).sort({ createdAt: -1 }).limit(10).toArray();
-  return { project, active: recent.filter((r) => r.active), last: recent.filter((r) => !r.active).slice(0, 5) };
+  // One snapshot for the project and its runs (QA, F3.1): read separately, a save landing in between could show the
+  // video still generating with no active run.
+  return withTransaction(async (session) => {
+    const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { session });
+    if (!project) return null;
+    const recent = await runs().find({ projectId: _id, userId }, { session }).sort({ createdAt: -1 }).limit(10).toArray();
+    return { project, active: recent.filter((r) => r.active), last: recent.filter((r) => !r.active).slice(0, 5) };
+  });
 }
 
 /** The project's current storyboard version, or null before the first one. */

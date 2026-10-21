@@ -3,6 +3,7 @@
  * says. Kept free of React so it can be unit-tested; components/storyboard-run.tsx uses it. Safe to import from client
  * components.
  */
+import { ApiClientError } from "./api-client";
 import type { RunResource } from "@/server/api/resources";
 
 /** `GET /api/v1/projects/{id}/status` (API Design §13.7). */
@@ -44,4 +45,12 @@ export function generateBlocked(o: { hasBrief: boolean; editable: boolean; aiIdl
   if (o.starting) return "Starting…";
   if (!o.aiIdle) return "Wait for the AI to finish, or save your brief edit first.";
   return null;
+}
+
+/**
+ * A 409 INVALID_STATE: the video moved on in another tab (a storyboard started or finished), so this tab's buttons are
+ * out of date and the page should load the video as it is now (QA, F3.1).
+ */
+export function isStaleState(err: unknown): boolean {
+  return err instanceof ApiClientError && err.code === "INVALID_STATE";
 }

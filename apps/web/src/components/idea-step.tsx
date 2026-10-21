@@ -12,6 +12,7 @@ import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "
 import { BriefEditor } from "./brief-editor";
 import { IdeaChat } from "./idea-chat";
 import { GenerateCard, type StoryboardRun } from "./storyboard-run";
+import { isStaleState } from "@/lib/storyboard-run";
 import { Button, Card, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Idea = IdeaSessionResource;
@@ -72,8 +73,10 @@ export function IdeaStep(props: {
   status: ProjectResource["status"];
   /** Starting and following the storyboard generation (F3.1). */
   storyboard: StoryboardRun;
+  /** A request answered 409 (the video moved on in another tab): reload the video. */
+  onStale?: () => void;
 }) {
-  const { projectId, language, lengthSec, initial, initialChat, editable, onProject, settings, status, storyboard } = props;
+  const { projectId, language, lengthSec, initial, initialChat, editable, onProject, settings, status, storyboard, onStale } = props;
   // Brief fields the last chat answer changed (F2.5), highlighted until the next message or a new brief.
   const [changed, setChanged] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
@@ -81,7 +84,7 @@ export function IdeaStep(props: {
   const [brief, setBrief] = useState<BriefState>(() => briefStateOf(initial));
   // "Keep as is" hides the bar for these settings until the next reload (your answer, F2.6 follow-up).
   const [keptFor, setKeptFor] = useState<string | null>(null);
-  const aiRunner = useIdeaAi();
+  const aiRunner = useIdeaAi(onStale);
   // While the brief is being edited (F2.8), the AI requests that would replace it (chat, Use this angle, Regenerate, a
   // new brief) are paused, so the typing isn't replaced underneath; they come back on Save or Cancel.
   const [editingBrief, setEditingBrief] = useState(false);
@@ -290,6 +293,7 @@ export function IdeaStep(props: {
             projectId={projectId}
             brief={brief.brief}
             briefUpdatedAt={brief.updatedAt}
+            onStale={onStale}
             onCancel={() => setEditingBrief(false)}
             onSaved={(data) => {
               setBrief(briefStateOf(data));
@@ -416,7 +420,11 @@ export type AiErrorState = { message: string; reason?: string; code?: string } |
  * shared daily `ideas` limit, so a second click before the re-render must not send another. After `429 LIMIT_REACHED`
  * — or on load, when `GET /me/usage` says today's ideas are used up — asking stays off until the limit resets.
  */
-function useIdeaAi() {
+function useIdeaAi(onStale?: () => void) {
+  const staleRef = useRef(onStale);
+  useEffect(() => {
+    staleRef.current = onStale;
+  });
   const [busy, setBusy] = useState<string | null>(null); // which request: "new", "more", a card id, "use:…", "sharpen", "angle:…"
   // The error to show; `reason` is our own sentence for why a topic was refused (422 UNSAFE_CONTENT), never the AI's
   // text; `code` lets the 429 message go away when the limit resets.
@@ -474,6 +482,7 @@ function useIdeaAi() {
         show({ message: err.message, code: err.code, reason: err.code === "UNSAFE_CONTENT" && typeof issue === "string" ? issue : undefined });
         const resetsAt = err.code === "LIMIT_REACHED" ? Date.parse(String(err.details[0]?.resetsAt ?? "")) : NaN;
         if (Number.isFinite(resetsAt)) setLockedUntil(resetsAt);
+        if (isStaleState(err)) staleRef.current?.();
       }
     } finally {
       asking.current = false;

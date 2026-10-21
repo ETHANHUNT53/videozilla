@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { ApiClientError } from "@/lib/api-client";
+import { ApiClientError, apiCall } from "@/lib/api-client";
 import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
 import { STEPS, stepIndex } from "@/lib/project-options";
 import { STATUS_DISPLAY } from "@/lib/status";
@@ -58,7 +58,17 @@ export function ProjectView(props: {
     setProject(next);
     router.refresh(); // keep the Library and this page's server copy in step
   };
-  const storyboardRun = useStoryboardRun(project.id, props.storyboardRun ?? null, saved);
+  // A 409 from an action means this tab is behind (another tab generated a storyboard, say): load the video as it is
+  // now; the refresh also brings the latest run and storyboard summary (QA, F3.1).
+  const resync = async () => {
+    try {
+      const { data } = await apiCall<Project>(`/api/v1/projects/${project.id}`);
+      saved(data);
+    } catch {
+      router.refresh();
+    }
+  };
+  const storyboardRun = useStoryboardRun(project.id, props.storyboardRun ?? null, saved, resync);
   const hasStoryboard = Boolean(project.currentStoryboardVersion) && project.status !== "storyboard_generating";
 
   return (
@@ -152,6 +162,7 @@ export function ProjectView(props: {
           settings={<SettingsPanel project={project} onSaved={saved} />}
           status={project.status}
           storyboard={storyboardRun}
+          onStale={resync}
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">

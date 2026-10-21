@@ -301,7 +301,8 @@ async function inIdeaStage<T>(userId: string, projectId: string, fn: (ctx: Brief
 /**
  * Stores the brief and moves the project's "last changed" time (M2 D3). The idea's `rev` stays: it guards what the user
  * types, so a brief never makes the next autosave look like a conflict. The video's title follows the brief title while
- * the user hasn't named it (PRD F2-FR11): it's still the default, or still the title the previous brief gave it.
+ * the user hasn't named it (PRD F2-FR11): it's still the default, or still the title the previous brief gave it, and only
+ * until the video has a storyboard (F3.1).
  */
 /**
  * The language and length a brief was written for (F2.6 follow-up): what its AI call used (so a settings change during
@@ -324,7 +325,9 @@ async function applyBrief({ session, project, idea, now }: BriefContext, briefIn
     { session, returnDocument: "after" },
   );
   if (!saved) throw new Error("Idea session vanished during its own transaction");
-  const unnamed = project.title === DEFAULT_TITLE || (idea.brief !== null && project.title === briefTitle(idea.brief));
+  // Only before the first storyboard (QA decision, F3.1): once there is one, a brief change only feeds the next
+  // regenerate and never renames the video.
+  const unnamed = !project.currentStoryboardVersion && (project.title === DEFAULT_TITLE || (idea.brief !== null && project.title === briefTitle(idea.brief)));
   const title = briefTitle(brief);
   const renamed = unnamed && title && title !== project.title;
   const updated = await collections.projects().findOneAndUpdate(

@@ -102,6 +102,9 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain('role="progressbar"');
     expect(html.slice(html.lastIndexOf("<button", html.indexOf("Next: Storyboard →")), html.indexOf("Next: Storyboard →"))).toMatch(/disabled=""/);
     expect(html).not.toContain('role="tablist"'); // the idea step isn't shown (it's read-only meanwhile)
+    // QA: the settings say they are locked while it's written, not "once the video is built".
+    expect(html).toContain("Settings are locked while your storyboard is being written.");
+    expect(html).not.toContain("once the video is built");
   });
 
   it("F3.1: a ready storyboard: Next links to it, the Storyboard step shows its summary and chapters", () => {

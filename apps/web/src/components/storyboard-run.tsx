@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
-import { currentStep, generateBlocked, nextPollMs, pickStoryboardRun, runFailure, type StatusResponse } from "@/lib/storyboard-run";
+import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure, type StatusResponse } from "@/lib/storyboard-run";
 import type { ProjectResource, RunResource, StoryboardSummary } from "@/server/api/resources";
 import { Button, ButtonLink, Card, Eyebrow, Slashes, cx } from "./ui";
 
@@ -25,14 +25,22 @@ export interface StoryboardRun {
  * Starts a generation and polls `/status` while it runs (every `pollAfterMs`, paused while the tab is hidden). When it
  * ends, `onProject` gets the project as it is now (ready, or back where it was).
  */
-export function useStoryboardRun(projectId: string, initialRun: RunResource | null, onProject: (p: ProjectResource) => void): StoryboardRun {
+export function useStoryboardRun(projectId: string, initialRun: RunResource | null, onProject: (p: ProjectResource) => void, onStale: () => Promise<void>): StoryboardRun {
   const [run, setRun] = useState<RunResource | null>(initialRun);
+  // A newer run from the server (the page refreshed, e.g. after another tab started one) replaces the one followed here.
+  const [seenInitial, setSeenInitial] = useState(initialRun);
+  if (initialRun && initialRun !== seenInitial && (initialRun.id !== seenInitial?.id || initialRun.updatedAt !== seenInitial?.updatedAt)) {
+    setSeenInitial(initialRun);
+    if (!run || run.id !== initialRun.id || Date.parse(initialRun.updatedAt) >= Date.parse(run.updatedAt)) setRun(initialRun);
+  }
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const onProjectRef = useRef(onProject);
+  const resyncRef = useRef(onStale);
   useEffect(() => {
     onProjectRef.current = onProject;
+    resyncRef.current = onStale;
   });
   const active = run?.active ?? false;
   const runId = run?.id ?? null;
@@ -90,6 +98,8 @@ export function useStoryboardRun(projectId: string, initialRun: RunResource | nu
         onProjectRef.current(data.project);
       } catch (err) {
         setError(err instanceof ApiClientError ? err.message : "Couldn't start the storyboard. Try again.");
+        // 409: this tab is behind (another tab generated or changed the video): show the video as it is now.
+        if (isStaleState(err)) await resyncRef.current();
       } finally {
         setStarting(false);
       }
@@ -104,6 +114,18 @@ export function useStoryboardRun(projectId: string, initialRun: RunResource | nu
 export function GenerateCard(props: { keyPoints: number | null; status: string; editable: boolean; aiIdle: boolean; storyboard: StoryboardRun }) {
   const { keyPoints, status, editable, aiIdle, storyboard } = props;
   const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialogId = useId();
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  // The confirm takes focus when it opens (Cancel: the safe choice); closing it gives focus back to the button (QA, F3.1).
+  useEffect(() => {
+    if (confirming) cancelButton.current?.focus();
+  }, [confirming]);
+  const cancel = () => {
+    setConfirming(false);
+    // The trigger is disabled while the confirm is open; focus it once it's enabled again.
+    requestAnimationFrame(() => trigger.current?.focus());
+  };
   const ready = keyPoints !== null;
   const regenerate = status === "storyboard_ready";
   const blocked = generateBlocked({ hasBrief: ready, editable, aiIdle, starting: storyboard.starting, status });
@@ -130,18 +152,26 @@ export function GenerateCard(props: { keyPoints: number | null; status: string; 
             <span className="font-mono text-xs text-muted">{ready ? `${keyPoints} key point${keyPoints === 1 ? "" : "s"}` : "make a brief first"}</span>
           </span>
         </span>
-        <Button type="button" className="shrink-0 px-3" disabled={blocked !== null || confirming} title={blocked ?? undefined} onClick={press} aria-busy={storyboard.starting}>
+        <Button ref={trigger} type="button" className="shrink-0 px-3" disabled={blocked !== null || confirming} title={blocked ?? undefined} onClick={press} aria-busy={storyboard.starting}>
           {label}
         </Button>
       </div>
       {confirming ? (
-        <div role="alertdialog" aria-label="Regenerate storyboard?" className="flex flex-col gap-2 rounded-xl border border-line px-3 py-2">
-          <p className="text-sm">This writes a new storyboard from your brief as a new version. The current one is kept in its history.</p>
+        <div
+          role="alertdialog"
+          aria-label="Regenerate storyboard?"
+          aria-describedby={`${dialogId}-text`}
+          className="flex flex-col gap-2 rounded-xl border border-line px-3 py-2"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") cancel();
+          }}
+        >
+          <p id={`${dialogId}-text`} className="text-sm">This writes a new storyboard from your brief as a new version. The current one is kept in its history.</p>
           <div className="flex gap-2">
             <Button type="button" className="px-3" onClick={press}>
               Regenerate
             </Button>
-            <Button type="button" variant="ghost" className="px-3" onClick={() => setConfirming(false)}>
+            <Button ref={cancelButton} type="button" variant="ghost" className="px-3" onClick={cancel}>
               Cancel
             </Button>
           </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { ApiClientError, apiCall } from "@/lib/api-client";
+import { isStaleState } from "@/lib/storyboard-run";
 import { addPoint, briefEdits, focusAfter, MAX_KEY_POINTS, movePoint, removePoint, type RowControl } from "@/lib/key-points";
 import type { IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { Button, Slashes, cx, inputStyles } from "./ui";
@@ -28,6 +29,8 @@ export function BriefEditor(props: {
   onCancel: () => void;
   /** Load latest after a conflict: the current idea from the 412. */
   onLatest: (idea: IdeaSessionResource) => void;
+  /** The save answered 409 (the video moved on in another tab, e.g. a storyboard started): reload the video. */
+  onStale?: () => void;
 }) {
   const { projectId, brief, onSaved, onCancel, onLatest } = props;
   const id = useId();
@@ -68,7 +71,10 @@ export function BriefEditor(props: {
       if (current) {
         setConflict(current);
         setBasedOn(current.briefUpdatedAt);
-      } else setError(err instanceof ApiClientError ? (err.details[0]?.field ? `${err.message} (${err.details[0].field}: ${err.details[0].issue})` : err.message) : "Couldn't save the brief. Please try again.");
+      } else {
+        setError(err instanceof ApiClientError ? (err.details[0]?.field ? `${err.message} (${err.details[0].field}: ${err.details[0].issue})` : err.message) : "Couldn't save the brief. Please try again.");
+        if (isStaleState(err)) props.onStale?.();
+      }
     } finally {
       setSaving(false);
     }

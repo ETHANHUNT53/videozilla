@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunResource } from "@/server/api/resources";
-import { currentStep, generateBlocked, nextPollMs, pickStoryboardRun, runFailure } from "./storyboard-run";
+import { ApiClientError } from "./api-client";
+import { currentStep, generateBlocked, isStaleState, nextPollMs, pickStoryboardRun, runFailure } from "./storyboard-run";
 
 const run = (over: Partial<RunResource> = {}): RunResource => ({
   id: "r1",
@@ -57,5 +58,12 @@ describe("storyboard run helpers (F3.1)", () => {
     expect(generateBlocked({ ...ok, aiIdle: false })).toMatch(/Wait for the AI/);
     expect(generateBlocked({ ...ok, status: "storyboard_generating" })).toMatch(/being written/);
     expect(generateBlocked({ ...ok, editable: false })).toMatch(/can't be made/);
+  });
+
+  it("a 409 INVALID_STATE means this tab is behind; other errors don't", () => {
+    expect(isStaleState(new ApiClientError(409, "INVALID_STATE", "x"))).toBe(true);
+    expect(isStaleState(new ApiClientError(409, "RUN_IN_PROGRESS", "x"))).toBe(false);
+    expect(isStaleState(new ApiClientError(429, "LIMIT_REACHED", "x"))).toBe(false);
+    expect(isStaleState(new Error("x"))).toBe(false);
   });
 });

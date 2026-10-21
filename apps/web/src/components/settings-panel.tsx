@@ -190,8 +190,10 @@ export function SettingsPanel({ project, onSaved }: { project: Project; onSaved:
 
       {!scriptEditable || !mediaEditable ? (
         <p className="text-xs text-muted">
-          {!scriptEditable ? "Language, length, audience and board can't change once the video is built — duplicate it to try different ones. " : ""}
-          {!mediaEditable ? "Voice and captions can be chosen once the storyboard is ready." : ""}
+          {project.status === "storyboard_generating"
+            ? "Settings are locked while your storyboard is being written. They unlock when it's ready."
+            : (!scriptEditable ? "Language, length, audience and board can't change once the video is built — duplicate it to try different ones. " : "") +
+              (!mediaEditable ? "Voice and captions can be chosen once the storyboard is ready." : "")}
         </p>
       ) : null}
 
