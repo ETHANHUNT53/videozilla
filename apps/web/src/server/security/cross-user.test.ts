@@ -25,6 +25,9 @@ import * as brief from "@/app/api/v1/projects/[id]/idea/brief/route";
 import * as chat from "@/app/api/v1/projects/[id]/idea/chat/route";
 import * as suggestions from "@/app/api/v1/projects/[id]/idea/suggestions/route";
 import * as restore from "@/app/api/v1/projects/[id]/restore/route";
+import * as status from "@/app/api/v1/projects/[id]/status/route";
+import * as storyboard from "@/app/api/v1/projects/[id]/storyboard/route";
+import * as generate from "@/app/api/v1/projects/[id]/storyboard/generate/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { needsWelcome } from "../onboarding";
 import { USER_DATA_COLLECTIONS } from "../repos/account";
@@ -223,6 +226,28 @@ describe("B against A's projects (id routes)", () => {
     expect(await snapshotA()).toEqual(before);
   });
 
+  it("storyboard routes (generate, current storyboard, status): 404 like an unknown id; nothing counted, no run, A's storyboard and runs unchanged", async () => {
+    // A has a brief, a saved storyboard and a stale-looking active run, so a wrongful start, read or recovery would show.
+    const aBrief = { title: "A's brief", hook: "h", angle: "a", audience: "students", keyPoints: ["1", "2", "3"], outOfScope: [] };
+    await testMongo.db.collection("idea_sessions").updateOne({ projectId: new ObjectId(a.live) }, { $set: { brief: aBrief } });
+    await testMongo.db.collection("projects").updateOne({ _id: new ObjectId(a.live) }, { $set: { currentStoryboardVersion: 1 } });
+    await testMongo.db.collection("storyboard_versions").insertOne({
+      projectId: new ObjectId(a.live), userId: A.id, version: 1, schemaVersion: 1, data: { title: "A's storyboard", scenes: [] }, source: "generate",
+      basedOnVersion: null, changeSummary: "First storyboard", changedSceneIds: [], validationReport: { repairs: [], warnings: [], wordCount: 0, estimatedDurationSec: 0 }, createdAt: new Date(),
+    });
+    await testMongo.db.collection("pipeline_runs").updateOne({ userId: A.id }, { $set: { updatedAt: new Date(Date.now() - 3600_000) } });
+    const before = await snapshotA();
+    for (const id of [a.live, a.deleted, a.attention]) {
+      await expectLikeUnknown(generate.POST, "POST", "/storyboard/generate", id, {});
+      await expectLikeUnknown(generate.POST, "POST", "/storyboard/generate", id, { regenerate: true });
+      await expectLikeUnknown(storyboard.GET, "GET", "/storyboard", id);
+      await expectLikeUnknown(status.GET, "GET", "/status", id);
+    }
+    expect(await snapshotA()).toEqual(before);
+    expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: B.id })).toBe(0);
+    expect(await testMongo.db.collection("pipeline_runs").countDocuments({ userId: B.id })).toBe(0);
+  });
+
   it("PUT /projects/{id}/idea: 404, with or without If-Match; A's idea and project are unchanged", async () => {
     const before = await snapshotA();
     for (const id of [a.live, a.deleted]) await expectLikeUnknown(idea.PUT, "PUT", "/idea", id, { mode: "idea", ideaInput: "B was here" });
@@ -310,6 +335,9 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["PATCH /projects/{id}/idea/brief", brief.PATCH, "PATCH", "/api/v1/projects/x/idea/brief", { id: "x" }],
   ["GET /projects/{id}/idea/chat", chat.GET, "GET", "/api/v1/projects/x/idea/chat", { id: "x" }],
   ["POST /projects/{id}/idea/chat", chat.POST, "POST", "/api/v1/projects/x/idea/chat", { id: "x" }],
+  ["POST /projects/{id}/storyboard/generate", generate.POST, "POST", "/api/v1/projects/x/storyboard/generate", { id: "x" }],
+  ["GET /projects/{id}/storyboard", storyboard.GET, "GET", "/api/v1/projects/x/storyboard", { id: "x" }],
+  ["GET /projects/{id}/status", status.GET, "GET", "/api/v1/projects/x/status", { id: "x" }],
 ];
 
 describe("every route needs a session, and a verified email", () => {
@@ -344,6 +372,9 @@ const MODULES: Record<string, Record<string, unknown>> = {
   "/projects/[id]/idea/brief": brief,
   "/projects/[id]/idea/chat": chat,
   "/projects/[id]/restore": restore,
+  "/projects/[id]/status": status,
+  "/projects/[id]/storyboard": storyboard,
+  "/projects/[id]/storyboard/generate": generate,
 };
 const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
 

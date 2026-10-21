@@ -25,6 +25,7 @@ vi.mock("../db/mongo", () => ({
   collections: {
     projects: () => state.db.collection("projects"),
     profiles: () => state.db.collection("profiles"),
+    storyboardVersions: () => state.db.collection("storyboard_versions"),
     pipelineRuns: () => state.db.collection("pipeline_runs"),
     publishJobs: () => state.db.collection("publish_jobs"),
     renderJobs: () => state.db.collection("render_jobs"),

@@ -370,8 +370,8 @@ export async function restoreProject(userId: string, id: string): Promise<Projec
 /**
  * Copies a project's settings and its idea session into a fresh draft, in one transaction (DB Design §6.13). The
  * source is read inside it too, so the copy matches one moment of the source. Only the settings fields carry over
- * (freshProject); renders, timelines and publishing are not copied. Storyboards don't exist before M2; when they do
- * (F3), the current version will be copied as version 1 and the copy will start as `storyboard_ready`.
+ * (freshProject); renders, timelines and publishing are not copied. The current storyboard, if any, is copied as
+ * version 1 (`source: "duplicate"`) and the copy starts as `storyboard_ready` (F3.2).
  */
 export async function duplicateProject(userId: string, id: string): Promise<ProjectDoc | null> {
   const _id = toObjectId(id);
@@ -382,7 +382,27 @@ export async function duplicateProject(userId: string, id: string): Promise<Proj
     const now = new Date();
     const copy = freshProject(userId, { ...src, title: `${src.title} (copy)` }, now, src._id);
     const idea = await collections.ideaSessions().findOne({ projectId: src._id, userId }, { session });
+    const storyboard = src.currentStoryboardVersion
+      ? await collections.storyboardVersions().findOne({ projectId: src._id, userId, version: src.currentStoryboardVersion }, { session })
+      : null;
+    if (storyboard) Object.assign(copy, { status: "storyboard_ready", currentStoryboardVersion: 1 });
     await collections.projects().insertOne(copy, { session });
+    if (storyboard) {
+      await collections.storyboardVersions().insertOne(
+        {
+          ...storyboard,
+          _id: new ObjectId(),
+          projectId: copy._id,
+          version: 1,
+          source: "duplicate",
+          basedOnVersion: null,
+          changeSummary: "Copied from another video",
+          accuracyReport: null,
+          createdAt: now,
+        },
+        { session },
+      );
+    }
     await collections.ideaSessions().insertOne(
       {
         ...(idea ?? emptyIdea(copy._id, userId, now)),
@@ -400,7 +420,7 @@ export async function duplicateProject(userId: string, id: string): Promise<Proj
 
 /**
  * Daily job: permanently remove projects whose 30-day undo window has passed, together with their idea sessions (one
- * transaction). Pass `ids` (from the job's "find" step) to remove exactly the projects whose files were deleted.
+ * transaction), with their storyboard versions and runs. Pass `ids` (from the job's "find" step) to remove exactly the projects whose files were deleted.
  */
 export async function purgeExpiredProjects(now = new Date(), ids?: string[]): Promise<number> {
   const filter: Filter<ProjectDoc> = { purgeAt: { $lte: now } };
@@ -410,6 +430,8 @@ export async function purgeExpiredProjects(now = new Date(), ids?: string[]): Pr
   return withTransaction(async (session) => {
     const res = await collections.projects().deleteMany({ _id: { $in: expired }, purgeAt: { $lte: now } }, { session });
     await collections.ideaSessions().deleteMany({ projectId: { $in: expired } }, { session });
+    await collections.storyboardVersions().deleteMany({ projectId: { $in: expired } }, { session });
+    await collections.pipelineRuns().deleteMany({ projectId: { $in: expired } }, { session });
     return res.deletedCount;
   });
 }

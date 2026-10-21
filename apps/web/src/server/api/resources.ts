@@ -1,5 +1,6 @@
 import type { ChatMessageDoc, IdeaBriefDoc, IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
 import { toSummary } from "../repos/projects";
+import type { PipelineRunDoc, StoryboardVersionDoc } from "../repos/storyboards";
 import { allowedActions } from "../rules/project-actions";
 import type { SessionUser } from "./session";
 
@@ -128,3 +129,42 @@ export function toMeUser(u: SessionUser) {
     createdAt: new Date(u.createdAt).toISOString(),
   };
 }
+
+/** A pipeline run (API Design §10.2): its steps with their labels, progress and, on failure, the reason. */
+export function toRun(r: PipelineRunDoc) {
+  return {
+    id: r._id.toHexString(),
+    projectId: r.projectId.toHexString(),
+    kind: r.kind,
+    status: r.status,
+    active: r.active,
+    progress: r.progress ?? 0,
+    steps: r.steps.map((s) => ({ name: s.name, label: s.label, status: s.status, attempt: s.attempt })),
+    error: r.error ?? null,
+    etaSec: null,
+    startedAt: r.startedAt?.toISOString() ?? null,
+    finishedAt: r.finishedAt?.toISOString() ?? null,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  };
+}
+export type RunResource = ReturnType<typeof toRun>;
+
+/** A storyboard version (API Design §12 `StoryboardVersion`). */
+export function toStoryboardVersion(v: StoryboardVersionDoc, currentVersion: number | null) {
+  return {
+    version: v.version,
+    source: v.source,
+    basedOnVersion: v.basedOnVersion ?? null,
+    changeSummary: v.changeSummary,
+    changedSceneIds: v.changedSceneIds,
+    storyboard: v.data,
+    estimatedDurationSec: v.validationReport.estimatedDurationSec,
+    wordCount: v.validationReport.wordCount,
+    warnings: v.validationReport.warnings,
+    accuracyFlags: [] as { sceneId: string; claim: string; note: string }[], // F3.7
+    isCurrent: v.version === currentVersion,
+    createdAt: v.createdAt.toISOString(),
+  };
+}
+export type StoryboardVersionResource = ReturnType<typeof toStoryboardVersion>;

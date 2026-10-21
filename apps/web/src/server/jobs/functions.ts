@@ -4,6 +4,7 @@ import { purgeExpiredProjects } from "../repos/projects";
 import { deletePrefix, projectPrefix } from "../storage/r2";
 import { deleteAccountData, purgeOrphanedUserData } from "./account-deletion";
 import { inngest } from "./inngest";
+import { generateStoryboard } from "./storyboard";
 
 /** Daily cleanup (PRD F1-FR10): soft-deleted projects past their 30-day undo window are removed with their files. */
 export const purgeDeletedProjects = inngest.createFunction(
@@ -24,4 +25,4 @@ export const purgeDeletedProjects = inngest.createFunction(
   },
 );
 
-export const functions = [purgeDeletedProjects, deleteAccountData, purgeOrphanedUserData];
+export const functions = [purgeDeletedProjects, deleteAccountData, purgeOrphanedUserData, generateStoryboard];

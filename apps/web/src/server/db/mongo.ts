@@ -37,6 +37,7 @@ export const collections = {
   ideaSessions: () => db().collection<IdeaSessionDoc>(COLLECTIONS.ideaSessions),
   chatMessages: () => db().collection<ChatMessageDoc>(COLLECTIONS.chatMessages),
   // Job collections: written by later features (M2–M6); deleting a project already cancels their active entries (§6.6).
+  storyboardVersions: () => db().collection(COLLECTIONS.storyboardVersions),
   pipelineRuns: () => db().collection(COLLECTIONS.pipelineRuns),
   publishJobs: () => db().collection(COLLECTIONS.publishJobs),
   renderJobs: () => db().collection(COLLECTIONS.renderJobs),

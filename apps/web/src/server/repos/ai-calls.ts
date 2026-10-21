@@ -7,6 +7,8 @@ import { collections } from "../db/mongo";
 export interface AiCallEntry {
   userId: string;
   projectId?: ObjectId;
+  /** The pipeline run the call belongs to (storyboard generation). */
+  runId?: ObjectId;
   provider: AiProvider;
   task: "ideas" | "brief" | "idea_chat" | "storyboard" | "revision" | "length_fix" | "accuracy";
   model: string;

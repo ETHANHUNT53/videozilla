@@ -16,6 +16,8 @@
     "@aws-sdk/s3-request-presigner": "^3.1152.0",
     "@videozilla/ai": "*",
     "@videozilla/db": "*",
+    "@videozilla/pipeline": "*",
+    "@videozilla/schema": "*",
     "better-auth": "^1.7.10",
     "inngest": "^4.24.0",
     "mongodb": "^7.7.0",
