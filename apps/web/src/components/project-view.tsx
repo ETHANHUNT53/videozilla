@@ -12,6 +12,7 @@ import type { ChatMessageResource, IdeaSessionResource, ProjectResource, RunReso
 import { IdeaStep } from "./idea-step";
 import { SettingsPanel } from "./settings-panel";
 import { StoryboardReview } from "./storyboard-review";
+import { ViewingBanner } from "./version-history";
 import { StoryboardWorkspace, useStoryboardRun } from "./storyboard-run";
 import { Button, Card, Chip, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
@@ -39,13 +40,16 @@ export function ProjectView(props: {
 }) {
   const { initial, idea, chat } = props;
   const [project, setProject] = useState(initial);
-  // The current storyboard version: from the server, or one a caption edit just saved (F3.4); the newer one wins.
+  // The current storyboard version: from the server, or one a caption edit or a restore just made current (F3.4,
+  // F3.5). It follows the project's pointer, not "the highest number": a restore can make an older version current.
   const [version, setVersion] = useState(props.storyboard ?? null);
-  if (props.storyboard && (!version || props.storyboard.version > version.version)) setVersion(props.storyboard);
+  // F3.5: another version opened read-only from the history.
+  const [viewingVersion, setViewingVersion] = useState<StoryboardVersionResource | null>(null);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
   if (initial.rev > project.rev) setProject(initial);
   const router = useRouter();
+  if (props.storyboard && props.storyboard.version === project.currentStoryboardVersion && version?.version !== props.storyboard.version) setVersion(props.storyboard);
   const step = stepIndex(project.status, project.attention?.kind);
   const status = STATUS_DISPLAY[project.status];
   // The step being looked at: the video's own step, or an earlier one opened in the stepper ("Back to idea"). When the
@@ -225,6 +229,27 @@ export function ProjectView(props: {
               }}
               onStale={resync}
               onActivity={() => setStaleNote(null)}
+              viewing={viewingVersion && viewingVersion.version !== project.currentStoryboardVersion ? viewingVersion : null}
+              onView={(v) => setViewingVersion(v)}
+              banner={
+                viewingVersion && viewingVersion.version !== project.currentStoryboardVersion ? (
+                  <ViewingBanner
+                    projectId={project.id}
+                    project={project}
+                    viewing={viewingVersion}
+                    onBack={() => setViewingVersion(null)}
+                    onRestored={(next, nextProject) => {
+                      setViewingVersion(null);
+                      setVersion(next);
+                      saved(nextProject);
+                    }}
+                    onStale={() => {
+                      setViewingVersion(null);
+                      void resync("restore");
+                    }}
+                  />
+                ) : null
+              }
             />
           ) : shown === 1 ? (
             <StoryboardWorkspace status={project.status} storyboard={storyboardRun} />

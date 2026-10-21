@@ -8,6 +8,7 @@ import { reviewModel, type SceneCard } from "@/lib/storyboard-review";
 import { runFailure, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
 import { SocialPanel } from "./social-panel";
+import { VersionMenu } from "./version-history";
 import type { StoryboardRun } from "./storyboard-run";
 import { Card, Eyebrow, Slashes, cx } from "./ui";
 
@@ -31,8 +32,16 @@ export function StoryboardReview(props: {
   onStale: (action: StaleAction, opts?: { quiet?: boolean }) => void;
   /** The user did something in the caption panel: the page's "moved on in another tab" line is no longer news. */
   onActivity: () => void;
+  /** F3.5: an older (or newer) version opened read-only from the history; null shows the current one. */
+  viewing?: StoryboardVersionResource | null;
+  /** The banner shown above the chips while `viewing` (Restore this version / Back to current). */
+  banner?: React.ReactNode;
+  onView: (v: StoryboardVersionResource) => void;
 }) {
-  const { project, version, storyboard, onBackToIdea, onSaved, onStale, onActivity } = props;
+  const { project, storyboard, onBackToIdea, onSaved, onStale, onActivity, viewing = null, banner, onView } = props;
+  // Viewing another version: show it, read-only.
+  const version = viewing ?? props.version;
+  const readOnly = viewing !== null;
   const sb = version.storyboard;
   const model = useMemo(() => reviewModel(sb, project.styleId, version.estimatedDurationSec), [sb, project.styleId, version.estimatedDurationSec]);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -54,16 +63,25 @@ export function StoryboardReview(props: {
         <ChipBox spoken={`${sb.scenes.length} scenes`}>{sb.scenes.length} scenes</ChipBox>
         <ChipBox spoken={labelOf(VOICE_OPTIONS, project.voiceGender)}>{labelOf(VOICE_OPTIONS, project.voiceGender)}</ChipBox>
         <ChipBox spoken={`Theme: ${theme}`}>{theme}</ChipBox>
-        <ChipBox spoken={`Version ${version.version}`}>Version {version.version}</ChipBox>
+        <li>
+          <VersionMenu projectId={project.id} current={project.currentStoryboardVersion ?? props.version.version} viewing={viewing?.version ?? null} onView={onView} />
+        </li>
       </ul>
+
+      {banner}
 
       {model.durationOff ? (
         <p role="status" className="rounded-xl border border-orange/40 bg-orange/5 px-4 py-3 text-sm">
-          At about {version.estimatedDurationSec} seconds the script is a little {model.durationOff} for a ~{sb.targetDurationSec}-second video.{" "}
-          <button type="button" className="text-cyan underline-offset-2 hover:underline" onClick={onBackToIdea}>
-            Regenerate it from the Idea step
-          </button>
-          .
+          At about {version.estimatedDurationSec} seconds the script is a little {model.durationOff} for a ~{sb.targetDurationSec}-second video.
+          {readOnly ? null : (
+            <>
+              {" "}
+              <button type="button" className="text-cyan underline-offset-2 hover:underline" onClick={onBackToIdea}>
+                Regenerate it from the Idea step
+              </button>
+              .
+            </>
+          )}
         </p>
       ) : null}
 
@@ -103,7 +121,7 @@ export function StoryboardReview(props: {
         ))}
       </ol>
 
-      <SocialPanel projectId={project.id} version={version} onSaved={onSaved} onStale={onStale} onActivity={onActivity} />
+      <SocialPanel projectId={project.id} version={version} onSaved={onSaved} onStale={onStale} onActivity={onActivity} readOnly={readOnly} />
     </div>
   );
 }

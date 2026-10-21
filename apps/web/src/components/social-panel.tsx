@@ -21,8 +21,10 @@ export function SocialPanel(props: {
   onStale: (action: StaleAction, opts?: { quiet?: boolean }) => void;
   /** Edit opened or a save went through: the page's "moved on in another tab" line is old news. */
   onActivity: () => void;
+  /** F3.5: an older version opened from the history: no Edit or Rewrite. */
+  readOnly?: boolean;
 }) {
-  const { projectId, version, onSaved, onStale, onActivity } = props;
+  const { projectId, version, onSaved, onStale, onActivity, readOnly = false } = props;
   const saved = version.storyboard.social;
   const [draft, setDraft] = useState<Social | null>(null);
   const [aiNote, setAiNote] = useState(false);
@@ -150,17 +152,21 @@ export function SocialPanel(props: {
             <Button type="button" variant="ghost" className="px-2.5 py-1 font-mono text-xs" onClick={copy}>
               {copied ? "Copied ✓" : "Copy text"}
             </Button>
-            <Button ref={editButton} type="button" variant="ghost" className="px-2.5 py-1 font-mono text-xs" onClick={openEdit}>
-              Edit
-            </Button>
-            <Button type="button" variant="secondary" className="px-2.5 py-1 font-mono text-xs" onClick={() => setAsking((a) => !a)} aria-expanded={asking} disabled={busy !== null}>
-              ✨ Rewrite with AI
-            </Button>
+            {readOnly ? null : (
+              <>
+                <Button ref={editButton} type="button" variant="ghost" className="px-2.5 py-1 font-mono text-xs" onClick={openEdit}>
+                  Edit
+                </Button>
+                <Button type="button" variant="secondary" className="px-2.5 py-1 font-mono text-xs" onClick={() => setAsking((a) => !a)} aria-expanded={asking} disabled={busy !== null}>
+                  ✨ Rewrite with AI
+                </Button>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {asking && !draft ? (
+      {asking && !draft && !readOnly ? (
         <div className="flex flex-col gap-2">
           <label className="font-mono text-xs text-muted" htmlFor={`${projectId}-instruction`}>
             How should it change? (optional)

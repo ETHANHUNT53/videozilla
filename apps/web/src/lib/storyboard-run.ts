@@ -56,7 +56,7 @@ export function isStaleState(err: unknown): boolean {
 }
 
 /** What the user was doing when the page found out it was behind. */
-export type StaleAction = "brief_edit" | "caption_edit" | "generate" | "request";
+export type StaleAction = "brief_edit" | "caption_edit" | "generate" | "request" | "restore";
 
 /** The line shown after the page re-synced, so nothing is dropped silently (QA, F3.1). */
 export function staleMessage(action: StaleAction): string {
@@ -67,6 +67,8 @@ export function staleMessage(action: StaleAction): string {
         ? "your caption edit wasn't saved"
         : action === "generate"
           ? "nothing was started"
+          : action === "restore"
+            ? "nothing was restored"
           : "your request wasn't sent";
   return `This video moved on in another tab, so ${what}. You're seeing it as it is now.`;
 }

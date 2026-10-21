@@ -17,6 +17,7 @@ import { mockStoryboard } from "@videozilla/ai";
 import { validateStoryboard } from "@videozilla/pipeline";
 import { RawStoryboard } from "@videozilla/schema";
 import { ProjectView } from "./project-view";
+import { StoryboardReview } from "./storyboard-review";
 
 const project = {
   id: "p1",
@@ -149,7 +150,7 @@ describe("Idea Studio layout (Stitch 09)", () => {
   it("F3.3 QA: chips are a list with spoken sentences, card headings read once, the M3 note under Approve, no empty slot", () => {
     const html = renderWith(READY, { storyboard: VERSION });
     expect(html).toMatch(/<ul[^>]*aria-label="Storyboard details"/);
-    expect(html.match(/<li class="rounded-lg border px-2.5 py-1/g)).toHaveLength(6);
+    expect(html.match(/<li class="rounded-lg border px-2.5 py-1/g)).toHaveLength(5); // + the version menu (F3.5)
     expect(html).toContain("Estimated 61 seconds of a 60-second target");
     expect(html).toContain("Language: English");
     // Card headings: the visible parts are hidden from screen readers; the sentence is read.
@@ -180,6 +181,36 @@ describe("Idea Studio layout (Stitch 09)", () => {
   it("F3.3 QA: from lg the status chip sits under the title, so the title has the row", () => {
     const html = renderWith(READY, { storyboard: VERSION });
     expect(html).toContain("contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:items-start");
+  });
+
+  it("F3.5: the version chip opens the history (a button with Version N ▾)", () => {
+    const html = renderWith(READY, { storyboard: VERSION });
+    expect(html).toMatch(/<button[^>]*aria-expanded="false"[^>]*>Version <!-- -->2<!-- --> ▾/);
+    expect(html).toContain("show the version history");
+  });
+
+  it("F3.5: viewing another version: the banner, read-only caption, no Regenerate link", () => {
+    const old = { ...VERSION, version: 1, isCurrent: false, estimatedDurationSec: 72, changeSummary: "First storyboard", createdAt: "2026-10-21T07:00:00.000Z" };
+    const html = renderToString(
+      createElement(StoryboardReview, {
+        project: { ...project, ...READY },
+        version: VERSION,
+        viewing: old,
+        banner: createElement("p", null, "BANNER"),
+        storyboard: { run: null, error: null, starting: false, start: async () => {}, dismiss: () => {} },
+        onBackToIdea: () => {},
+        onSaved: () => {},
+        onStale: () => {},
+        onActivity: () => {},
+        onView: () => {},
+      } as never),
+    );
+    expect(html).toContain("BANNER");
+    expect(html).toMatch(/Version <!-- -->1<!-- --> ▾/);
+    expect(html).not.toMatch(/>Edit</);
+    expect(html).not.toContain("Rewrite with AI");
+    expect(html).toContain("a little long");
+    expect(html).not.toContain("Regenerate it from the Idea step");
   });
 
   it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {
