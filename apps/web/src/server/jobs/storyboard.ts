@@ -206,12 +206,18 @@ function afterResponse(fn: () => Promise<unknown>): void {
  */
 export async function dispatchStoryboardRun(run: PipelineRunDoc, opts: { schedule?: (fn: () => Promise<unknown>) => void } = {}): Promise<"queued" | "inline" | "failed"> {
   const runId = run._id.toHexString();
+  let sent = false;
   try {
     await inngest.send({ id: run.idempotencyKey, name: "storyboard/requested", data: { runId, projectId: run.projectId.toHexString() } });
-    await markOutboxSent(run._id);
-    return "queued";
+    sent = true;
   } catch (err) {
     console.warn(`[storyboard] couldn't queue run ${runId}:`, err instanceof Error ? err.message : err);
+  }
+  if (sent) {
+    // The job is queued: recording that is bookkeeping only. A failure here mustn't be taken for "no job runner" (which
+    // fails the run in production while the job would still start).
+    await markOutboxSent(run._id).catch((err) => console.warn(`[storyboard] run ${runId} queued, but its outbox wasn't marked sent:`, err instanceof Error ? err.message : err));
+    return "queued";
   }
   if (env.isProduction) {
     await failRun(run._id, "JOB_NOT_STARTED");

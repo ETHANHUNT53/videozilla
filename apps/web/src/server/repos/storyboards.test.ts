@@ -1,4 +1,7 @@
-import { ObjectId } from "mongodb";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { LENGTH_FIX_DEADLINE_MS, STORYBOARD_DEADLINE_MS } from "@videozilla/ai";
+import { Collection, ObjectId } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db/mongo", async () => (await import("../../../test/mongo")).mongoModule);
@@ -316,6 +319,34 @@ describe("dispatch without a job runner", () => {
     expect(res.json.project.status).toBe("idea_draft");
     expect((await runsOf())[0].error).toMatchObject({ code: "JOB_NOT_STARTED" });
     expect(await used()).toBe(0);
+  });
+});
+
+describe("dispatch with a job runner", () => {
+  it("production: the event went out but recording it failed: the run stays queued (not failed, nothing refunded)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const updateOne = Collection.prototype.updateOne;
+    const spy = vi.spyOn(Collection.prototype, "updateOne").mockImplementation(function (this: Collection, filter, update, opts) {
+      if ((update as { $set?: Record<string, unknown> }).$set?.["outbox.sentAt"]) return Promise.reject(new Error("write failed"));
+      return updateOne.call(this, filter, update, opts) as never;
+    });
+    try {
+      const res = await post();
+      expect(res.status).toBe(202);
+      expect(res.json.project.status).toBe("storyboard_generating");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await runsOf())[0]).toMatchObject({ status: "queued", active: true, error: null });
+    expect(await used()).toBe(1);
+  });
+
+  it("the job route may run as long as the longest storyboard step needs (Vercel's default could cut it off)", () => {
+    const route = readFileSync(path.join(process.cwd(), "apps/web/src/app/api/inngest/route.ts"), "utf8");
+    const seconds = Number(/export const maxDuration = (\d+);/.exec(route)?.[1]);
+    expect(seconds * 1000).toBeGreaterThanOrEqual(Math.max(STORYBOARD_DEADLINE_MS, LENGTH_FIX_DEADLINE_MS) + 30_000);
+    expect(seconds).toBeLessThanOrEqual(300); // Vercel's ceiling
   });
 });
 
