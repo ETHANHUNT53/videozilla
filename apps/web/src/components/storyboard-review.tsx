@@ -5,23 +5,32 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LANGUAGE_OPTIONS, STYLE_LABELS, VOICE_OPTIONS, labelOf } from "@/lib/project-options";
 import { reviewModel, type SceneCard } from "@/lib/storyboard-review";
-import { runFailure } from "@/lib/storyboard-run";
+import { runFailure, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
+import { SocialPanel } from "./social-panel";
 import type { StoryboardRun } from "./storyboard-run";
 import { Card, Eyebrow, Slashes, cx } from "./ui";
 
 /**
  * The Storyboard Review screen (F3.3, Stitch 10, PRD S5): the chips row (language, estimated length with the duration
  * guard, scenes, voice, theme, version), then the scene cards by chapter, each with a 9:16 preview of the scene drawn by
- * the video's own scene components, its narration and what it shows on screen; then the caption (read-only until
- * F3.4). Previews are stills that play on hover, focus or tap, one at a time. See docs/features/F3.3-storyboard-screen.md.
+ * the video's own scene components, its narration and what it shows on screen; then the Instagram panel (F3.4).
+ * Previews are stills that play on hover or tap, one at a time. See docs/features/F3.3-storyboard-screen.md.
  */
 
 // The player and the scene components load only here, in the browser.
 const ScenePreview = dynamic(() => import("./scene-preview"), { ssr: false, loading: () => null });
 
-export function StoryboardReview(props: { project: ProjectResource; version: StoryboardVersionResource; storyboard: StoryboardRun; onBackToIdea: () => void }) {
-  const { project, version, storyboard, onBackToIdea } = props;
+export function StoryboardReview(props: {
+  project: ProjectResource;
+  version: StoryboardVersionResource;
+  storyboard: StoryboardRun;
+  onBackToIdea: () => void;
+  /** A caption edit saved a new version (F3.4). */
+  onSaved: (version: StoryboardVersionResource, project: ProjectResource) => void;
+  onStale: (action: StaleAction) => void;
+}) {
+  const { project, version, storyboard, onBackToIdea, onSaved, onStale } = props;
   const sb = version.storyboard;
   const model = useMemo(() => reviewModel(sb, project.styleId, version.estimatedDurationSec), [sb, project.styleId, version.estimatedDurationSec]);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -92,19 +101,7 @@ export function StoryboardReview(props: { project: ProjectResource; version: Sto
         ))}
       </ol>
 
-      {/* Read-only until F3.4 (caption + hashtags panel). */}
-      <Card className="flex flex-col gap-3 p-5">
-        <Eyebrow>instagram caption</Eyebrow>
-        <p className="whitespace-pre-line text-sm leading-relaxed">{sb.social.caption}</p>
-        <div className="flex flex-wrap gap-2">
-          {sb.social.hashtags.map((h) => (
-            <span key={h} className="rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-xs text-muted">
-              {h}
-            </span>
-          ))}
-        </div>
-        <p className="text-right font-mono text-xs text-muted">{Array.from(sb.social.caption).length} / 2200</p>
-      </Card>
+      <SocialPanel projectId={project.id} version={version} onSaved={onSaved} onStale={onStale} />
     </div>
   );
 }

@@ -163,6 +163,25 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain('<div aria-live="polite" class="contents"></div>');
   });
 
+  it("F3.4: the Instagram panel: caption, hashtags, cover text, counters, Copy / Edit / Rewrite with AI", () => {
+    const html = renderWith(READY, { storyboard: VERSION });
+    const panel = html.slice(html.indexOf("instagram caption"));
+    for (const label of ["Copy text", "Edit", "✨ Rewrite with AI"]) expect(panel).toContain(label);
+    expect(panel).toContain("// on the cover:");
+    expect(panel).toContain(VERSION.storyboard.social.coverText);
+    expect(panel).toContain(`${VERSION.storyboard.social.hashtags.length}<!-- --> / <!-- -->30<!-- --> hashtags`);
+    expect(panel).toMatch(/\d+<!-- --> \/ <!-- -->2,200/);
+    expect(panel).toMatch(/<ul[^>]*aria-label="Hashtags"/);
+    // The page is read-only until Edit: no form, no Save.
+    expect(panel).not.toContain("<textarea");
+    expect(panel).not.toMatch(/>Save</);
+  });
+
+  it("F3.3 QA: from lg the status chip sits under the title, so the title has the row", () => {
+    const html = renderWith(READY, { storyboard: VERSION });
+    expect(html).toContain("contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:items-start");
+  });
+
   it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {
     const html = renderWith(READY, { storyboard: { ...VERSION, estimatedDurationSec: 72 } });
     expect(html).toContain("a little long");

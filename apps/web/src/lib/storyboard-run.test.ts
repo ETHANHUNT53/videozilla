@@ -71,5 +71,6 @@ describe("storyboard run helpers (F3.1)", () => {
     expect(staleMessage("brief_edit")).toBe("This video moved on in another tab, so your brief edit wasn't saved. You're seeing it as it is now.");
     expect(staleMessage("generate")).toMatch(/so nothing was started./);
     expect(staleMessage("request")).toMatch(/so your request wasn't sent./);
+    expect(staleMessage("caption_edit")).toMatch(/so your caption edit wasn't saved./);
   });
 });

@@ -37,8 +37,11 @@ export function ProjectView(props: {
   /** The current storyboard version, once there is one (the Storyboard Review screen, F3.3). */
   storyboard?: StoryboardVersionResource | null;
 }) {
-  const { initial, idea, chat, storyboard: version = null } = props;
+  const { initial, idea, chat } = props;
   const [project, setProject] = useState(initial);
+  // The current storyboard version: from the server, or one a caption edit just saved (F3.4); the newer one wins.
+  const [version, setVersion] = useState(props.storyboard ?? null);
+  if (props.storyboard && (!version || props.storyboard.version > version.version)) setVersion(props.storyboard);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
   if (initial.rev > project.rev) setProject(initial);
@@ -94,11 +97,11 @@ export function ProjectView(props: {
           ← library
         </Link>
         {/* Below lg the title has its own row and wraps; the status chip and "Next: Storyboard" go on the row under it
-            (QA, F2.7: in one row the title shrank to nothing at 768 and 360 px). From lg it's one row: the title, cut
-            with "…" (full text on hover), then the chip, with "Next: Storyboard" top-right. The title-and-chip group is
-            `contents` below lg, so its two parts take part in the outer rows. */}
+            (QA, F2.7: in one row the title shrank to nothing at 768 and 360 px). From lg the title (up to 2 lines) has the
+            row's width up to the button on the right, with the chip under it (QA, F3.3: beside it, the chip squeezed the
+            title at 1024 px). The title-and-chip group is `contents` below lg, so its two parts take part in the outer rows. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:items-center lg:gap-3">
+          <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:items-start lg:gap-2">
             <div className="min-w-0 basis-full lg:basis-auto">
               <ProjectTitle project={project} onSaved={saved} />
             </div>
@@ -211,7 +214,17 @@ export function ProjectView(props: {
         // The review's scene cards need the width: two columns from xl there, from lg otherwise.
         <div className={cx("grid gap-6", reviewing ? "xl:grid-cols-[minmax(0,1fr)_380px]" : "lg:grid-cols-[minmax(0,1fr)_380px]")}>
           {reviewing ? (
-            <StoryboardReview project={project} version={version!} storyboard={storyboardRun} onBackToIdea={() => setViewing(0)} />
+            <StoryboardReview
+              project={project}
+              version={version!}
+              storyboard={storyboardRun}
+              onBackToIdea={() => setViewing(0)}
+              onSaved={(next, nextProject) => {
+                setVersion(next);
+                saved(nextProject);
+              }}
+              onStale={resync}
+            />
           ) : shown === 1 ? (
             <StoryboardWorkspace status={project.status} storyboard={storyboardRun} />
           ) : (
