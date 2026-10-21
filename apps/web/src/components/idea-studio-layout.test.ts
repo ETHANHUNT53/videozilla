@@ -54,6 +54,23 @@ const idea = (over: Record<string, unknown> = {}) => ({
 });
 const render = (ideaOver: Record<string, unknown> = {}, projectOver: Record<string, unknown> = {}) =>
   renderToString(createElement(ProjectView, { initial: { ...project, ...projectOver }, idea: idea(ideaOver), chat: { items: [], hasOlder: false } } as never));
+const renderWith = (projectOver: Record<string, unknown>, extra: Record<string, unknown>) =>
+  renderToString(createElement(ProjectView, { initial: { ...project, ...projectOver }, idea: idea(), chat: { items: [], hasOlder: false }, ...extra } as never));
+const RUN = {
+  id: "r1",
+  projectId: "p1",
+  kind: "storyboard",
+  status: "running",
+  active: true,
+  progress: 30,
+  steps: [
+    { name: "load_context", label: "Reading your brief…", status: "succeeded", attempt: 1 },
+    { name: "write_script", label: "Writing your script and planning scenes…", status: "running", attempt: 1 },
+    { name: "check", label: "Checking scenes, sync and length…", status: "pending", attempt: 0 },
+    { name: "save_version", label: "Saving your storyboard…", status: "pending", attempt: 0 },
+  ],
+  error: null,
+};
 
 describe("Idea Studio layout (Stitch 09)", () => {
   it("ideas first; then the brief with '// refine with ai' inside it, the settings, and Generate storyboard (also the phone order)", () => {
@@ -67,12 +84,43 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it("'Next: Storyboard' and 'Generate storyboard' are there and disabled until the storyboard step exists", () => {
+  it("F3.1: 'Generate storyboard' is live with a brief; 'Next: Storyboard' stays off until there is a storyboard", () => {
     const html = render();
-    for (const label of ["Next: Storyboard →", "Generate storyboard →"]) {
-      const button = html.slice(html.lastIndexOf("<button", html.indexOf(label)), html.indexOf(label));
-      expect(button, label).toMatch(/disabled=""/);
-    }
+    const tag = (label: string, h = html) => h.slice(h.lastIndexOf("<button", h.indexOf(label)), h.indexOf(label));
+    expect(tag("Next: Storyboard →")).toMatch(/disabled=""/);
+    expect(tag("Generate storyboard →")).not.toMatch(/disabled=""/);
+    // Without a brief it says why it's off.
+    const noBrief = render({ brief: null, briefAlternatives: [] });
+    expect(tag("Generate storyboard →", noBrief)).toMatch(/disabled=""/);
+    expect(tag("Generate storyboard →", noBrief)).toContain('title="Make a brief first."');
+  });
+
+  it("F3.1: while generating, the Storyboard step shows the progress steps; Next stays off", () => {
+    const html = renderWith({ status: "storyboard_generating", allowedActions: ["rename", "delete", "duplicate"] }, { storyboardRun: RUN });
+    expect(html).toContain("Writing your storyboard…");
+    for (const label of ["Reading your brief…", "Writing your script and planning scenes…", "Checking scenes, sync and length…", "Saving your storyboard…"]) expect(html).toContain(label);
+    expect(html).toContain('role="progressbar"');
+    expect(html.slice(html.lastIndexOf("<button", html.indexOf("Next: Storyboard →")), html.indexOf("Next: Storyboard →"))).toMatch(/disabled=""/);
+    expect(html).not.toContain('role="tablist"'); // the idea step isn't shown (it's read-only meanwhile)
+  });
+
+  it("F3.1: a ready storyboard: Next links to it, the Storyboard step shows its summary and chapters", () => {
+    const html = renderWith(
+      { status: "storyboard_ready", currentStoryboardVersion: 2, allowedActions: ["rename", "edit_idea", "generate", "delete", "duplicate"] },
+      { storyboard: { version: 2, title: "Leaves, explained", hook: "Why red?", sceneCount: 8, estimatedDurationSec: 61, wordCount: 137, chapters: ["Light", "Pigments", "Autumn"] } },
+    );
+    expect(html).toMatch(/<a[^>]*href="\/projects\/p1\/storyboard"[^>]*>Next: Storyboard →/);
+    expect(html).toContain("Leaves, explained");
+    expect(html).toContain("8<!-- --> scenes · ~<!-- -->61<!-- -->s");
+    expect(html).toContain("Pigments");
+    expect(html).toContain("Back to idea");
+  });
+
+  it("F3.1: after a failed generation the Idea step says why and that it didn't count", () => {
+    const failed = { ...RUN, status: "failed", active: false, error: { code: "AI_BUSY", message: "The AI is busy right now. Try again in a minute.", retryable: true, step: "write_script" } };
+    const html = renderWith({}, { storyboardRun: failed });
+    expect(html).toContain("The AI is busy right now. Try again in a minute.");
+    expect(html).toContain("This didn&#x27;t count against today&#x27;s limit.");
   });
 
   it("the card the brief came from is marked Selected (in words), and only that one", () => {

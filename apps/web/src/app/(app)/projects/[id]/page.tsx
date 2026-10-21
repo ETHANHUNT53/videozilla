@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProjectView } from "@/components/project-view";
-import { toIdeaSession, toProject } from "@/server/api/resources";
+import { toIdeaSession, toProject, toRun, toStoryboardSummary } from "@/server/api/resources";
 import { requireUser } from "@/server/dal";
 import { latestIdeaChat } from "@/server/repos/chat-messages";
 import { getIdea } from "@/server/repos/ideas";
-import { getProject } from "@/server/repos/projects";
+import { getCurrentStoryboard, getStatus } from "@/server/repos/storyboards";
 
 export const metadata: Metadata = { title: "Video" };
 
 /**
- * The page waits for its two small reads before sending anything (no Suspense boundary), so an unknown or someone
+ * The page waits for its small reads before sending anything (no Suspense boundary), so an unknown or someone
  * else's id gets a real HTTP 404 and a signed-out visitor a real redirect: once a page starts streaming its status is
  * fixed at 200. That makes navigation to it block until the data is there; the Library cards show "opening…" meanwhile
  * (useLinkStatus). `instant = false` only opts this route out of Next.js's development-time instant-navigation check,
@@ -23,12 +23,25 @@ export const instant = false;
 export default async function ProjectPage({ params }: PageProps<"/projects/[id]">) {
   const user = await requireUser();
   const { id } = await params;
-  const [project, idea] = await Promise.all([getProject(user.id, id), getIdea(user.id, id)]);
+  // The status read first fails a storyboard run that stopped moving (F3.1), so the page never shows a stuck one.
+  const [status, idea] = await Promise.all([getStatus(user.id, id), getIdea(user.id, id)]);
   // Unknown or someone else's project: 404, never a hint that it exists.
-  if (!project || !idea) notFound();
+  if (!status || !idea) notFound();
+  const { project } = status;
+  const run = [...status.active, ...status.last].find((r) => r.kind === "storyboard") ?? null;
+  const current = project.currentStoryboardVersion ? await getCurrentStoryboard(user.id, id) : null;
   // The newest page of the idea chat (F2.5), so the thread shows without a second request.
   const chat = await latestIdeaChat(user.id, project._id, 50);
   // Keyed by id only, so a save keeps the page's state (and "Saved" message). A newer copy from a refresh replaces the
   // local one (higher rev wins); edits made in another tab meanwhile are caught by If-Match (412 → the latest copy).
-  return <ProjectView key={id} initial={toProject(project)} idea={toIdeaSession(idea)} chat={chat} />;
+  return (
+    <ProjectView
+      key={id}
+      initial={toProject(project)}
+      idea={toIdeaSession(idea)}
+      chat={chat}
+      storyboardRun={run ? toRun(run) : null}
+      storyboard={current ? toStoryboardSummary(current.version) : null}
+    />
+  );
 }

@@ -11,6 +11,7 @@ import { useAutosave } from "@/lib/use-autosave";
 import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
 import { BriefEditor } from "./brief-editor";
 import { IdeaChat } from "./idea-chat";
+import { GenerateCard, type StoryboardRun } from "./storyboard-run";
 import { Button, Card, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Idea = IdeaSessionResource;
@@ -67,8 +68,12 @@ export function IdeaStep(props: {
   onProject: (p: ProjectResource) => void;
   /** The settings panel, placed in the right column under the brief (Stitch 09). */
   settings: React.ReactNode;
+  /** The video's status, for Generate / Regenerate storyboard (F3.1). */
+  status: ProjectResource["status"];
+  /** Starting and following the storyboard generation (F3.1). */
+  storyboard: StoryboardRun;
 }) {
-  const { projectId, language, lengthSec, initial, initialChat, editable, onProject, settings } = props;
+  const { projectId, language, lengthSec, initial, initialChat, editable, onProject, settings, status, storyboard } = props;
   // Brief fields the last chat answer changed (F2.5), highlighted until the next message or a new brief.
   const [changed, setChanged] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
@@ -337,7 +342,7 @@ export function IdeaStep(props: {
 
         {settings}
 
-        <GenerateCard keyPoints={brief.brief?.keyPoints.length ?? null} />
+        <GenerateCard keyPoints={brief.brief?.keyPoints.length ?? null} status={status} editable={editable} aiIdle={ai.idle} storyboard={storyboard} />
       </div>
     </div>
   );
@@ -376,26 +381,6 @@ function EmptyBrief() {
     <Card className="flex flex-col gap-2 p-5">
       <Eyebrow>brief</Eyebrow>
       <p className="text-sm text-muted">Your brief appears here: pick an idea, sharpen your own, or turn your notes into one. Then refine it with the AI.</p>
-    </Card>
-  );
-}
-
-/** Stitch 09's last card: the brief's state and the way to the storyboard (F3, the next milestone). */
-function GenerateCard({ keyPoints }: { keyPoints: number | null }) {
-  const ready = keyPoints !== null;
-  return (
-    // Side by side in the right column (as Stitch 09); stacked only on a narrow phone.
-    <Card className="flex flex-wrap items-center justify-between gap-3 p-4 lg:flex-nowrap">
-      <span className="flex min-w-0 items-center gap-3">
-        <span aria-hidden className={cx("size-2 rounded-full", ready ? "bg-green shadow-[0_0_8px_var(--green)]" : "bg-line-strong")} />
-        <span className="flex flex-col">
-          <span className="font-mono text-sm">{ready ? "Brief ready" : "No brief yet"}</span>
-          <span className="font-mono text-xs text-muted">{ready ? `${keyPoints} key point${keyPoints === 1 ? "" : "s"}` : "make a brief first"}</span>
-        </span>
-      </span>
-      <Button type="button" className="shrink-0 px-3" disabled title="The storyboard step arrives in the next milestone">
-        Generate storyboard →
-      </Button>
     </Card>
   );
 }

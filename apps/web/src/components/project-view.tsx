@@ -7,33 +7,35 @@ import { ApiClientError } from "@/lib/api-client";
 import { clampChars, conflictCopy, currentNote, patchProject, type RevNote } from "@/lib/project-client";
 import { STEPS, stepIndex } from "@/lib/project-options";
 import { STATUS_DISPLAY } from "@/lib/status";
-import type { ChatMessageResource, IdeaSessionResource, ProjectResource } from "@/server/api/resources";
+import type { ChatMessageResource, IdeaSessionResource, ProjectResource, RunResource, StoryboardSummary } from "@/server/api/resources";
 import { IdeaStep } from "./idea-step";
 import { SettingsPanel } from "./settings-panel";
-import { Button, Card, Chip, Eyebrow, Slashes, cx, inputStyles } from "./ui";
+import { StoryboardWorkspace, useStoryboardRun } from "./storyboard-run";
+import { Button, ButtonLink, Card, Chip, Eyebrow, Slashes, cx, inputStyles } from "./ui";
 
 type Project = ProjectResource;
 
-/** What the later steps' workspaces will hold; placeholders until those milestones land. The idea step is IdeaStep. */
-const WORKSPACE = [
-  null,
-  {
-    eyebrow: "storyboard",
-    title: "Review your scenes",
-    body: "Read the script scene by scene, ask for changes in plain words, then approve it to build the video. Arriving in M3.",
-  },
-  {
-    eyebrow: "video",
-    title: "Preview, export and post",
-    body: "Watch the preview with voice and motion graphics, export the final MP4 and post it to Instagram. Arriving in M4–M6.",
-  },
-] as const;
+/** What the Video step's workspace will hold; a placeholder until those milestones land. */
+const VIDEO_WORKSPACE = {
+  eyebrow: "video",
+  title: "Preview, export and post",
+  body: "Watch the preview with voice and motion graphics, export the final MP4 and post it to Instagram. Arriving in M4–M6.",
+} as const;
 
 /**
  * The project page (PRD S4 shell, Stitch screen 07): title, status, the Idea → Storyboard → Video stepper, a
  * "needs attention" banner, the step's workspace and the settings panel. Reads and writes go through `/api/v1`.
  */
-export function ProjectView({ initial, idea, chat }: { initial: Project; idea: IdeaSessionResource; chat: { items: ChatMessageResource[]; hasOlder: boolean } }) {
+export function ProjectView(props: {
+  initial: Project;
+  idea: IdeaSessionResource;
+  chat: { items: ChatMessageResource[]; hasOlder: boolean };
+  /** The latest storyboard generation run (F3.1), to follow one that is running or show why the last one failed. */
+  storyboardRun?: RunResource | null;
+  /** The current storyboard's header, once there is one. */
+  storyboard?: StoryboardSummary | null;
+}) {
+  const { initial, idea, chat, storyboard = null } = props;
   const [project, setProject] = useState(initial);
   // A newer copy from the server (router.refresh() after a save, or a change made elsewhere) replaces the local one;
   // on equal revisions the local copy stays. Adjusting state during render, as React recommends for this.
@@ -41,11 +43,17 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
   const router = useRouter();
   const step = stepIndex(project.status, project.attention?.kind);
   const status = STATUS_DISPLAY[project.status];
+  // The step being looked at: the video's own step, or an earlier one opened in the stepper ("Back to idea"). When the
+  // video's status changes (a storyboard starts or ends), the video's own step shows again.
+  const [viewing, setViewing] = useState<{ step: number; at: string } | null>(null);
+  const shown = viewing && viewing.at === project.status && viewing.step <= step ? viewing.step : step;
 
   const saved = (next: Project) => {
     setProject(next);
     router.refresh(); // keep the Library and this page's server copy in step
   };
+  const storyboardRun = useStoryboardRun(project.id, props.storyboardRun ?? null, saved);
+  const hasStoryboard = Boolean(project.currentStoryboardVersion) && project.status !== "storyboard_generating";
 
   return (
     <div className="flex flex-col gap-8">
@@ -64,13 +72,15 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
             </div>
             <Chip color={status.color}>{status.label}</Chip>
           </div>
-          {/* Stitch 09's way forward; the storyboard step arrives with F3 (your answer, F2.7). */}
+          {/* Stitch 09's way forward: the storyboard, once there is one (F3.1; F3.3 makes it the review screen). */}
           <span className="ml-auto flex shrink-0 items-center gap-3">
-            <span className="hidden font-mono text-xs text-muted sm:inline"><Slashes />
-              next milestone</span>
-            <Button type="button" disabled title="The storyboard step arrives in the next milestone">
-              Next: Storyboard →
-            </Button>
+            {hasStoryboard ? (
+              <ButtonLink href={`/projects/${project.id}/storyboard`}>Next: Storyboard →</ButtonLink>
+            ) : (
+              <Button type="button" disabled title={project.status === "storyboard_generating" ? "Your storyboard is being written" : "Generate the storyboard first"}>
+                Next: Storyboard →
+              </Button>
+            )}
           </span>
         </div>
       </div>
@@ -79,7 +89,7 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
         {STEPS.map((s, i) => (
           <li
             key={s.id}
-            aria-current={i === step ? "step" : undefined}
+            aria-current={i === shown ? "step" : undefined}
             className={cx(
               "flex items-center gap-3 rounded-xl border px-4 py-3",
               i === step ? "border-cyan/60 bg-cyan/5" : i < step ? "border-line bg-surface" : "border-line",
@@ -100,6 +110,16 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
                 {i === step ? "active phase" : i < step ? "done ✓" : s.hint.replace(/^\/\/ /, "")}</span>
             </span>
             <span aria-hidden className={cx("size-1.5 shrink-0 rounded-full", i === step ? "bg-cyan shadow-[0_0_8px_var(--cyan)]" : i < step ? "bg-cyan/60" : "bg-line-strong")} />
+            {/* An earlier step can be opened again (e.g. the idea and brief behind a ready storyboard). */}
+            {i < step && i !== shown ? (
+              <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={() => setViewing({ step: i, at: project.status })}>
+                open<span className="sr-only"> the {s.label} step</span>
+              </button>
+            ) : i === step && shown !== step ? (
+              <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={() => setViewing(null)}>
+                back<span className="sr-only"> to the {s.label} step</span>
+              </button>
+            ) : null}
           </li>
         ))}
       </ol>
@@ -112,7 +132,7 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
         </div>
       ) : null}
 
-      {step === 0 ? (
+      {shown === 0 ? (
         // The Idea Studio (Stitch 09, F2.7) lays out both columns: ideas on the left; the brief, its chat, these settings
         // and "Generate storyboard" on the right.
         <IdeaStep
@@ -124,14 +144,20 @@ export function ProjectView({ initial, idea, chat }: { initial: Project; idea: I
           editable={project.allowedActions.includes("edit_idea")}
           onProject={saved}
           settings={<SettingsPanel project={project} onSaved={saved} />}
+          status={project.status}
+          storyboard={storyboardRun}
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
-            <Eyebrow accent="text-violet">{WORKSPACE[step].eyebrow}</Eyebrow>
-            <p className="text-balance text-2xl font-semibold">{WORKSPACE[step].title}</p>
-            <p className="max-w-md text-balance text-muted">{WORKSPACE[step].body}</p>
-          </Card>
+          {shown === 1 ? (
+            <StoryboardWorkspace projectId={project.id} status={project.status} summary={storyboard} storyboard={storyboardRun} onBackToIdea={() => setViewing({ step: 0, at: project.status })} />
+          ) : (
+            <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
+              <Eyebrow accent="text-violet">{VIDEO_WORKSPACE.eyebrow}</Eyebrow>
+              <p className="text-balance text-2xl font-semibold">{VIDEO_WORKSPACE.title}</p>
+              <p className="max-w-md text-balance text-muted">{VIDEO_WORKSPACE.body}</p>
+            </Card>
+          )}
           <SettingsPanel project={project} onSaved={saved} />
         </div>
       )}
