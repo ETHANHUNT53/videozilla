@@ -10,7 +10,7 @@ export interface AiCallEntry {
   /** The pipeline run the call belongs to (storyboard generation). */
   runId?: ObjectId;
   provider: AiProvider;
-  task: "ideas" | "brief" | "idea_chat" | "storyboard" | "revision" | "length_fix" | "accuracy";
+  task: "ideas" | "brief" | "idea_chat" | "storyboard" | "revision" | "length_fix" | "accuracy" | "caption";
   model: string;
   status: "ok" | "retry" | "failed" | "fallback";
   latencyMs: number;

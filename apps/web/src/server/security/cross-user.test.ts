@@ -28,6 +28,8 @@ import * as restore from "@/app/api/v1/projects/[id]/restore/route";
 import * as status from "@/app/api/v1/projects/[id]/status/route";
 import * as storyboard from "@/app/api/v1/projects/[id]/storyboard/route";
 import * as generate from "@/app/api/v1/projects/[id]/storyboard/generate/route";
+import * as social from "@/app/api/v1/projects/[id]/storyboard/social/route";
+import * as rewrite from "@/app/api/v1/projects/[id]/storyboard/social/rewrite/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { needsWelcome } from "../onboarding";
 import { USER_DATA_COLLECTIONS } from "../repos/account";
@@ -121,10 +123,10 @@ it("the snapshot really covers A's queued work (so a wrongful cancel would show)
 });
 
 /** Same status and error as an id that doesn't exist (requestId aside), so nothing leaks about A's ids. */
-async function expectLikeUnknown(handler: Handler, method: string, suffix: string, foreignId: string, body?: unknown) {
+async function expectLikeUnknown(handler: Handler, method: string, suffix: string, foreignId: string, body?: unknown, headers?: Record<string, string>) {
   const unknown = new ObjectId().toHexString();
-  const foreign = await call(handler, method, `/api/v1/projects/${foreignId}${suffix}`, { id: foreignId }, body);
-  const missing = await call(handler, method, `/api/v1/projects/${unknown}${suffix}`, { id: unknown }, body);
+  const foreign = await call(handler, method, `/api/v1/projects/${foreignId}${suffix}`, { id: foreignId }, body, headers);
+  const missing = await call(handler, method, `/api/v1/projects/${unknown}${suffix}`, { id: unknown }, body, headers);
   expect(foreign.status).toBe(404);
   expect({ status: foreign.status, code: foreign.json?.error?.code, message: foreign.json?.error?.message, details: foreign.json?.error?.details, headers: foreign.headers }).toEqual({
     status: missing.status,
@@ -242,10 +244,14 @@ describe("B against A's projects (id routes)", () => {
       await expectLikeUnknown(generate.POST, "POST", "/storyboard/generate", id, { regenerate: true });
       await expectLikeUnknown(storyboard.GET, "GET", "/storyboard", id);
       await expectLikeUnknown(status.GET, "GET", "/status", id);
+      // With A's own version number as If-Match.
+      await expectLikeUnknown(social.PATCH, "PATCH", "/storyboard/social", id, { coverText: "B was here" }, { "if-match": '"1"' });
+      await expectLikeUnknown(rewrite.POST, "POST", "/storyboard/social/rewrite", id, {});
     }
     expect(await snapshotA()).toEqual(before);
     expect(await testMongo.db.collection("usage_counters").countDocuments({ userId: B.id })).toBe(0);
     expect(await testMongo.db.collection("pipeline_runs").countDocuments({ userId: B.id })).toBe(0);
+    expect(await testMongo.db.collection("ai_calls").countDocuments()).toBe(0);
   });
 
   it("PUT /projects/{id}/idea: 404, with or without If-Match; A's idea and project are unchanged", async () => {
@@ -338,6 +344,8 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["POST /projects/{id}/storyboard/generate", generate.POST, "POST", "/api/v1/projects/x/storyboard/generate", { id: "x" }],
   ["GET /projects/{id}/storyboard", storyboard.GET, "GET", "/api/v1/projects/x/storyboard", { id: "x" }],
   ["GET /projects/{id}/status", status.GET, "GET", "/api/v1/projects/x/status", { id: "x" }],
+  ["PATCH /projects/{id}/storyboard/social", social.PATCH, "PATCH", "/api/v1/projects/x/storyboard/social", { id: "x" }],
+  ["POST /projects/{id}/storyboard/social/rewrite", rewrite.POST, "POST", "/api/v1/projects/x/storyboard/social/rewrite", { id: "x" }],
 ];
 
 describe("every route needs a session, and a verified email", () => {
@@ -375,6 +383,8 @@ const MODULES: Record<string, Record<string, unknown>> = {
   "/projects/[id]/status": status,
   "/projects/[id]/storyboard": storyboard,
   "/projects/[id]/storyboard/generate": generate,
+  "/projects/[id]/storyboard/social": social,
+  "/projects/[id]/storyboard/social/rewrite": rewrite,
 };
 const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
 

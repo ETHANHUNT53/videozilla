@@ -34,13 +34,15 @@ export const REFUSAL_TEXT: Record<RefusalCategory | "blocked", string> = {
  * `422 UNSAFE_CONTENT` for a refused topic or idea (PRD §21.1): a fixed message, our sentence for the category in
  * `details[0].issue`, and the category itself. `field` names the input the refusal is about.
  */
-export function unsafeContent(category: RefusalCategory | "blocked" = "blocked", field: "topic" | "idea" | "notes" | "message" = "topic") {
+export function unsafeContent(category: RefusalCategory | "blocked" = "blocked", field: "topic" | "idea" | "notes" | "message" | "caption" = "topic") {
   return new ApiError("UNSAFE_CONTENT", {
     message:
       field === "notes"
         ? "We can't make a video about those notes. Try different notes."
         : field === "message"
           ? "We can't make that change to the video. Try asking for something else."
+          : field === "caption"
+            ? "We can't write that caption. Try a different instruction."
           : `We can't make a video about that ${field}. Try a different subject.`,
     details: [{ field, issue: REFUSAL_TEXT[category], category }],
   });
