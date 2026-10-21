@@ -10,8 +10,8 @@
 |---|---|
 | **Last updated** | 2026-10-21 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **None — stop point reached.** F3.4 is built; after its review and QA, F3.5 doesn't start until you say so |
-| **Agreed scope (2026-10-21, updated)** | Build **up to F3.4** (the Instagram caption + hashtags panel), then stop: F3.5 doesn't start until you say so |
+| **Next feature** | **F3.5 Version history + restore** — design written ([note](features/F3.5-version-history.md)), waiting for your answers before building |
+| **Agreed scope (2026-10-21, updated)** | Build **up to F3.5** (storyboard version history + restore), then stop: F3.6 doesn't start until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 4 | 0 | 3 | 0 |
+| F3 Storyboard | 4 | 0 | 2 (+1 in design) | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
@@ -113,7 +113,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F3.2 | Storyboard versions saved in a transaction | ✅ | Done 2026-10-21 with F3.1 ([note](features/F3.1-generate-storyboard.md#saving-a-version-f32-db-63)): version 1, 2, … saved with the video's status in one transaction (DB §6.3), newest 30 kept; Duplicate copies the current storyboard; purge removes versions and runs |
 | F3.3 | Storyboard Review screen: scene cards with animated thumbnails | ✅ | Done 2026-10-21 ([design note](features/F3.3-storyboard-screen.md#built-2026-10-21), approved: the Storyboard step, stills that play on hover / tap, placeholders, Approve disabled). Stitch 10 on the project page's Storyboard step: chips (language, estimate with the duration guard, scenes, voice, theme, version), scene cards by chapter with narration, on-screen text and a 9:16 preview drawn by the M0 scene components in the video's theme (one plays at a time); read-only caption; settings + "revise with AI arrives in M5"; Approve shown disabled until M3. 20 new tests (864). Not checked live (your step) |
 | F3.4 | Instagram caption + hashtags panel | ✅ | Done 2026-10-21 ([design note](features/F3.4-caption-hashtags.md#built-2026-10-21), approved: rewrite counts 1 revision, Edit → Save / Cancel, Instagram's limits with 5–15 as a hint, cover text editable). The panel under the scenes: Copy text (as posted), Edit (caption, hashtag chips, cover text; limits checked as you type), ✨ Rewrite with AI (fills the form); each Save is a new storyboard version with the scenes unchanged; `PATCH …/storyboard/social`, `POST …/social/rewrite`. 27 new tests (892). Not checked live (your step) |
-| F3.5 | Version history + restore | ⬜ | |
+| F3.5 | Version history + restore | 🔵 | Design written 2026-10-21, waiting for your answers ([design note](features/F3.5-version-history.md)): the `Version N ▾` chip opens the history (what made each version, when); View shows an old version read-only in place; Restore makes it the newest version (a copy); the API from API Design §13.4 |
 | F3.6 | Manual scene edits (text, delete, reorder) | ⬜ | P1 |
 | F3.7 | Accuracy check flags | ⬜ | P1 |
 
@@ -333,3 +333,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-21 | **F3.4 done** — the Instagram panel ([details](features/F3.4-caption-hashtags.md#built-2026-10-21)): under the scenes you can copy the caption and hashtags exactly as they'll be posted, edit them and the cover text (Hindi hashtags work; spaces and `#` are handled for you; Instagram's limits are checked as you type), or have the AI rewrite them, which you then save or cancel. Each save is a new storyboard version; the scenes don't change. On a 1024 px screen the video title also gets more room now. Checked in the browser on desktop and a 360 px phone; 27 new tests (892 in total). Stop point: F3.5 doesn't start until you say so. |
 | 2026-10-21 | F3.4 review: a caption edit (or an AI rewrite) refused because the storyboard changed meanwhile is no longer lost: it comes back in the form on the newer storyboard, to Save or Cancel. 2 new tests. |
 | 2026-10-21 | F3.4 QA fixes ([details](features/F3.4-caption-hashtags.md#qa-fixes-2026-10-21-after-c16fbd3)): after an edit comes back from another tab's change only one note shows, and it clears on your next edit or save; when copying is blocked the text appears selected for you to copy; Edit puts the cursor in the caption; a hashtag like #a-b or #123 is explained instead of being quietly changed, and a duplicate says it's already there. |
+| 2026-10-21 | You asked for **F3.5** next; scope is now "up to F3.5". **Design written** ([note](features/F3.5-version-history.md)): the version chip on the Storyboard step opens the history (generated, regenerated, caption edits, restores, with when); you can look at an older version as it was, then restore it, which saves it as the newest version so nothing is ever lost. 5 questions for you. Not built yet. |
