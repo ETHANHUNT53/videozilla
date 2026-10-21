@@ -251,6 +251,8 @@ Immutable once inserted (only `accuracyReport` may be filled in later by the asy
 
 Keep the newest 30 versions per project; older ones are pruned, never the current one (§10).
 
+**Restore is a pointer move (F3.5, your answer 2026-10-21):** restoring a version sets `projects.currentStoryboardVersion` back to it; no copy is inserted. So the current version isn't always the highest number: versions newer than it stay and can be restored "forward". The next new version (regenerate, revision, manual edit) is still `highest + 1`, with `basedOnVersion` = the version it was made from (the current one). Pruning never deletes the current version, even when it's old.
+
 ### 4.7 `voice_tracks`
 
 Cache of synthesised audio per scene text.
@@ -569,7 +571,7 @@ All transactions use `session.withTransaction()` with `readConcern: snapshot`, `
 |---|---|---|---|
 | 6.1 | **Create project** | `projects` insert + `idea_sessions` insert | The idea session always exists for a project |
 | 6.2 | **Start storyboard generation** | `projects` status CAS → `storyboard_generating` + `pipeline_runs` insert (`active:true`) + `usage_counters` `$inc` (with limit check) | Partial unique index stops a second active run; the event is sent to Inngest **after** commit (outbox, §7.6) |
-| 6.3 | **Save storyboard version** (generate / revision / manual edit / restore) | `storyboard_versions` insert (`version = current + 1`) + `projects` (`currentStoryboardVersion`, status, `exportOutdated`, `rev`) + `chat_messages` update (revision) + `pipeline_runs` step/status | Unique `{projectId, version}` makes concurrent saves fail cleanly → retry |
+| 6.3 | **Save storyboard version** (generate / revision / manual edit; a restore only moves the pointer, F3.5) | `storyboard_versions` insert (`version = current + 1`) + `projects` (`currentStoryboardVersion`, status, `exportOutdated`, `rev`) + `chat_messages` update (revision) + `pipeline_runs` step/status | Unique `{projectId, version}` makes concurrent saves fail cleanly → retry |
 | 6.4 | **Undo revision** | `storyboard_versions` insert (`source: restore`, copy of `versionBefore`) + `projects` pointer + `chat_messages.undoneAt` | Only the latest applied revision can be undone (PRD F7) |
 | 6.5 | **Build completed** | `timelines` insert (or reuse by hash) + `projects` (`currentTimelineId`, status `preview_ready`) + `pipeline_runs` succeeded | Voice tracks are written earlier, idempotently, per scene (cache) |
 | 6.6 | **Soft delete project** | `projects` (`deletedAt`, `purgeAt`) + `pipeline_runs` active → `cancelled` + `publish_jobs` `scheduled` → `cancelled` + `render_jobs` `queued` → `cancelled` | Inngest cancel events are sent after commit. Blocked while `publishing`. |

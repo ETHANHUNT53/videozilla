@@ -595,7 +595,7 @@ Response: `201 Project` (`status: "idea_draft"`), `Location: /api/v1/projects/{i
 
 #### `GET /projects/{id}/storyboard/versions` — history
 
-`?limit&cursor`, newest first → `200 { items: StoryboardVersionSummary[] }`, where the summary is `{ version, source, changeSummary, createdAt, isCurrent }`.
+`?limit&cursor`, newest first → `200 { items: StoryboardVersionSummary[] }`, where the summary is `{ version, source, changeSummary, createdAt, isCurrent }` (F3.5 adds `language`, `targetDurationSec`, `sceneCount`; at most 30 versions are kept, so one page holds them all and `nextCursor` is `null`).
 
 #### `GET /projects/{id}/storyboard/versions/{version}`
 
@@ -603,7 +603,8 @@ Response: `201 Project` (`status: "idea_draft"`), `Location: /api/v1/projects/{i
 
 #### `POST /projects/{id}/storyboard/versions/{version}/restore`
 
-- **Response:** `201 StoryboardVersion` (a new version copied from `{version}`, `source: restore`) + `project`.
+- **Changed 2026-10-21 (F3.5, your answer):** restore **moves the current-version pointer** back to `{version}`; no copy is made. Send `If-Match: "<currentStoryboardVersion>"` (required; `412` when it moved on). Restoring the current version → `409 INVALID_STATE`. When `{version}` was written for another language or length, the project's `language` / `lengthPreset` follow it.
+- **Response:** `200 { version: StoryboardVersion, project }` (was: `201`, a new version copied from `{version}`, `source: restore`).
 - **Allowed in:** `storyboard_ready`, `preview_ready`, `exported`. On the last two it starts an incremental build → the response also includes `run`.
 
 #### Manual scene edits (P1, PRD F3-FR7)
