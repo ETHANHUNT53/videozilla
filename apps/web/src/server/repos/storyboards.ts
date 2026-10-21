@@ -350,9 +350,7 @@ export async function saveStoryboardVersion(
       { session, arrayFilters: [{ "s.name": "save_version" }] },
     );
     // Keep the newest versions (the current one is always among them: it was just made).
-    if (number > KEEP_VERSIONS) {
-      await versions().deleteMany({ projectId: project._id, userId: run.userId, version: { $lte: number - KEEP_VERSIONS } }, { session });
-    }
+    await pruneVersions(session, project._id, run.userId, number);
     return { version, project: saved };
   });
 }
@@ -464,9 +462,108 @@ export async function saveSocialEdit(
       { session, returnDocument: "after" },
     );
     if (!saved) throw new Error("project changed during the save");
-    if (number > KEEP_VERSIONS) {
-      await versions().deleteMany({ projectId: _id, userId, version: { $lte: number - KEEP_VERSIONS } }, { session });
-    }
+    await pruneVersions(session, _id, userId, number);
     return { version, project: saved, created: true };
+  });
+}
+
+/**
+ * Keeps the newest 30 versions (DB §4.6), never the current one: since restore moves the pointer back (F3.5), the
+ * current version can be older than the 30 newest, and it must survive.
+ */
+async function pruneVersions(session: ClientSession, projectId: ObjectId, userId: string, current: number): Promise<void> {
+  const keep = await versions().find({ projectId, userId }, { session, sort: { version: -1 }, limit: KEEP_VERSIONS, projection: { version: 1 } }).toArray();
+  if (keep.length < KEEP_VERSIONS) return;
+  const oldestKept = keep[keep.length - 1].version;
+  await versions().deleteMany({ projectId, userId, version: { $lt: oldestKept, $ne: current } }, { session });
+}
+
+/** One row of the history (F3.5): what made it and when, without the storyboard. */
+export interface VersionSummary {
+  version: number;
+  source: StoryboardVersionDoc["source"];
+  changeSummary: string;
+  createdAt: Date;
+  language: Storyboard["language"];
+  targetDurationSec: Storyboard["targetDurationSec"];
+  sceneCount: number;
+}
+
+/** The video's versions, newest first (at most the 30 kept), and its current version number; null for 404. */
+export async function listVersions(userId: string, projectId: string, limit = KEEP_VERSIONS): Promise<{ current: number | null; items: VersionSummary[] } | null> {
+  await ensureMigrated();
+  const _id = toObjectId(projectId);
+  if (!_id) return null;
+  const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { projection: { currentStoryboardVersion: 1 } });
+  if (!project) return null;
+  const docs = await versions()
+    .aggregate<VersionSummary>([
+      { $match: { projectId: _id, userId } },
+      { $sort: { version: -1 } },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 0,
+          version: 1,
+          source: 1,
+          changeSummary: 1,
+          createdAt: 1,
+          language: "$data.language",
+          targetDurationSec: "$data.targetDurationSec",
+          sceneCount: { $size: { $ifNull: ["$data.scenes", []] } },
+        },
+      },
+    ])
+    .toArray();
+  return { current: project.currentStoryboardVersion ?? null, items: docs };
+}
+
+/** One version of the video's storyboard (to view it before restoring), with the project; null for 404. */
+export async function getVersion(userId: string, projectId: string, version: number): Promise<{ project: ProjectDoc; version: StoryboardVersionDoc } | null> {
+  await ensureMigrated();
+  const _id = toObjectId(projectId);
+  if (!_id) return null;
+  const project = await collections.projects().findOne({ _id, userId, deletedAt: null });
+  if (!project) return null;
+  const doc = await versions().findOne({ projectId: _id, userId, version });
+  return doc ? { project, version: doc } : null;
+}
+
+export type RestoreResult =
+  | { version: StoryboardVersionDoc; project: ProjectDoc }
+  | "not_found"
+  | "invalid_state"
+  | "already_current"
+  | { conflict: number | null };
+
+/**
+ * Restore (F3.5, your answer): moves the project's current-version pointer back (or forward) to `version`; nothing is
+ * copied or pruned. Only on the current version the page saw (`basedOn`, If-Match). When the version was written for
+ * another language or length, the project's settings follow it, so the storyboard and the settings agree.
+ */
+export async function restoreVersion(userId: string, projectId: string, version: number, basedOn: number): Promise<RestoreResult> {
+  await ensureMigrated();
+  const _id = toObjectId(projectId);
+  if (!_id) return "not_found";
+  return withTransaction(async (session): Promise<RestoreResult> => {
+    const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { session });
+    if (!project) return "not_found";
+    const target = await versions().findOne({ projectId: _id, userId, version }, { session });
+    if (!target) return "not_found";
+    if (project.status !== "storyboard_ready" || !project.currentStoryboardVersion) return "invalid_state";
+    if (project.currentStoryboardVersion !== basedOn) return { conflict: project.currentStoryboardVersion };
+    if (version === project.currentStoryboardVersion) return "already_current";
+    const now = new Date();
+    const settings = {
+      ...(target.data.language !== project.language ? { language: target.data.language } : {}),
+      ...(target.data.targetDurationSec !== project.lengthPreset ? { lengthPreset: target.data.targetDurationSec } : {}),
+    };
+    const saved = await collections.projects().findOneAndUpdate(
+      { _id, userId, status: "storyboard_ready", currentStoryboardVersion: basedOn },
+      { $set: { currentStoryboardVersion: version, updatedAt: now, ...settings }, $inc: { rev: 1 } },
+      { session, returnDocument: "after" },
+    );
+    if (!saved) throw new Error("project changed during the restore");
+    return { version: target, project: saved };
   });
 }
