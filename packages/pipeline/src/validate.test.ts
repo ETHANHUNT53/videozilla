@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RawStoryboard } from "@videozilla/schema";
 import { describe, expect, it } from "vitest";
-import { validateStoryboard } from "./validate";
+import { lengthStatus, validateStoryboard } from "./validate";
 
 type RawScene = RawStoryboard["scenes"][number];
 
@@ -213,8 +213,8 @@ describe("validateStoryboard: whole-storyboard checks", () => {
   });
 
   it("warns about scenes with too few or too many words", () => {
-    expect(run({ narration: "Too short." }).report.warnings).toContain("scene 2: 2 words of narration (target 8-35)");
-    expect(run({ narration: words(41) }).report.warnings).toContain("scene 2: 41 words of narration (target 8-35)");
+    expect(run({ narration: "Too short." }).report.warnings).toContain("scene 2: 2 words of narration (target 8-40)");
+    expect(run({ narration: words(41) }).report.warnings).toContain("scene 2: 41 words of narration (target 8-40)");
   });
 
   it("counts words, estimates duration and warns when far outside the word budget", () => {
@@ -235,5 +235,157 @@ describe("validateStoryboard: whole-storyboard checks", () => {
     const { report } = validateStoryboard(board({}), "hi", 90);
     expect(report.estimatedDurationSec).toBe(Math.round((40 / 140) * 60 + 1.5));
     expect(report.warnings).toContain("narration is 40 words; target 175-210");
+  });
+});
+
+describe("validateStoryboard: story structure (beat)", () => {
+  /** hook, the body scenes with the given beats, outro. */
+  function story(body: any[], extra: Partial<RawScene> = {}): RawStoryboard {
+    const mid = (beat: any, i: number): RawScene => ({
+      role: "explain",
+      section: `part ${i}`,
+      narration: "Sunlight looks white but it hides every colour of the rainbow inside it.",
+      type: i % 2 ? "KeywordReveal" : "BulletSteps",
+      props: i % 2 ? { keywords: [{ id: "k1", text: "white" }] } : { items: [{ id: "i1", text: "one" }, { id: "i2", text: "two" }] },
+      cues: [],
+      beats: [{ headline: "Light" }],
+      beat,
+    });
+    return { ...board({}), scenes: [{ ...hook, ...extra }, ...body.map(mid), outro] };
+  }
+  const beats = (raw: RawStoryboard) => validateStoryboard(raw, "en", 60).storyboard.scenes.map((s) => s.beat);
+
+  it("keeps a well-formed beat as it is, with no repairs", () => {
+    const raw = story([
+      { mood: "problem", chapter: { index: 1, headline: "The problem" }, diagram: { id: "main", step: 1 } },
+      { mood: "explain", chapter: { index: 1, headline: "The problem" }, diagram: { id: "main", step: 2 } },
+      { mood: "solution", chapter: { index: 2, headline: "The fix", subhead: "one small change" }, diagram: { id: "main", step: 3 } },
+      { mood: "explain", chapter: { index: 2, headline: "The fix" } },
+    ]);
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.scenes.map((s) => s.beat)).toEqual([
+      { mood: "curious" },
+      { mood: "problem", chapter: { index: 1, headline: "The problem" }, diagram: { id: "main", step: 1 } },
+      { mood: "explain", chapter: { index: 1, headline: "The problem" }, diagram: { id: "main", step: 2 } },
+      { mood: "solution", chapter: { index: 2, headline: "The fix", subhead: "one small change" }, diagram: { id: "main", step: 3 } },
+      { mood: "explain", chapter: { index: 2, headline: "The fix", subhead: "one small change" } },
+      { mood: "recap" },
+    ]);
+    expect(report.repairs).toEqual([]);
+  });
+
+  it("fills missing moods from the role and replaces unknown ones", () => {
+    const out = beats(story([{ mood: "angry", chapter: { index: 1, headline: "A" } }, {}, {}, {}]));
+    expect(out.map((b) => b.mood)).toEqual(["curious", "explain", "explain", "explain", "explain", "recap"]);
+    expect(validateStoryboard(story([{ mood: "angry" }, {}, {}, {}]), "en", 60).report.repairs).toContain('scene 2: unknown mood "angry", used "explain"');
+  });
+
+  it("keeps body scenes without a chapter in the chapter before them and renumbers chapters in order", () => {
+    const raw = story([{ chapter: { index: 3, headline: "First" } }, {}, { chapter: { index: 7, headline: "Second" } }, {}]);
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.scenes.slice(1, 5).map((s) => [s.beat.chapter?.index, s.beat.chapter?.headline])).toEqual([
+      [1, "First"],
+      [1, "First"],
+      [2, "Second"],
+      [2, "Second"],
+    ]);
+    expect(report.repairs).toContain("renumbered the chapters 1, 2, 3… in scene order");
+  });
+
+  it("removes chapters from the hook and the recap", () => {
+    const raw = story([{ chapter: { index: 1, headline: "A" } }, {}, {}, {}], { beat: { chapter: { index: 1, headline: "Intro" } } } as any);
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.scenes[0].beat.chapter).toBeUndefined();
+    expect(report.repairs).toContain("scene 1: removed the chapter from a hook scene");
+  });
+
+  it("groups scenes by section when the model gave no chapters", () => {
+    const raw = story([{}, {}, {}, {}]);
+    raw.scenes[2].section = "part 0";
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.scenes.slice(1, 5).map((s) => s.beat.chapter)).toEqual([
+      { index: 1, headline: "part 0" },
+      { index: 1, headline: "part 0" },
+      { index: 2, headline: "part 2" },
+      { index: 3, headline: "part 3" },
+    ]);
+    expect(report.warnings).toContain("no chapters from the model; grouped the scenes by section");
+  });
+
+  it("merges chapters beyond the fifth into the fifth and shortens long headlines", () => {
+    const long = "A very long chapter headline that goes on and on past forty characters";
+    const raw = story([1, 2, 3, 4, 5, 6, 7].map((i) => ({ chapter: { index: i, headline: i === 1 ? long : `C${i}` } })));
+    const { storyboard, report } = validateStoryboard(raw, "en", 90);
+    const chapters = storyboard.scenes.slice(1, 8).map((s) => s.beat.chapter!);
+    expect(chapters.map((c) => c.index)).toEqual([1, 2, 3, 4, 5, 5, 5]);
+    expect(chapters[6].headline).toBe("C5");
+    expect(chapters[0].headline.length).toBeLessThanOrEqual(40);
+    expect(report.repairs).toContain("scene 7: more than 5 chapters, merged into chapter 5");
+  });
+
+  it("cleans diagram ids, renumbers steps per diagram and allows at most 2 diagrams", () => {
+    const raw = story([
+      { diagram: { id: "Main Diagram", step: 4 } },
+      { diagram: { id: "side", step: 1 } },
+      { diagram: { id: "main diagram", step: 9 } },
+      { diagram: { id: "third", step: 1 } },
+    ]);
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.scenes.slice(1, 5).map((s) => s.beat.diagram)).toEqual([{ id: "main-diagram", step: 1 }, { id: "side", step: 1 }, { id: "main-diagram", step: 2 }, undefined]);
+    expect(report.repairs).toContain('scene 5: dropped diagram "third" (at most 2 per video)');
+    expect(report.repairs).toContain("renumbered the diagram steps 1, 2, 3… in scene order");
+  });
+
+  it("drops theme hints the model wrote: generation is theme-neutral", () => {
+    const raw = story([{}, {}, {}, {}]);
+    (raw.scenes[1] as any).themeHints = { mentor: { presenterPose: "point" } };
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.scenes[1].themeHints).toBeUndefined();
+    expect(report.repairs).toContain("scene 2: dropped themeHints (generation is theme-neutral)");
+  });
+
+  it("drops malformed beat parts instead of failing the schema", () => {
+    const parsed = RawStoryboard.parse(story([{ chapter: "one", mood: 3, diagram: { id: 5, step: "x" } }, {}, {}, {}]));
+    expect(parsed.scenes[1].beat).toEqual({ chapter: undefined, mood: undefined, diagram: { id: undefined, step: undefined } });
+    expect(validateStoryboard(parsed, "en", 60).storyboard.scenes[1].beat).toEqual({ mood: "explain", chapter: { index: 1, headline: "part 0" } });
+  });
+});
+
+describe("validateStoryboard: title and social", () => {
+  it("cleans hashtags: adds #, removes spaces and duplicates, keeps at most 15", () => {
+    const raw = board({});
+    raw.social.hashtags = ["science", "#Science", "#sky blue", "##physics", "", ...Array.from({ length: 15 }, (_, i) => `t${i}`)];
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.social.hashtags.slice(0, 3)).toEqual(["#science", "#skyblue", "#physics"]);
+    expect(storyboard.social.hashtags).toHaveLength(15);
+    expect(report.repairs).toContain("kept the first 15 of 18 hashtags");
+  });
+
+  it("warns about too few hashtags and shortens the cover text, caption and title", () => {
+    const raw = board({});
+    raw.title = "Why the sky is blue ".repeat(5).trim();
+    raw.social = { caption: "x".repeat(2300), hashtags: ["#sky"], coverText: "one two three four five six" };
+    const { storyboard, report } = validateStoryboard(raw, "en", 60);
+    expect(storyboard.title.length).toBeLessThanOrEqual(70);
+    expect(storyboard.social.caption).toHaveLength(2200);
+    expect(storyboard.social.coverText).toBe("one two three four five");
+    expect(report.warnings).toContain("only 1 hashtags (aim for 5-15)");
+    expect(report.repairs).toEqual(expect.arrayContaining(["shortened the title to 70 characters", "shortened the caption to 2200 characters", "shortened the cover text to 5 words"]));
+  });
+
+  it("warns when the scene count is outside the PRD range or a type repeats three times", () => {
+    expect(run({}).report.warnings).toContain("3 scenes; target 6-12");
+    const raw = board({});
+    raw.scenes = [hook, raw.scenes[1], raw.scenes[1], raw.scenes[1], outro];
+    expect(validateStoryboard(raw, "en", 60).report.warnings).toContain("scenes 2-4: three KeywordReveal scenes in a row");
+  });
+});
+
+describe("lengthStatus", () => {
+  it("is ok within 15 % of the word budget and short / long outside it", () => {
+    expect(lengthStatus(137, "en", 60)).toBe("ok");
+    expect(lengthStatus(106, "en", 60)).toBe("short");
+    expect(lengthStatus(173, "en", 60)).toBe("long");
+    expect(lengthStatus(200, "hi", 90)).toBe("ok");
   });
 });

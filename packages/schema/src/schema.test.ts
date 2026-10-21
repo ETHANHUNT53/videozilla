@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cueTargetsFor, RawStoryboard, SCENE_PROPS, SCENE_TYPES } from "./index";
+import { BeatMeta, cueTargetsFor, RawStoryboard, SCENE_PROPS, SCENE_TYPES, ThemeHints } from "./index";
 
 describe("RawStoryboard", () => {
   it("rejects a storyboard with fewer than 3 scenes", () => {
@@ -38,5 +38,26 @@ describe("cueTargetsFor", () => {
     const props = { title: "Water cycle", actors: [{ id: "sun" }, { id: "sea" }], flows: [{ id: "f1" }] };
     expect(cueTargetsFor("Illustration", props)).toEqual(["title", "sun", "sea", "f1"]);
     expect(cueTargetsFor("Illustration", { actors: [{ id: "sun" }] })).toEqual(["sun"]);
+  });
+});
+
+describe("ThemeHints", () => {
+  it("accepts any theme id with any small value, so new themes need no schema change", () => {
+    expect(ThemeHints.safeParse({ mentor: { presenterPose: "point" }, "future-theme-2": [1, 2, 3] }).success).toBe(true);
+  });
+
+  it("rejects malformed theme ids and values over 2 KB", () => {
+    expect(ThemeHints.safeParse({ Mentor: {} }).success).toBe(false);
+    expect(ThemeHints.safeParse({ "1x": {} }).success).toBe(false);
+    expect(ThemeHints.safeParse({ mentor: { text: "x".repeat(2100) } }).success).toBe(false);
+  });
+});
+
+describe("BeatMeta", () => {
+  it("needs a mood and checks chapter and diagram shapes", () => {
+    expect(BeatMeta.safeParse({ mood: "problem", chapter: { index: 1, headline: "Why" }, diagram: { id: "main", step: 2 } }).success).toBe(true);
+    expect(BeatMeta.safeParse({}).success).toBe(false);
+    expect(BeatMeta.safeParse({ mood: "happy" }).success).toBe(false);
+    expect(BeatMeta.safeParse({ mood: "explain", diagram: { id: "Main", step: 1 } }).success).toBe(false);
   });
 });

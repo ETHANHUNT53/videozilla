@@ -22,6 +22,7 @@ function scene(over: Partial<Scene> = {}): Scene {
     type: "KeywordReveal",
     props: { keywords: [{ id: "k1", text: "white" }, { id: "k2", text: "rainbow" }, { id: "k3", text: "hidden" }] },
     cues: [],
+    beat: { mood: "explain", chapter: { index: 1, headline: "the setup" } },
     ...over,
   };
 }

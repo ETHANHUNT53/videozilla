@@ -163,6 +163,68 @@ export const Beat = z.object({
 });
 export type Beat = z.infer<typeof Beat>;
 
+// ---------- Story structure (theme-neutral, PRD §13.3, §14.6) ----------
+
+/** What a scene feels like; a theme may map it to its own look (e.g. Mentor's presenter pose). */
+export const MOODS = ["curious", "explain", "problem", "solution", "recap"] as const;
+export type Mood = (typeof MOODS)[number];
+
+/**
+ * A scene's place in the story (`Scene.beat`, singular; not the headline `beats`): its chapter, its mood and the step
+ * it adds to a diagram that stays on screen across scenes. It describes the content, never the look, so every theme can
+ * read it and new themes need no change here (F4-FR10).
+ */
+export const BeatMeta = z.object({
+  chapter: z
+    .object({
+      index: z.number().int().min(1).max(5),
+      headline: z.string().min(1).max(40),
+      subhead: z.string().min(1).max(60).optional(),
+    })
+    .optional(),
+  mood: z.enum(MOODS),
+  diagram: z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,23}$/), step: z.number().int().min(1).max(8) }).optional(),
+});
+export type BeatMeta = z.infer<typeof BeatMeta>;
+
+/** `beat` as a model writes it: every part optional and malformed parts dropped, since the validator repairs it anyway. */
+const RawBeatMeta = z
+  .object({
+    chapter: z
+      .object({
+        index: z.number().optional().catch(undefined),
+        headline: z.string().optional().catch(undefined),
+        subhead: z.string().optional().catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+    mood: z.string().optional().catch(undefined),
+    diagram: z
+      .object({ id: z.string().optional().catch(undefined), step: z.number().optional().catch(undefined) })
+      .optional()
+      .catch(undefined),
+  })
+  .optional()
+  .catch(undefined);
+
+/** A theme id: the key of `themeHints` (and the theme registry, M3). */
+export const THEME_ID = /^[a-z][a-z0-9-]{1,31}$/;
+/** Largest JSON size of one theme's hints for one scene. */
+export const THEME_HINT_MAX_BYTES = 2048;
+
+/**
+ * Optional per-theme extras of a scene (PRD §14.6): `{ [themeId]: anything that theme's own hint schema accepts }`.
+ * The storyboard never lists themes or their fields, so adding a theme changes nothing here; each theme checks its own
+ * value. Here only the key shape and the size are checked.
+ */
+export const ThemeHints = z.record(z.string().regex(THEME_ID), z.unknown()).superRefine((hints, ctx) => {
+  for (const [id, value] of Object.entries(hints)) {
+    const size = new TextEncoder().encode(JSON.stringify(value ?? null)).length;
+    if (size > THEME_HINT_MAX_BYTES) ctx.addIssue({ code: "custom", path: [id], message: `is ${size} bytes; at most ${THEME_HINT_MAX_BYTES}` });
+  }
+});
+export type ThemeHints = z.infer<typeof ThemeHints>;
+
 export const RawScene = z.object({
   role: z.enum(["hook", "explain", "example", "recap", "outro"]),
   /** Small monospace eyebrow, e.g. "the setup" → rendered as "// the setup". */
@@ -172,6 +234,9 @@ export const RawScene = z.object({
   type: z.string(),
   props: z.record(z.string(), z.any()),
   cues: z.array(Cue).default([]),
+  beat: RawBeatMeta,
+  /** Never asked of the model (generation is theme-neutral); dropped by the validator if it writes some. */
+  themeHints: z.unknown().optional(),
 });
 
 export const RawStoryboard = z.object({
@@ -195,6 +260,10 @@ export interface Scene {
   type: SceneType;
   props: any;
   cues: Cue[];
+  /** The scene's place in the story (chapter, mood, diagram step); always set after validation. */
+  beat: BeatMeta;
+  /** Per-theme extras, filled on demand when a video switches to a theme that needs them (M3). */
+  themeHints?: ThemeHints;
 }
 
 export interface Storyboard {
