@@ -8,10 +8,10 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-10-19 |
+| **Last updated** | 2026-10-21 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **None — stop point reached.** F2.7 is built; after its review and QA, nothing new starts until you say so |
-| **Agreed scope (2026-10-20, updated)** | Build **up to F2.7** (the Idea Studio screen, Stitch 09), then stop: no further feature starts until you say so |
+| **Next feature** | **F3.1 + F3.2 Generate storyboard** — design written ([note](features/F3.1-generate-storyboard.md)), waiting for your answers before building |
+| **Agreed scope (2026-10-21, updated)** | Build **up to F3.1 + F3.2** (generate the storyboard and save it as a version), then stop: F3.3 doesn't start until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
 ### Status legend
@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 0 | 0 | 7 | 0 |
+| F3 Storyboard | 0 | 0 | 5 (+2 in design) | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
@@ -109,8 +109,8 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
-| F3.1 | `storyboard.generate` job (Gemini + validation + length check) | ⬜ | Logic proven in M0 |
-| F3.2 | Storyboard versions saved in a transaction | ⬜ | DB §6.3 |
+| F3.1 | `storyboard.generate` job (Gemini + validation + length check) | 🔵 | Design written 2026-10-21, waiting for your answers ([design note](features/F3.1-generate-storyboard.md)): `POST …/storyboard/generate` → 202 + job (inline fallback locally), progress via `GET …/status`, theme-neutral storyboard with `beat` (chapter, mood, diagram step) and optional `themeHints`. Logic proven in M0 |
+| F3.2 | Storyboard versions saved in a transaction | 🔵 | Design written with F3.1 ([note](features/F3.1-generate-storyboard.md#saving-a-version-f32-db-63)), waiting for your answers. DB §6.3 |
 | F3.3 | Storyboard Review screen: scene cards with animated thumbnails | ⬜ | Stitch screen 10 |
 | F3.4 | Instagram caption + hashtags panel | ⬜ | |
 | F3.5 | Version history + restore | ⬜ | |
@@ -319,3 +319,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-20 | F2.7 QA fixes ([details](features/F2.7-idea-studio-screen.md#qa-fixes-after-4846b18)): settings no longer drop a second key press while a change saves — changes queue, newest value wins, one save at a time, so the screen, focus and server agree; a long title shortens so "Next: Storyboard" stays top-right; "Generate storyboard" sits beside "Brief ready"; the chat box fits a 360 px phone with no scrollbar; screen readers no longer read "slash slash"; card buttons name their card. 9 new tests (766 in total). |
 | 2026-10-20 | F2.7 last-fixes review: the settings save queue is sound. A likely cause of the one-off CI failure is fixed: mock-mode AI calls slept 800 ms each (plus a 1 s busy retry), so one test spent 3.5 s of a 5 s limit; none under tests now (0.1 s). CI now lists every failed test by name on the public run page. |
 | 2026-10-20 | F2.7 regression fixed: below 1024 px the video title in the header shrank to nothing (the status chip and "Next: Storyboard" kept their width in one row), and at 360 px the chip overlapped the button. Below lg the title now has its own row and wraps, with the chip and button under it; from lg it's one row with "…" and the full title on hover. Checked at 360, 768 and 1280 px. |
+| 2026-10-21 | You asked for **F3.1 + F3.2** (generate the storyboard, save it as a version); scope is now "up to F3.1 + F3.2". **Design written** ([note](features/F3.1-generate-storyboard.md)): "Generate storyboard" starts a background job (with progress steps) that writes the script and scenes from the brief and settings through the same AI chain, checks and repairs them, fixes the length once if needed, and saves version 1, 2, …; a simple "Storyboard ready" page until F3.3. The storyboard is theme-neutral: each scene gets `beat` (chapter, mood, diagram step) and may later carry per-theme `themeHints`, so new themes need no schema change and no new script. 6 questions for you. Not built yet. |
