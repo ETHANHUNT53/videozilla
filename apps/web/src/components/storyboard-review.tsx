@@ -124,25 +124,32 @@ function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; t
   return (
     <Card
       className={cx("flex gap-4 p-4 transition-colors sm:gap-5 sm:p-5", playing && "border-cyan/50")}
-      // Hover (or a tap on a touch screen) plays it; the ▶ button plays and pauses it from the keyboard. Reduced motion:
-      // only the button.
-      onMouseEnter={reduced ? undefined : () => onPlay(true)}
-      onMouseLeave={() => onPlay(false)}
+      // Hovering with a mouse plays it; the ▶ button plays and pauses it (a tap on a phone, or the keyboard). Reduced
+      // motion: only the button.
+      onPointerEnter={(e) => {
+        // A real mouse only: a tap also "enters", and the ▶ tap that follows would then pause it straight away.
+        if (e.pointerType === "mouse" && !reduced) onPlay(true);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === "mouse") onPlay(false);
+      }}
     >
-      <div ref={box} className="relative flex w-24 shrink-0 flex-col gap-1 sm:w-28">
+      <div ref={box} className="flex w-24 shrink-0 flex-col gap-1 self-start sm:w-28">
         <span className="font-mono text-[10px] text-muted">{card.range}</span>
-        <div aria-hidden className="relative aspect-[9/16] w-full overflow-hidden rounded-xl border border-line bg-[#030407]">
-          {near ? <ScenePreview timeline={one} still={still} playing={playing} /> : null}
-        </div>
-        <button
+        <div className="relative">
+          <div aria-hidden className="aspect-[9/16] w-full overflow-hidden rounded-xl border border-line bg-[#030407]">
+            {near ? <ScenePreview timeline={one} still={still} playing={playing} /> : null}
+          </div>
+          <button
           type="button"
           className="absolute bottom-1.5 right-1.5 grid size-7 place-items-center rounded-full border border-line bg-[#030407]/80 font-mono text-xs text-fg hover:text-cyan"
           aria-label={playing ? `Pause scene ${number} preview` : `Play scene ${number} preview`}
           aria-pressed={playing}
           onClick={() => onPlay(!playing)}
         >
-          {playing ? "❚❚" : "▶"}
-        </button>
+            {playing ? "❚❚" : "▶"}
+          </button>
+        </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <h3 className="flex flex-wrap items-center gap-2 font-mono text-xs">

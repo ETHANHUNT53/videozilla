@@ -108,15 +108,16 @@ export function ProjectView(props: {
               "Approve & create video", shown disabled until building arrives in M3 (your answer, F3.3). */}
           <span className="ml-auto flex shrink-0 items-center gap-3">
             {reviewing ? (
-              <>
-                <span id="approve-note" className="hidden font-mono text-xs text-muted sm:inline">
+              // The note shows under the button on narrow screens (no hover on a phone), beside it from xl.
+              <span className="flex flex-col items-end gap-1 xl:flex-row xl:items-center xl:gap-3">
+                <Button type="button" disabled aria-describedby="approve-note" title="Building the video arrives in M3" className="xl:order-2">
+                  Approve &amp; create video →
+                </Button>
+                <span id="approve-note" className="font-mono text-xs text-muted xl:order-1">
                   <Slashes />
                   Building the video arrives in M3
                 </span>
-                <Button type="button" disabled aria-describedby="approve-note" title="Building the video arrives in M3">
-                  Approve &amp; create video →
-                </Button>
-              </>
+              </span>
             ) : hasStoryboard ? (
               <Button type="button" onClick={() => setViewing(null)}>
                 Next: Storyboard →
@@ -206,7 +207,8 @@ export function ProjectView(props: {
           onStale={resync}
         />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        // The review's scene cards need the width: two columns from xl there, from lg otherwise.
+        <div className={cx("grid gap-6", reviewing ? "xl:grid-cols-[minmax(0,1fr)_380px]" : "lg:grid-cols-[minmax(0,1fr)_380px]")}>
           {reviewing ? (
             <StoryboardReview project={project} version={version!} storyboard={storyboardRun} onBackToIdea={() => setViewing(0)} />
           ) : shown === 1 ? (
@@ -218,7 +220,7 @@ export function ProjectView(props: {
               <p className="max-w-md text-balance text-muted">{VIDEO_WORKSPACE.body}</p>
             </Card>
           )}
-          <div className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-4 lg:self-start">
+          <div className={cx("flex min-w-0 flex-col gap-6", reviewing ? "xl:sticky xl:top-4 xl:self-start" : "lg:sticky lg:top-4 lg:self-start")}>
             <SettingsPanel project={project} onSaved={saved} />
             {reviewing ? (
               // Stitch 10's chat column: the revision chat arrives in M5 (your answer, F3.3).

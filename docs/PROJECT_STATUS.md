@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-21 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **F3.3 Storyboard Review screen** — design written ([note](features/F3.3-storyboard-screen.md)), waiting for your answers before building |
+| **Next feature** | **None — stop point reached.** F3.3 is built; after its review and QA, F3.4 doesn't start until you say so |
 | **Agreed scope (2026-10-21, updated)** | Build **up to F3.3** (the Storyboard Review screen, Stitch 10), then stop: F3.4 doesn't start until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 2 | 0 | 4 (+1 in design) | 0 |
+| F3 Storyboard | 3 | 0 | 4 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
@@ -111,7 +111,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 |---|---|---|---|
 | F3.1 | `storyboard.generate` job (Gemini + validation + length check) | ✅ | Done 2026-10-21 ([design note](features/F3.1-generate-storyboard.md#built-2026-10-21), approved: 7–9 / 10–13 scenes, 20 a day, failures refunded except refusals, back to the previous status on failure). **Generate storyboard →** starts a background job (inline locally without the job runner): brief → script and scenes through the AI chain → checked and repaired → one length fix if > 15 % off → saved. Progress via `GET …/status`; a simple "Storyboard ready" scene list until F3.3. Theme-neutral storyboard: every scene has `beat` (chapter, mood, diagram step), optional `themeHints` for later themes. 73 new tests (839). Not checked live (your step) |
 | F3.2 | Storyboard versions saved in a transaction | ✅ | Done 2026-10-21 with F3.1 ([note](features/F3.1-generate-storyboard.md#saving-a-version-f32-db-63)): version 1, 2, … saved with the video's status in one transaction (DB §6.3), newest 30 kept; Duplicate copies the current storyboard; purge removes versions and runs |
-| F3.3 | Storyboard Review screen: scene cards with animated thumbnails | 🔵 | Design written 2026-10-21, waiting for your answers ([design note](features/F3.3-storyboard-screen.md)): Stitch 10 as the project page's Storyboard step; header chips with the duration guard; scene cards by chapter with narration, on-screen text and a 9:16 thumbnail of the scene (M0 scene components in the browser, placeholder timing, plays on hover / tap); theme from the video's setting (Midnight now, swappable) |
+| F3.3 | Storyboard Review screen: scene cards with animated thumbnails | ✅ | Done 2026-10-21 ([design note](features/F3.3-storyboard-screen.md#built-2026-10-21), approved: the Storyboard step, stills that play on hover / tap, placeholders, Approve disabled). Stitch 10 on the project page's Storyboard step: chips (language, estimate with the duration guard, scenes, voice, theme, version), scene cards by chapter with narration, on-screen text and a 9:16 preview drawn by the M0 scene components in the video's theme (one plays at a time); read-only caption; settings + "revise with AI arrives in M5"; Approve shown disabled until M3. 20 new tests (864). Not checked live (your step) |
 | F3.4 | Instagram caption + hashtags panel | ⬜ | |
 | F3.5 | Version history + restore | ⬜ | |
 | F3.6 | Manual scene edits (text, delete, reorder) | ⬜ | P1 |
@@ -325,3 +325,5 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-21 | F3.1 + F3.2 review: the job route now allows 300 s per step (the storyboard AI calls take up to 75 s and 45 s; a short platform default would fail every run); a queued run is no longer failed when only the "sent" bookkeeping write fails. 2 new tests (841 in total). |
 | 2026-10-21 | F3.1 QA fixes ([details](features/F3.1-generate-storyboard.md#qa-fixes-2026-10-21-after-d7a4325)): a tab left open while another tab made the storyboard now catches up as soon as you press something there; once a video has a storyboard, editing the brief no longer renames the video (it only feeds the next regenerate); the Regenerate confirm takes keyboard focus and gives it back; while the storyboard is written the settings say they're locked until it's ready; the progress check can't show a half-updated state. |
 | 2026-10-21 | You asked for **F3.3** next; scope is now "up to F3.3". **Design written** ([note](features/F3.3-storyboard-screen.md)) against Stitch screen 10, now saved in `docs/ui/stitch/`: the Storyboard step becomes the review screen (title, language, estimated length with a too-long / too-short warning, scenes, voice, theme, version; scene cards grouped by chapter, each with its narration, what's on screen and a small animated preview of that scene in the video's theme). Caption editing, versions, scene edits and the revision chat stay for their own features. 4 questions for you. Not built yet. |
+| 2026-10-21 | F3.3 design **approved**: the review screen is the Storyboard step (the old storyboard link goes there), previews are stills that play on hover or tap one at a time, placeholders for the caption panel, versions, scene edits and the chat, and Approve shown disabled until M3. |
+| 2026-10-21 | **F3.3 done** — the Storyboard Review screen ([details](features/F3.3-storyboard-screen.md#built-2026-10-21)), laid out as Stitch 10: the Storyboard step shows the language, estimated length (orange when too long or short), scenes, voice, theme and version, then a card per scene grouped by chapter with its narration, what's on screen and a small preview of that scene drawn in the video's look; hover it (or tap ▶ on a phone) to see it animate. The caption and hashtags are shown read-only, "Approve & create video" is there but waits for M3, and the revision chat's place says it arrives in M5. Checked in the browser on desktop and a 360 px phone; 20 new tests (864 in total). Stop point: F3.4 doesn't start until you say so. |
