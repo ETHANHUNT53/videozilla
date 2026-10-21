@@ -20,7 +20,7 @@ The approved web-app look recreated in Google Stitch as a storyboard, plus the r
 | 07 | Project — Idea step | S4 | ✅ recreated (Stitch added a prompt box and quick starters) | [07-project-idea.png](stitch/07-project-idea.png) |
 | 08 | Settings | S9 | ✅ recreated, with "Connect Instagram" button | [08-settings.png](stitch/08-settings.png) |
 | 09 | Idea Studio (find a topic, 5 ideas, brief, idea chat, settings) | S4 / F2 | ✅ new — on the canvas; built in F2.7 | [09-idea-studio.png](stitch/09-idea-studio.png) (downloaded 2026-10-20) |
-| 10 | Storyboard Review (scene cards, revision chat, caption) | S5 / F3, F7 | ✅ new — on the canvas | — |
+| 10 | Storyboard Review (scene cards, revision chat, caption) | S5 / F3, F7 | ✅ new — on the canvas; built in F3.3 | [10-storyboard-review.png](stitch/10-storyboard-review.png) (downloaded 2026-10-21) |
 | 11 | Building video (step progress) | S6 / F10 | ✅ new — on the canvas | — |
 | 12 | Video Preview (9:16 player, scenes, export) | S7 / F8 | ✅ new — on the canvas | — |
 | 13 | Publish dialog (caption, post now / schedule) | S8 / F9 | ✅ new — on the canvas | — |
