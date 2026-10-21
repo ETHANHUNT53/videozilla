@@ -116,6 +116,13 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain("Back to idea");
   });
 
+  it("F3.1: a failed regenerate is reported on the Storyboard step, with the current storyboard kept", () => {
+    const failed = { ...RUN, status: "failed", active: false, error: { code: "AI_BUSY", message: "The AI is busy right now. Try again in a minute.", retryable: true, step: "write_script" } };
+    const html = renderWith({ status: "storyboard_ready", currentStoryboardVersion: 3 }, { storyboardRun: failed, storyboard: null });
+    expect(html).toContain("The new storyboard couldn&#x27;t be made: ");
+    expect(html).toContain("Your current storyboard is unchanged.");
+  });
+
   it("F3.1: after a failed generation the Idea step says why and that it didn't count", () => {
     const failed = { ...RUN, status: "failed", active: false, error: { code: "AI_BUSY", message: "The AI is busy right now. Try again in a minute.", retryable: true, step: "write_script" } };
     const html = renderWith({}, { storyboardRun: failed });

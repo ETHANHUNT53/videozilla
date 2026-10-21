@@ -53,14 +53,17 @@ export function useStoryboardRun(projectId: string, initialRun: RunResource | nu
         const { data } = await apiCall<StatusResponse>(`/api/v1/projects/${projectId}/status`);
         if (stopped) return;
         const next = pickStoryboardRun(data, runId);
-        if (next) setRun(next);
         wait = nextPollMs(data);
         if (wait === null || !next?.active) {
-          // Finished: show the project as it is now (ready, or back where it was).
+          // Finished: show the project as it is now (ready, or back where it was). The finished run is set only after
+          // that read: setting it ends this effect (the run is no longer active), which would drop the project.
           const { data: project } = await apiCall<ProjectResource>(`/api/v1/projects/${projectId}`);
-          if (!stopped) onProjectRef.current(project);
+          if (stopped) return;
+          if (next) setRun(next);
+          onProjectRef.current(project);
           return;
         }
+        if (next) setRun(next);
       } catch {
         wait = 5000; // offline or a hiccup: try again a little later
       }
@@ -192,9 +195,24 @@ export function StoryboardWorkspace(props: { projectId: string; status: string; 
       </Card>
     );
   }
+  // A regenerate that failed lands back here (the earlier version stays current), so say so here too.
+  const failure = runFailure(run);
   return (
     <Card className="flex min-h-80 flex-col gap-5 p-6">
       <Eyebrow accent="text-violet">storyboard ready</Eyebrow>
+      {failure ? (
+        <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-red/40 bg-red/5 px-3 py-2 text-sm">
+          <p>
+            <span className="text-red">The new storyboard couldn&apos;t be made: {failure.message}</span>{" "}
+            <span className="text-muted">
+              Your current storyboard is unchanged. {failure.counted ? "This counted against today's limit." : "This didn't count against today's limit."}
+            </span>
+          </p>
+          <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={storyboard.dismiss} aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      ) : null}
       {summary ? (
         <>
           <div className="flex flex-col gap-2">

@@ -45,8 +45,14 @@ export function ProjectView(props: {
   const status = STATUS_DISPLAY[project.status];
   // The step being looked at: the video's own step, or an earlier one opened in the stepper ("Back to idea"). When the
   // video's status changes (a storyboard starts or ends), the video's own step shows again.
-  const [viewing, setViewing] = useState<{ step: number; at: string } | null>(null);
-  const shown = viewing && viewing.at === project.status && viewing.step <= step ? viewing.step : step;
+  const [viewing, setViewing] = useState<number | null>(null);
+  const [seenStatus, setSeenStatus] = useState(project.status);
+  if (seenStatus !== project.status) {
+    // Adjusting state during render, as above: any status change (a regenerate starting, then ending) resets the view.
+    setSeenStatus(project.status);
+    setViewing(null);
+  }
+  const shown = viewing !== null && viewing <= step ? viewing : step;
 
   const saved = (next: Project) => {
     setProject(next);
@@ -112,7 +118,7 @@ export function ProjectView(props: {
             <span aria-hidden className={cx("size-1.5 shrink-0 rounded-full", i === step ? "bg-cyan shadow-[0_0_8px_var(--cyan)]" : i < step ? "bg-cyan/60" : "bg-line-strong")} />
             {/* An earlier step can be opened again (e.g. the idea and brief behind a ready storyboard). */}
             {i < step && i !== shown ? (
-              <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={() => setViewing({ step: i, at: project.status })}>
+              <button type="button" className="font-mono text-xs text-muted hover:text-fg" onClick={() => setViewing(i)}>
                 open<span className="sr-only"> the {s.label} step</span>
               </button>
             ) : i === step && shown !== step ? (
@@ -150,7 +156,7 @@ export function ProjectView(props: {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           {shown === 1 ? (
-            <StoryboardWorkspace projectId={project.id} status={project.status} summary={storyboard} storyboard={storyboardRun} onBackToIdea={() => setViewing({ step: 0, at: project.status })} />
+            <StoryboardWorkspace projectId={project.id} status={project.status} summary={storyboard} storyboard={storyboardRun} onBackToIdea={() => setViewing(0)} />
           ) : (
             <Card className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
               <Eyebrow accent="text-violet">{VIDEO_WORKSPACE.eyebrow}</Eyebrow>

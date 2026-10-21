@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-21 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **F3.1 + F3.2 Generate storyboard** — design written ([note](features/F3.1-generate-storyboard.md)), waiting for your answers before building |
+| **Next feature** | **None — stop point reached.** F3.1 + F3.2 are built; after their review and QA, F3.3 doesn't start until you say so |
 | **Agreed scope (2026-10-21, updated)** | Build **up to F3.1 + F3.2** (generate the storyboard and save it as a version), then stop: F3.3 doesn't start until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 0 | 0 | 5 (+2 in design) | 0 |
+| F3 Storyboard | 2 | 0 | 5 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
@@ -109,8 +109,8 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 
 | ID | Feature | Status | Notes |
 |---|---|---|---|
-| F3.1 | `storyboard.generate` job (Gemini + validation + length check) | 🔵 | Design written 2026-10-21, waiting for your answers ([design note](features/F3.1-generate-storyboard.md)): `POST …/storyboard/generate` → 202 + job (inline fallback locally), progress via `GET …/status`, theme-neutral storyboard with `beat` (chapter, mood, diagram step) and optional `themeHints`. Logic proven in M0 |
-| F3.2 | Storyboard versions saved in a transaction | 🔵 | Design written with F3.1 ([note](features/F3.1-generate-storyboard.md#saving-a-version-f32-db-63)), waiting for your answers. DB §6.3 |
+| F3.1 | `storyboard.generate` job (Gemini + validation + length check) | ✅ | Done 2026-10-21 ([design note](features/F3.1-generate-storyboard.md#built-2026-10-21), approved: 7–9 / 10–13 scenes, 20 a day, failures refunded except refusals, back to the previous status on failure). **Generate storyboard →** starts a background job (inline locally without the job runner): brief → script and scenes through the AI chain → checked and repaired → one length fix if > 15 % off → saved. Progress via `GET …/status`; a simple "Storyboard ready" scene list until F3.3. Theme-neutral storyboard: every scene has `beat` (chapter, mood, diagram step), optional `themeHints` for later themes. 73 new tests (839). Not checked live (your step) |
+| F3.2 | Storyboard versions saved in a transaction | ✅ | Done 2026-10-21 with F3.1 ([note](features/F3.1-generate-storyboard.md#saving-a-version-f32-db-63)): version 1, 2, … saved with the video's status in one transaction (DB §6.3), newest 30 kept; Duplicate copies the current storyboard; purge removes versions and runs |
 | F3.3 | Storyboard Review screen: scene cards with animated thumbnails | ⬜ | Stitch screen 10 |
 | F3.4 | Instagram caption + hashtags panel | ⬜ | |
 | F3.5 | Version history + restore | ⬜ | |
@@ -320,3 +320,5 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-20 | F2.7 last-fixes review: the settings save queue is sound. A likely cause of the one-off CI failure is fixed: mock-mode AI calls slept 800 ms each (plus a 1 s busy retry), so one test spent 3.5 s of a 5 s limit; none under tests now (0.1 s). CI now lists every failed test by name on the public run page. |
 | 2026-10-20 | F2.7 regression fixed: below 1024 px the video title in the header shrank to nothing (the status chip and "Next: Storyboard" kept their width in one row), and at 360 px the chip overlapped the button. Below lg the title now has its own row and wraps, with the chip and button under it; from lg it's one row with "…" and the full title on hover. Checked at 360, 768 and 1280 px. |
 | 2026-10-21 | You asked for **F3.1 + F3.2** (generate the storyboard, save it as a version); scope is now "up to F3.1 + F3.2". **Design written** ([note](features/F3.1-generate-storyboard.md)): "Generate storyboard" starts a background job (with progress steps) that writes the script and scenes from the brief and settings through the same AI chain, checks and repairs them, fixes the length once if needed, and saves version 1, 2, …; a simple "Storyboard ready" page until F3.3. The storyboard is theme-neutral: each scene gets `beat` (chapter, mood, diagram step) and may later carry per-theme `themeHints`, so new themes need no schema change and no new script. 6 questions for you. Not built yet. |
+| 2026-10-21 | F3.1 + F3.2 design **approved**: 7–9 scenes for ~60 s and 10–13 for ~90 s (2–3 / 3–4 chapters), 20 storyboards a day (a regenerate counts, the length fix doesn't), every failure refunded except a refused topic, back to the previous status on failure, the brief kept editable, a simple scene list until F3.3. |
+| 2026-10-21 | **F3.1 + F3.2 done** — generate the storyboard ([details](features/F3.1-generate-storyboard.md#built-2026-10-21)): **Generate storyboard →** in the Idea Studio writes the script and scenes from your brief and settings in the background, with its steps shown as it goes, checks and repairs them, fixes the length once if needed, and saves it as version 1 (then 2, 3… with **Regenerate storyboard**). **Next: Storyboard →** shows the scenes as a simple list until F3.3. If it fails, it says why and gives the storyboard back to today's count (unless the topic was refused). Each scene now carries its chapter, mood and diagram step for the themes to use later. Checked in the browser with the mock AI; 73 new tests (839 in total). Stop point: F3.3 doesn't start until you say so. |
