@@ -4,7 +4,7 @@
 |---|---|
 | **Product name** | **Videozilla** *(chosen; see [Appendix E](#e-product-name-candidates) for domain status and a trademark note)* |
 | **Market (V1)** | **India** (Hindi + English creators, teachers and edtech brands). Global expansion in later versions. |
-| **Document version** | 1.4 (selectable video themes: Midnight default + Mentor; see F4-FR2 and §14.6) |
+| **Document version** | 1.5 (themes are extensible: theme registry, contract, theme-neutral storyboard; F4-FR10, §13.3, §14.6) |
 | **Date** | 2026-10-16 (v1.4: 2026-10-20; v1.5: 2026-10-20, sign-in without email) |
 | **Owner** | Product owner (you) |
 | **Status** | Draft, ready for review |
@@ -460,6 +460,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 | F4-FR7 | Background music: one auto-selected royalty-free track per style at low volume (ducked under voice), with toggle on/off. | P1 |
 | F4-FR8 | Speaking speed: fixed per voice; the system may auto-adjust within **0.92×–1.10×** to fit duration. No user control in V1. | P0 |
 | F4-FR9 | **Theme switch** after the storyboard or build keeps the script and voice; it only re-renders (like F4-FR5). If a theme needs extra storyboard data (e.g. Mentor's presenter pose per beat, chapter numbers, central-diagram steps), the storyboard stores it for every theme up front, or a cheap theme-specific step derives it, so switching never regenerates the script. | P0 |
+| F4-FR10 | **New themes can be added later** (from new reference videos) through the theme registry and theme contract (§14.6), without changing the storyboard schema, the pipeline or existing videos, and without regenerating any script. The storyboard (F3) is designed theme-neutral from the start for this reason. | P0 |
 
 #### Edge cases
 - Selected voice is unavailable (provider outage or deprecated) → fall back to the default voice of the same language and gender, and notify the user.
@@ -1018,6 +1019,14 @@ Scene {
   cues: Cue[]               // sync points
   illustration?: { source: "library" | "ai"; query: string }
   notes?: string            // AI's intent, not shown in video
+  beat?: BeatMeta           // theme-neutral structure every theme may read (§14.6)
+  themeHints?: Record<ThemeId, unknown>  // optional per-theme extras, validated by that theme's own schema (§14.6)
+}
+
+BeatMeta {                  // describes the content, not the look; any theme can use it
+  chapter?: { index: number; headline: string; subhead?: string }  // groups scenes into numbered chapters
+  mood?: "curious" | "explain" | "problem" | "solution" | "recap"   // what this beat feels like
+  diagram?: { id: string; step: number }  // this scene builds step N of a diagram that persists across scenes
 }
 
 Cue {
@@ -1130,7 +1139,15 @@ Each component defines: element IDs (for cues), default entrance animations per 
 - The renderer is built **theme-ready from the start (M3)**: scene components read the active theme pack instead of hard-coded looks, so adding a theme doesn't change scene logic.
 - **Midnight** (default) is the M0 look turned into the first theme pack, with no visual change.
 - **Mentor** adds: the presenter with poses `point`, `think` ("?"), `alarm` ("!"), `explain`, `arms_crossed`; numbered chapters with a segmented progress bar; a central diagram that persists and builds up across chapters; HUD counters with a state colour (ok → warn → fail); a caption box with one accent keyword; a recap of numbered cards lighting up one by one.
-- **Storyboard data for themes:** each beat carries an optional `chapter` (number + 2-word headline + subhead), a `presenterPose`, and `diagramStep` hints. Themes that don't use them ignore them (F4-FR9).
+- **Storyboard data for themes:** the storyboard stays **theme-neutral**: each scene may carry `beat` (§13.3): its chapter, mood and diagram step, which describe the content and which any theme may use. Look-specific extras go in `themeHints[themeId]` (e.g. Mentor's `presenterPose`), validated by that theme's own schema. Themes ignore what they don't use (F4-FR9). Mentor maps `beat.mood` to a pose by default, so it needs no extra hints to work.
+- **Adding a new theme later (extensibility, F4-FR10):** a new theme must be addable **without** changing the storyboard schema, the scene components' logic, the pipeline, or existing videos:
+  1. **Theme registry:** themes are registered in one place (id, name, version, preview, tokens, structure, optional hint schema, renderer components). The theme picker, validators and renderer read the list from the registry, so a new entry shows up everywhere.
+  2. **Theme contract:** every theme implements the same interface: render each of the 16 scene types (or fall back to the default theme's layout for a type it doesn't restyle), plus the persistent layer (headers, captions, transitions). The scene *data* is the same for every theme; only the presentation differs.
+  3. **Optional theme hints:** a theme that needs more than `beat` declares a hint schema. When a video switches to it, hints are derived on demand by a small, cheap AI step (or rules from `beat`), saved with that storyboard version and cached. The script is never regenerated, and defaults are used if the step fails.
+  4. **Versioned themes:** a theme pack has a version; a render records the theme id and version, so improving a theme never silently changes an exported video.
+  5. **Checks:** a new theme must pass the visual regression suite (every scene type × language) and the safe-zone check before it appears in the picker.
+  6. **Unknown or removed theme:** a video whose theme no longer exists falls back to the default (Midnight) with a notice; nothing breaks.
+- New reference reels the user shares become new themes through this process.
 - **Presenter character:** our own original character (not a copy of any creator's). Art style and design are decided in M3 (Q8).
 - Visual regression covers every scene type × theme × language (§20.7).
 
