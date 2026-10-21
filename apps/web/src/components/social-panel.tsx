@@ -53,13 +53,15 @@ export function SocialPanel(props: {
   // An edit refused with 412 before the reload (see save): back in the form, on the newer storyboard.
   const [restored, setRestored] = useState(false);
   useEffect(() => {
+    // Not into an older version opened read-only from the history (F3.5): it waits for the current one.
+    if (readOnly) return;
     const kept = takeCaptionDraft(projectId);
     if (!kept) return;
     // Restoring from browser storage, once after mount (it isn't there during the server render).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(kept);
     setRestored(true);
-  }, [projectId]);
+  }, [projectId, readOnly]);
 
   const shown = draft ?? saved;
   const counts = socialCounts(shown);
