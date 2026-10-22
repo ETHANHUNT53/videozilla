@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { followPointer, moveInOrder, pointerIndex } from "./scene-reorder";
+import { capitalize, followPointer, moveInOrder, pointerIndex } from "./scene-reorder";
 
 /** F3.6 drag-and-drop (QA: a mouse drag downwards stayed "picked up" because the handle lost pointer capture). */
 
@@ -36,6 +36,13 @@ describe("followPointer (the drag is followed on the window, not the handle)", (
     win.dispatchEvent(event("pointercancel"));
     expect(on.cancel).toHaveBeenCalledTimes(2);
     expect(on.up).not.toHaveBeenCalled();
+  });
+});
+
+describe("announcements", () => {
+  it("a label starting a sentence is capitalised (\"Move cancelled. Scene 3 stays …\", QA)", () => {
+    expect(capitalize("scene 3")).toBe("Scene 3");
+    expect(capitalize("")).toBe("");
   });
 });
 

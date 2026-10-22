@@ -25,7 +25,12 @@ export function accuracyChip(a: AccuracyState, position: (sceneId: string) => nu
   const changed = a.uncheckedSceneIds.map(position).filter((n) => n > 0).sort((x, y) => x - y);
   const changedText = changed.length === 0 ? "" : changed.length === 1 ? `scene ${changed[0]} changed` : `${changed.length} scenes changed`;
   const base = a.openCount > 0 ? plural(a.openCount, "claim to check", "claims to check") : "Facts checked ✓";
-  const spokenBase = a.openCount > 0 ? `${plural(a.openCount, "claim", "claims")} to check.` : "Facts checked, nothing flagged.";
+  const spokenBase =
+    a.openCount > 0
+      ? `${plural(a.openCount, "claim", "claims")} to check.`
+      : a.dismissedCount > 0
+        ? `No open claims (${a.dismissedCount} dismissed).`
+        : "Facts checked, nothing flagged.";
   return {
     text: changedText ? `${base} · ${changedText}` : base,
     spoken: changedText ? `${spokenBase} ${changedText[0].toUpperCase()}${changedText.slice(1)} since the check.` : spokenBase,

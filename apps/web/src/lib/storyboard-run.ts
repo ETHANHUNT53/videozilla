@@ -56,7 +56,7 @@ export function isStaleState(err: unknown): boolean {
 }
 
 /** What the user was doing when the page found out it was behind. */
-export type StaleAction = "brief_edit" | "caption_edit" | "scene_edit" | "accuracy" | "generate" | "request" | "restore";
+export type StaleAction = "brief_edit" | "caption_edit" | "scene_edit" | "accuracy" | "flag_dismiss" | "flag_restore" | "generate" | "request" | "restore";
 
 /** The line shown after the page re-synced, so nothing is dropped silently (QA, F3.1). */
 export function staleMessage(action: StaleAction, status?: string): string {
@@ -68,7 +68,11 @@ export function staleMessage(action: StaleAction, status?: string): string {
         : action === "scene_edit"
           ? "your scene change wasn't saved"
         : action === "accuracy"
-          ? "the facts weren't checked and no flag was changed"
+          ? "the facts weren't checked"
+        : action === "flag_dismiss"
+          ? "your dismiss wasn't saved"
+        : action === "flag_restore"
+          ? "the flag wasn't brought back"
         : action === "generate"
           ? "nothing was started"
           : action === "restore"

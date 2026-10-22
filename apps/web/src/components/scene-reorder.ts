@@ -30,6 +30,8 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     setDragging(null);
   }
   const shown = order ?? ids;
+  /** The label at the start of a sentence ("Scene 3 stays …", not "scene 3"). */
+  const Label = (id: string) => capitalize(label(id));
 
   const start = (id: string, by: "pointer" | "keyboard") => {
     setDragging({ id, by });
@@ -40,7 +42,7 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     const id = dragging?.id;
     setDragging(null);
     setOrder(null);
-    if (id) setAnnounce(`Cancelled. ${label(id)} stays where it was.`);
+    if (id) setAnnounce(`Cancelled. ${Label(id)} stays where it was.`);
   };
   const drop = () => {
     if (!dragging) return;
@@ -49,11 +51,11 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     setDragging(null);
     if (final.join(",") === ids.join(",")) {
       setOrder(null);
-      setAnnounce(`${label(id)} dropped where it was.`);
+      setAnnounce(`${Label(id)} dropped where it was.`);
       return;
     }
     const at = final.indexOf(id);
-    setAnnounce(`${label(id)} dropped at position ${at + 1} of ${final.length}.`);
+    setAnnounce(`${Label(id)} dropped at position ${at + 1} of ${final.length}.`);
     dropped.current = id;
     onDrop(id, at > 0 ? final[at - 1] : null);
   };
@@ -109,7 +111,7 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
         e.preventDefault();
         const from = (order ?? ids).indexOf(id);
         const next = moveTo(id, from + (e.key === "ArrowUp" ? -1 : 1));
-        setAnnounce(`${label(id)}, position ${next.indexOf(id) + 1} of ${next.length}.`);
+        setAnnounce(`${Label(id)}, position ${next.indexOf(id) + 1} of ${next.length}.`);
         refocusing.current = true;
         setTimeout(() => {
           handles.current.get(id)?.focus();
@@ -151,10 +153,15 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     setOrder(null);
     const id = dropped.current;
     dropped.current = null;
-    if (id) setAnnounce(`Move cancelled. ${label(id)} stays where it was.`);
+    if (id) setAnnounce(`Move cancelled. ${Label(id)} stays where it was.`);
   };
 
   return { order: shown, dragging: dragging?.id ?? null, announce, handle, itemRef, reset };
+}
+
+/** `s` with its first letter in upper case (a label at the start of a sentence). */
+export function capitalize(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
 /** Where a dragged card lands: after every other card whose middle is above the pointer (`centres` in order). */

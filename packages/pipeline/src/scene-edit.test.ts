@@ -178,6 +178,8 @@ describe("list item ids (cue targets and render keys)", () => {
     expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", "i2"]), beats: [] })).toEqual([]);
     expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", "i1"]), beats: [] })).toContainEqual({ field: "props.items[1].id", issue: '"i1" is used twice' });
     expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", " "]), beats: [] })).toContainEqual({ field: "props.items[1].id", issue: "is missing" });
+    // No id at all: one problem for that path, not the schema's and ours (QA, F3.6).
+    expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", undefined]), beats: [] }).filter((p) => p.field === "props.items[1].id")).toHaveLength(1);
     const res = applySceneOp(board(), { kind: "edit", sceneId: "s2", type: "BulletSteps", props: items(["x", "x"]) });
     expect(res.ok).toBe(false);
   });

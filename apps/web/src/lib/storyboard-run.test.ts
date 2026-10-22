@@ -70,6 +70,10 @@ describe("storyboard run helpers (F3.1)", () => {
   it("after a re-sync, says what didn't happen (nothing is dropped silently)", () => {
     expect(staleMessage("brief_edit")).toBe("This video moved on in another tab, so your brief edit wasn't saved. You're seeing it as it is now.");
     expect(staleMessage("generate")).toMatch(/so nothing was started./);
+    // Says what this tab didn't do (QA, F3.7).
+    expect(staleMessage("flag_dismiss")).toMatch(/so your dismiss wasn't saved\./);
+    expect(staleMessage("flag_restore")).toMatch(/so the flag wasn't brought back\./);
+    expect(staleMessage("accuracy")).toMatch(/so the facts weren't checked\./);
     expect(staleMessage("request")).toMatch(/so your request wasn't sent./);
     expect(staleMessage("caption_edit")).toMatch(/so your caption edit wasn't saved./);
     expect(staleMessage("restore")).toMatch(/so nothing was restored./);

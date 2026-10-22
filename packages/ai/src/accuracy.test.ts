@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AccuracyReply, accuracySystemPrompt, accuracyUserPrompt, checkAccuracy, keepValidFindings, mockAccuracy, normalizeClaim, noteIsEnglish, type AccuracyInput } from "./accuracy";
+import { AccuracyReply, accuracySystemPrompt, accuracyUserPrompt, checkAccuracy, keepValidFindings, mockAccuracy, normalizeClaim, noteIsEnglish, stripOuterQuotes, type AccuracyInput } from "./accuracy";
 
 /** F3.7: the accuracy self-check (T5): prompt, kept flags, mock. No real AI: AI_PROVIDER=mock. */
 
@@ -55,8 +55,16 @@ describe("keepValidFindings", () => {
   it("keeps quotes that are really in that scene (case, quotes and spacing aside); drops invented ones and unknown scenes", () => {
     expect(normalizeClaim(" “Light  travels 300,000 km.” ")).toBe("light travels 300,000 km");
     const kept = keepValidFindings([f("s2", "“Light travels 300,000 KM”"), f("s2", "light is a wave"), f("s9", "Newton"), f("s1", "300,000 km")], INPUT.scenes);
-    expect(kept.map((k) => k.claim)).toEqual(["“Light travels 300,000 KM”"]);
+    // The quotation marks the model wrapped around it are gone (the page quotes it in <q>; QA, F3.7).
+    expect(kept.map((k) => k.claim)).toEqual(["Light travels 300,000 KM"]);
     expect(keepValidFindings([f("s2", "300,000 km/s")], INPUT.scenes)).toHaveLength(1); // on-screen text counts
+  });
+
+  it("strips only the outer quotation marks, of any kind, also nested; quotes inside stay", () => {
+    expect(stripOuterQuotes(' "Light travels fast" ')).toBe("Light travels fast");
+    expect(stripOuterQuotes("“‘भारत की आबादी 200 करोड़’”")).toBe("भारत की आबादी 200 करोड़");
+    expect(stripOuterQuotes('He said "E = mc²" in 1905')).toBe('He said "E = mc²" in 1905');
+    expect(stripOuterQuotes('"')).toBe('"');
   });
 
   it("at most 2 per scene and 6 per video, no repeats", () => {

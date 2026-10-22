@@ -21,6 +21,11 @@ describe("accuracyChip", () => {
     expect(accuracyChip(state({ openCount: 1, uncheckedSceneIds: ["s5", "s2"] }), position).text).toBe("1 claim to check · 2 scenes changed");
   });
 
+  it("all open claims dismissed: says so, instead of \"nothing flagged\" (QA, F3.7)", () => {
+    expect(accuracyChip(state({ dismissedCount: 1 }), position).spoken).toBe("No open claims (1 dismissed).");
+    expect(accuracyChip(state({ dismissedCount: 2, uncheckedSceneIds: ["s4"] }), position).spoken).toBe("No open claims (2 dismissed). Scene 4 changed since the check.");
+  });
+
   it("announces the result", () => {
     expect(accuracyAnnouncement(state({ openCount: 3 }))).toBe("Facts checked: 3 claims to check.");
     expect(accuracyAnnouncement(state())).toBe("Facts checked: nothing flagged.");

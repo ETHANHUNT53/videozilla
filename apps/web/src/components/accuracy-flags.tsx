@@ -71,18 +71,19 @@ export function useAccuracy(opts: {
     };
   }, [pending, projectId, version.version]);
 
-  const send = async (key: string, url: string): Promise<boolean> => {
+  /** `key`: "check", or the flag's id; `action` says what a stale tab didn't save (QA, F3.7). */
+  const send = async (key: string, url: string, action: "check" | "dismiss" | "restore"): Promise<boolean> => {
     setBusy(key);
     setError(null);
     onActivity();
     try {
       const { data } = await apiCall<{ version: StoryboardVersionResource; project: ProjectResource }>(url, { method: "POST", headers: { "If-Match": `"${version.version}"` } });
       onSaved(data.version, data.project);
-      if (key === "check") setAnnounce(accuracyAnnouncement(data.version.accuracy));
+      setAnnounce(action === "check" ? accuracyAnnouncement(data.version.accuracy) : action === "dismiss" ? "Flag dismissed." : "Flag brought back.");
       return true;
     } catch (err) {
       if (err instanceof ApiClientError && (err.code === "PRECONDITION_FAILED" || isStaleState(err))) {
-        onStale("accuracy");
+        onStale(action === "check" ? "accuracy" : action === "dismiss" ? "flag_dismiss" : "flag_restore");
         return false;
       }
       const message = err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
@@ -99,9 +100,9 @@ export function useAccuracy(opts: {
     announce,
     showDismissed,
     toggleDismissed: () => setShowDismissed((s) => !s),
-    checkNow: () => (editable ? send("check", `/api/v1/projects/${projectId}/storyboard/accuracy-check`) : Promise.resolve(false)),
+    checkNow: () => (editable ? send("check", `/api/v1/projects/${projectId}/storyboard/accuracy-check`, "check") : Promise.resolve(false)),
     setDismissed: (flagId: string, dismissed: boolean) =>
-      editable ? send(flagId, `/api/v1/projects/${projectId}/storyboard/accuracy-flags/${flagId}/${dismissed ? "dismiss" : "restore"}`) : Promise.resolve(false),
+      editable ? send(flagId, `/api/v1/projects/${projectId}/storyboard/accuracy-flags/${flagId}/${dismissed ? "dismiss" : "restore"}`, dismissed ? "dismiss" : "restore") : Promise.resolve(false),
   };
 }
 
@@ -142,7 +143,7 @@ export function AccuracyChipItems({ version, controls, editable, position }: { v
           <button
             type="button"
             id="check-facts"
-            className="rounded-lg border border-line px-2.5 py-1 text-cyan hover:bg-surface aria-disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-lg border border-line px-2.5 py-1 text-cyan hover:bg-surface aria-disabled:opacity-50"
             onClick={(e) => {
               if (controls.busy !== null) return;
               const el = e.currentTarget;
@@ -162,7 +163,7 @@ export function AccuracyChipItems({ version, controls, editable, position }: { v
       ) : null}
       {dismissed > 0 ? (
         <li>
-          <button type="button" id="show-dismissed" className="rounded-lg px-1.5 py-1 text-muted underline-offset-2 hover:text-fg hover:underline" aria-pressed={controls.showDismissed} onClick={controls.toggleDismissed}>
+          <button type="button" id="show-dismissed" className="inline-flex min-h-11 items-center rounded-lg px-1.5 py-1 text-muted underline-offset-2 hover:text-fg hover:underline" aria-pressed={controls.showDismissed} onClick={controls.toggleDismissed}>
             {controls.showDismissed ? "Hide dismissed" : `Show dismissed (${dismissed})`}
           </button>
         </li>
@@ -206,15 +207,15 @@ export function SceneFlags({ flags, number, editable, controls, onEdit }: { flag
           </p>
           <p className="text-muted">{f.note}</p>
           {editable ? (
-            <div className="flex flex-wrap gap-3 font-mono text-xs">
+            <div className="flex flex-wrap gap-x-3 font-mono text-xs">
               {onEdit && !f.dismissed ? (
-                <button type="button" className="text-cyan underline-offset-2 hover:underline" onClick={onEdit}>
+                <button type="button" className="inline-flex min-h-11 items-center text-cyan underline-offset-2 hover:underline" onClick={onEdit}>
                   Edit scene
                 </button>
               ) : null}
               <button
                 type="button"
-                className="text-muted underline-offset-2 hover:text-fg hover:underline aria-disabled:opacity-50"
+                className="inline-flex min-h-11 items-center text-muted underline-offset-2 hover:text-fg hover:underline aria-disabled:opacity-50"
                 aria-disabled={controls.busy !== null}
                 aria-busy={controls.busy === f.id}
                 aria-label={`${f.dismissed ? "Bring back" : "Dismiss"} the flag on “${f.claim}” in scene ${number}`}

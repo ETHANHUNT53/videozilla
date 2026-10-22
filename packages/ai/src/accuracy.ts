@@ -95,6 +95,22 @@ export function normalizeClaim(s: string): string {
     .trim();
 }
 
+/** A claim without the quotation marks a model may wrap around it (the page quotes it itself, in <q>). */
+export function stripOuterQuotes(s: string): string {
+  const pairs: [string, string][] = [['"', '"'], ["'", "'"], ["“", "”"], ["‘", "’"], ["«", "»"], ["„", "“"]];
+  let t = s.trim();
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [open, close] of pairs) {
+      if (t.length > open.length + close.length && t.startsWith(open) && t.endsWith(close)) {
+        t = t.slice(open.length, t.length - close.length).trim();
+        changed = true;
+      }
+    }
+  }
+  return t;
+}
+
 /**
  * The flags worth keeping: on a scene that exists, quoting words that are really in that scene (no invented quotes),
  * one per claim, at most 2 per scene and 6 per video, in the model's order.
@@ -112,7 +128,7 @@ export function keepValidFindings(findings: AccuracyFinding[], scenes: AccuracyI
     if (seen.has(key) || (perScene.get(f.sceneId) ?? 0) >= MAX_FLAGS_PER_SCENE) continue;
     seen.add(key);
     perScene.set(f.sceneId, (perScene.get(f.sceneId) ?? 0) + 1);
-    out.push(f);
+    out.push({ ...f, claim: stripOuterQuotes(f.claim) });
     if (out.length >= MAX_FLAGS_PER_VIDEO) break;
   }
   return out;

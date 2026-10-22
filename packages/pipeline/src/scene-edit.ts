@@ -264,8 +264,11 @@ export function sceneProblems(scene: Pick<Scene, "narration" | "type" | "props" 
     const seen = new Set<string>();
     (((scene.props as any)?.[f.key] ?? []) as any[]).forEach((item, i) => {
       const id = typeof item?.id === "string" ? item.id.trim() : "";
-      if (!id) problems.push({ field: `props.${f.key}[${i}].id`, issue: "is missing" });
-      else if (seen.has(id)) problems.push({ field: `props.${f.key}[${i}].id`, issue: `"${id}" is used twice` });
+      const field = `props.${f.key}[${i}].id`;
+      // One problem per id: the schema may have reported this path already (no string at all).
+      if (!id) {
+        if (!problems.some((p) => p.field === field)) problems.push({ field, issue: "is missing" });
+      } else if (seen.has(id)) problems.push({ field, issue: `"${id}" is used twice` });
       seen.add(id);
     });
   }
