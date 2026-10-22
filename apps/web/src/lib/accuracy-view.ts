@@ -43,5 +43,6 @@ export function accuracyChip(a: AccuracyState, position: (sceneId: string) => nu
 export function accuracyAnnouncement(a: AccuracyState): string {
   if (a.status === "failed") return "The facts couldn't be checked. You can check them again.";
   if (a.status !== "done") return "";
-  return a.openCount > 0 ? `Facts checked: ${plural(a.openCount, "claim", "claims")} to check.` : "Facts checked: nothing flagged.";
+  if (a.openCount > 0) return `Facts checked: ${plural(a.openCount, "claim", "claims")} to check.`;
+  return a.dismissedCount > 0 ? `Facts checked: no open claims (${a.dismissedCount} dismissed).` : "Facts checked: nothing flagged.";
 }

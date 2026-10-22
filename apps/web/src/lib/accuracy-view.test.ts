@@ -29,6 +29,8 @@ describe("accuracyChip", () => {
   it("announces the result", () => {
     expect(accuracyAnnouncement(state({ openCount: 3 }))).toBe("Facts checked: 3 claims to check.");
     expect(accuracyAnnouncement(state())).toBe("Facts checked: nothing flagged.");
+    // QA: after Check now with a dismissed claim, the line matches the chip instead of "nothing flagged".
+    expect(accuracyAnnouncement(state({ dismissedCount: 1 }))).toBe("Facts checked: no open claims (1 dismissed).");
     expect(accuracyAnnouncement(state({ status: "failed" }))).toMatch(/couldn't be checked/);
   });
 });
