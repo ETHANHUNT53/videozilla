@@ -100,7 +100,11 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if (disabled || e.button !== 0) return;
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId); // moves keep coming here when the finger leaves the handle
+      } catch {
+        // no capture (the pointer is already gone): the drag still works while over the handle
+      }
       start(id, "pointer");
     },
     onPointerMove: (e: React.PointerEvent<HTMLElement>) => {

@@ -131,7 +131,7 @@ export function StoryboardReview(props: {
         Press Space to pick the scene up, the arrow keys to move it, Space to drop it, Escape to cancel. Or drag it.
       </p>
 
-      <ol className="flex flex-col gap-4" aria-label="Scenes">
+      <ol className="flex flex-col gap-4 outline-none" aria-label="Scenes" tabIndex={-1}>
         {reorder.order.map((sceneId) => cardsById.get(sceneId)!).map((card) => (
           <li key={card.id} ref={reorder.itemRef(card.id)} className={cx("flex flex-col gap-3", reorder.dragging === card.id && "opacity-80 [&>div]:border-cyan [&>div]:shadow-[0_0_24px_rgba(56,217,245,0.25)]")}>
             {card.chapterHeading ? (
@@ -149,6 +149,7 @@ export function StoryboardReview(props: {
               actions={
                 editable ? (
                   <SceneActions
+                    sceneId={card.id}
                     number={card.index + 1}
                     disabled={ops.busy || (ops.editing !== null && ops.editing !== card.id) || ops.pending !== null}
                     onEdit={() => ops.edit(card.id)}
@@ -212,7 +213,8 @@ function SceneCardView(props: {
 
   return (
     <Card
-      className={cx("flex gap-4 p-4 transition-colors sm:gap-5 sm:p-5", playing && "border-cyan/50")}
+      // While its edit form is open, a phone stacks the card so the form gets the full width (QA, F3.6).
+      className={cx("flex gap-4 p-4 transition-colors sm:gap-5 sm:p-5", Boolean(body) && "flex-col sm:flex-row", playing && "border-cyan/50")}
       // Hovering with a mouse plays it; the ▶ button plays and pauses it (a tap on a phone, or the keyboard). Reduced
       // motion: only the button.
       onPointerEnter={(e) => {

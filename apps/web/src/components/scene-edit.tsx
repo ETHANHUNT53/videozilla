@@ -125,7 +125,7 @@ export function SceneEditForm(props: { scene: Scene; position: number; busy: boo
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy || problems.length > 0} aria-busy={busy}>
+        <Button type="submit" disabled={busy || problems.length > 0} aria-busy={busy} data-scene={scene.id} data-action="save">
           {busy ? "Saving…" : "Save"}
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>

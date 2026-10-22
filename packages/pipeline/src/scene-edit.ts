@@ -468,8 +468,10 @@ export function applySceneOp(storyboard: Storyboard, op: SceneOp): SceneOpResult
     const scenes = reflowBeats(left);
     const { moves, renumbered } = chapterDiff(left, scenes);
     const warnings: string[] = [];
-    if (index === 0 && scene.role === "hook") warnings.push("The video will start without its hook.");
-    if (index === storyboard.scenes.length - 1 && (scene.role === "recap" || scene.role === "outro")) warnings.push("The video will end without its recap.");
+    // By role, wherever the scene now sits (it may have been moved): the video's only hook, or its last recap / outro.
+    const closing = (s: { role: string }) => s.role === "recap" || s.role === "outro";
+    if (scene.role === "hook" && !left.some((s) => s.role === "hook")) warnings.push("The video will be left without a hook.");
+    if (closing(scene) && !left.some(closing)) warnings.push("The video will be left without a recap.");
     return {
       ok: true,
       storyboard: { ...storyboard, scenes },
@@ -511,11 +513,17 @@ export function needsConfirm(c: SceneOpChanges): boolean {
 }
 
 /** The confirm's lines, e.g. "2 visuals re-timed in scene 3", "Scene 5 moves from chapter 2 to chapter 1". */
-export function describeChanges(c: SceneOpChanges, after: Storyboard): string[] {
+export function describeChanges(c: SceneOpChanges, after: Storyboard, before?: Storyboard): string[] {
+  // Scenes are named by the number the user sees now (before), with the new one when a move changes it (QA, F3.6).
+  const name = (id: string) => {
+    const now = position(after, id);
+    const was = before ? position(before, id) : now;
+    return was > 0 && was !== now ? `${was} (now ${now})` : String(now);
+  };
   const lines: string[] = [...c.warnings];
-  for (const r of c.retimed) lines.push(`${r.count} ${r.count === 1 ? "visual or headline" : "visuals or headlines"} in scene ${position(after, r.sceneId)} will appear at a different moment (re-timed to the narration).`);
+  for (const r of c.retimed) lines.push(`${r.count} ${r.count === 1 ? "visual or headline" : "visuals or headlines"} in scene ${name(r.sceneId)} will appear at a different moment (re-timed to the narration).`);
   for (const m of c.chapterMoves) {
-    const at = position(after, m.sceneId);
+    const at = name(m.sceneId);
     lines.push(m.from === null ? `Scene ${at} joins chapter ${m.to}.` : m.to === null ? `Scene ${at} leaves chapter ${m.from}.` : `Scene ${at} moves from chapter ${m.from} to chapter ${m.to}.`);
   }
   if (c.renumbered) lines.push("Chapters are renumbered in the new order.");

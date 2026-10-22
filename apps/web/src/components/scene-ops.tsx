@@ -36,6 +36,14 @@ export function useSceneOps(opts: {
   const [announce, setAnnounce] = useState("");
   const sb = version.storyboard;
   const position = (id: string) => sb.scenes.findIndex((s) => s.id === id) + 1;
+  // Where focus goes once a change is saved or a confirm closes: the cards re-render and the confirm unmounts, which
+  // would drop focus to the page (QA, F3.6). Found by data attributes, after React has re-rendered.
+  const focusScene = (sceneId: string | undefined, action: "edit" | "delete" | "move" | "save") => {
+    setTimeout(() => {
+      const el = sceneId ? document.querySelector<HTMLElement>(`[data-scene="${sceneId}"][data-action="${action}"]`) : null;
+      (el ?? document.querySelector<HTMLElement>('ol[aria-label="Scenes"]'))?.focus();
+    }, 0);
+  };
 
   const commit = async (op: SceneOp) => {
     setBusy(true);
@@ -55,6 +63,12 @@ export function useSceneOps(opts: {
       setPending(null);
       onActivity();
       onSaved(data.version, data.project);
+      if (op.kind === "delete") {
+        // The scene that took its place (or the one before, when it was last).
+        const ids = data.version.storyboard.scenes.map((s) => s.id);
+        const at = Math.min(position(op.sceneId) - 1, ids.length - 1);
+        focusScene(ids[at], "edit");
+      } else focusScene(op.sceneId, op.kind === "move" ? "move" : "edit");
       setAnnounce(op.kind === "delete" ? `Scene ${position(op.sceneId)} deleted.` : op.kind === "move" ? `${data.version.changeSummary}.` : `Scene ${position(op.sceneId)} saved.`);
     } catch (err) {
       const stale = err instanceof ApiClientError && (err.code === "PRECONDITION_FAILED" || isStaleState(err));
@@ -86,7 +100,7 @@ export function useSceneOps(opts: {
     }
     const n = position(op.sceneId);
     if (op.kind === "delete" || needsConfirm(local.changes)) {
-      const lines = describeChanges(local.changes, local.storyboard);
+      const lines = describeChanges(local.changes, local.storyboard, sb);
       if (op.kind === "delete") lines.push("You can bring it back from the version history.");
       setPending({
         op,
@@ -114,8 +128,10 @@ export function useSceneOps(opts: {
       setEditing(id);
     },
     cancelEdit: () => {
+      const id = editing ?? undefined;
       setEditing(null);
       setError(null);
+      focusScene(id, "edit");
     },
     confirm: () => {
       if (pending) void commit(pending.op);
@@ -124,23 +140,25 @@ export function useSceneOps(opts: {
       pending?.onCancelled?.();
       setPending(null);
       setError(null);
+      // Back to what opened it: the delete button, the drag handle, or the edit form's Save.
+      if (pending) focusScene(pending.sceneId, pending.op.kind === "edit" ? "save" : pending.op.kind);
     },
   };
 }
 
 /** The card's actions (Stitch 10): Edit ✎, Delete 🗑 and the ⋮⋮ handle for drag-and-drop. */
-export function SceneActions(props: { number: number; disabled: boolean; onEdit: () => void; onDelete: () => void; handle: Record<string, unknown> }) {
-  const { number, disabled, onEdit, onDelete, handle } = props;
+export function SceneActions(props: { sceneId: string; number: number; disabled: boolean; onEdit: () => void; onDelete: () => void; handle: Record<string, unknown> }) {
+  const { sceneId, number, disabled, onEdit, onDelete, handle } = props;
   const icon = "grid size-8 place-items-center rounded-lg text-muted hover:bg-surface hover:text-fg disabled:opacity-40";
   return (
     <div className="flex items-center gap-1">
-      <button type="button" className={icon} onClick={onEdit} disabled={disabled} aria-label={`Edit scene ${number}`} title="Edit">
+      <button type="button" className={icon} onClick={onEdit} disabled={disabled} data-scene={sceneId} data-action="edit" aria-label={`Edit scene ${number}`} title="Edit">
         ✎
       </button>
-      <button type="button" className={`${icon} hover:text-red`} onClick={onDelete} disabled={disabled} aria-label={`Delete scene ${number}`} title="Delete">
+      <button type="button" className={`${icon} hover:text-red`} onClick={onDelete} disabled={disabled} data-scene={sceneId} data-action="delete" aria-label={`Delete scene ${number}`} title="Delete">
         🗑
       </button>
-      <button type="button" className={`${icon} cursor-grab touch-none active:cursor-grabbing`} title="Drag to reorder" {...(handle as object)} disabled={disabled || Boolean(handle.disabled)}>
+      <button type="button" className={`${icon} cursor-grab touch-none active:cursor-grabbing`} title="Drag to reorder" data-scene={sceneId} data-action="move" {...(handle as object)} disabled={disabled || Boolean(handle.disabled)}>
         ⋮⋮
       </button>
     </div>

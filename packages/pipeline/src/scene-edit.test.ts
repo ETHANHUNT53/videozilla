@@ -123,10 +123,14 @@ describe("delete", () => {
   it("any scene down to 1; deleting the hook or the closing recap warns; chapters and diagram steps reflow", () => {
     let sb = board();
     const hook = applySceneOp(sb, { kind: "delete", sceneId: "s1" });
-    expect(hook.ok && hook.changes.warnings).toEqual(["The video will start without its hook."]);
+    expect(hook.ok && hook.changes.warnings).toEqual(["The video will be left without a hook."]);
     expect(hook.ok && hook.changedSceneIds).toEqual([]);
     const recap = applySceneOp(sb, { kind: "delete", sceneId: "s6" });
-    expect(recap.ok && recap.changes.warnings).toEqual(["The video will end without its recap."]);
+    expect(recap.ok && recap.changes.warnings).toEqual(["The video will be left without a recap."]);
+    // The hook moved down the list still warns when deleted (QA, F3.6).
+    const moved = applySceneOp(sb, { kind: "move", sceneId: "s1", afterSceneId: "s3" });
+    const movedHook = moved.ok ? applySceneOp(moved.storyboard, { kind: "delete", sceneId: "s1" }) : null;
+    expect(movedHook?.ok && movedHook.changes.warnings).toEqual(["The video will be left without a hook."]);
     // Chapter 1 emptied: chapter 2 becomes 1; diagram steps 1, 2.
     sb = applySceneOp(sb, { kind: "delete", sceneId: "s2" }).ok ? (applySceneOp(sb, { kind: "delete", sceneId: "s2" }) as any).storyboard : sb;
     const r = applySceneOp(sb, { kind: "delete", sceneId: "s3" });
@@ -149,6 +153,8 @@ describe("move", () => {
     expect(r.storyboard.scenes.map((s) => s.beat.chapter?.index ?? null)).toEqual([null, 1, 1, 1, 2, null]);
     expect(r.changes.chapterMoves).toEqual([{ sceneId: "s5", from: 2, to: 1 }]);
     expect(describeChanges(r.changes, r.storyboard)).toContain("Scene 3 moves from chapter 2 to chapter 1.");
+    // With the storyboard before the move, the scene keeps the number the user knows (QA, F3.6).
+    expect(describeChanges(r.changes, r.storyboard, board())).toContain("Scene 5 (now 3) moves from chapter 2 to chapter 1.");
     expect(r.changedSceneIds).toEqual(["s5", "s3", "s4"]);
     expect(r.summary).toBe("Moved scene 5 to position 3");
   });
