@@ -1,5 +1,6 @@
 import "server-only";
 import type { Social, Storyboard } from "@videozilla/schema";
+import { applySceneOp, measureStoryboard, type SceneOp } from "@videozilla/pipeline";
 import type { ValidationReport } from "@videozilla/pipeline";
 import { MongoServerError, ObjectId, type ClientSession, type Collection } from "mongodb";
 import { ApiError } from "../api/errors";
@@ -565,5 +566,58 @@ export async function restoreVersion(userId: string, projectId: string, version:
     );
     if (!saved) throw new Error("project changed during the restore");
     return { version: target, project: saved };
+  });
+}
+
+export type SceneOpSaveResult =
+  | { version: StoryboardVersionDoc; project: ProjectDoc; created: boolean }
+  | "not_found"
+  | "invalid_state"
+  | { conflict: StoryboardVersionDoc | null }
+  | { problems: { field: string; issue: string }[]; sceneMissing: boolean };
+
+/**
+ * Saves one manual scene edit, delete or move (F3.6) as the next version (`manual_edit`), in one transaction, on the
+ * version the page saw (`basedOn`, If-Match): the shared `applySceneOp` makes the change, the length is measured again.
+ * Only in `storyboard_ready`. Nothing changed → the current version, no new one.
+ */
+export async function saveSceneOp(userId: string, projectId: string, basedOn: number, op: SceneOp): Promise<SceneOpSaveResult> {
+  await ensureMigrated();
+  const _id = toObjectId(projectId);
+  if (!_id) return "not_found";
+  return withTransaction(async (session): Promise<SceneOpSaveResult> => {
+    const project = await collections.projects().findOne({ _id, userId, deletedAt: null }, { session });
+    if (!project) return "not_found";
+    if (project.status !== "storyboard_ready" || !project.currentStoryboardVersion) return "invalid_state";
+    const current = await versions().findOne({ projectId: _id, userId, version: project.currentStoryboardVersion }, { session });
+    if (project.currentStoryboardVersion !== basedOn || !current) return { conflict: current };
+    const result = applySceneOp(current.data, op);
+    if (!result.ok) return { problems: result.problems, sceneMissing: result.status === "not_found" };
+    if (result.noop) return { version: current, project, created: false };
+    const now = new Date();
+    const latest = await versions().findOne({ projectId: _id, userId }, { session, sort: { version: -1 }, projection: { version: 1 } });
+    const number = Math.max(current.version, latest?.version ?? 0) + 1;
+    const version: StoryboardVersionDoc = {
+      ...current,
+      _id: new ObjectId(),
+      version: number,
+      data: result.storyboard,
+      source: "manual_edit",
+      basedOnVersion: current.version,
+      changeSummary: result.summary,
+      changedSceneIds: result.changedSceneIds,
+      validationReport: measureStoryboard(result.storyboard),
+      createdAt: now,
+    };
+    delete (version as Partial<StoryboardVersionDoc> & { accuracyReport?: unknown }).accuracyReport;
+    await versions().insertOne(version, { session });
+    const saved = await collections.projects().findOneAndUpdate(
+      { _id, userId, status: "storyboard_ready", currentStoryboardVersion: current.version },
+      { $set: { currentStoryboardVersion: number, updatedAt: now }, $inc: { rev: 1 } },
+      { session, returnDocument: "after" },
+    );
+    if (!saved) throw new Error("project changed during the save");
+    await pruneVersions(session, _id, userId, number);
+    return { version, project: saved, created: true };
   });
 }

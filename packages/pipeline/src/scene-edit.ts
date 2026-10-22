@@ -305,8 +305,11 @@ export interface CueReport {
 export function rebuildCues(before: Pick<Scene, "type" | "props" | "cues" | "narration" | "beats">, after: Pick<Scene, "type" | "props" | "narration" | "beats">): { cues: Cue[]; beats: Scene["beats"]; report: CueReport } {
   let retimed = 0;
   const targets = cueTargetsFor(after.type, after.props);
+  // Same type: an element that was there without a cue stays without one (it's spread evenly, as before).
+  const hadNoCue = new Set(before.type === after.type ? cueTargetsFor(before.type, before.props).filter((t) => !before.cues.some((c) => c.target === t)) : []);
   const cues: Cue[] = [];
   for (const target of targets) {
+    if (hadNoCue.has(target)) continue;
     const old = before.type === after.type ? before.cues.find((c) => c.target === target) : undefined;
     if (old) {
       const found = findAnchor(old.anchor, after.narration);
