@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 6 | 0 | 1 (+1 in design) | 0 |
+| F3 Storyboard | 6 | 0 | 0 (+1 in design) | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
