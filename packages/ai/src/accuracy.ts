@@ -16,16 +16,34 @@ export type AccuracyKind = (typeof ACCURACY_KINDS)[number];
 export const MAX_FLAGS_PER_SCENE = 2;
 export const MAX_FLAGS_PER_VIDEO = 6;
 
+/**
+ * Whether a note is written in English (your answer: always, whatever the video's language), allowing the claim to be
+ * quoted as is: the claim and anything in quotation marks are left out, then most of the remaining letters must be
+ * Latin. Very short remainders (a quote plus "is wrong") pass.
+ */
+export function noteIsEnglish(note: string, claim: string): boolean {
+  let rest = note.normalize("NFC");
+  if (claim.trim()) rest = rest.split(claim.trim().normalize("NFC")).join(" ");
+  rest = rest.replace(/"[^"]*"|“[^”]*”|‘[^’]*’|'[^']*'|«[^»]*»/g, " ");
+  const letters = rest.match(/\p{L}/gu) ?? [];
+  if (letters.length < 12) return true;
+  const latin = rest.match(/\p{Script=Latin}/gu) ?? [];
+  return latin.length / letters.length >= 0.6;
+}
+
 export const AccuracyReply = z.object({
   flags: z
     .array(
-      z.object({
-        sceneId: z.string().trim().min(1).max(40),
-        claim: z.string().trim().min(1).max(240),
-        note: z.string().trim().min(1).max(400),
-        // An unknown kind isn't worth failing the check over.
-        kind: z.enum(ACCURACY_KINDS).catch("fact"),
-      }),
+      z
+        .object({
+          sceneId: z.string().trim().min(1).max(40),
+          claim: z.string().trim().min(1).max(240),
+          note: z.string().trim().min(1).max(400),
+          // An unknown kind isn't worth failing the check over.
+          kind: z.enum(ACCURACY_KINDS).catch("fact"),
+        })
+        // The rule is in the prompt; this makes a non-English note a repair round instead of a saved Hindi note.
+        .refine((f) => noteIsEnglish(f.note, f.claim), { path: ["note"], message: "must be written in English (quote the claim as is, but explain in English)" }),
     )
     .max(30),
 });

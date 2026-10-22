@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { accuracySystemPrompt, accuracyUserPrompt, checkAccuracy, keepValidFindings, mockAccuracy, normalizeClaim, type AccuracyInput } from "./accuracy";
+import { AccuracyReply, accuracySystemPrompt, accuracyUserPrompt, checkAccuracy, keepValidFindings, mockAccuracy, normalizeClaim, noteIsEnglish, type AccuracyInput } from "./accuracy";
 
 /** F3.7: the accuracy self-check (T5): prompt, kept flags, mock. No real AI: AI_PROVIDER=mock. */
 
@@ -29,6 +29,23 @@ describe("accuracy prompt", () => {
     expect(user).toContain("[s2] On screen: 300,000 km/s");
     expect(user).not.toContain("[s3] On screen");
     expect(user).not.toContain("<b>");
+  });
+});
+
+describe("the note is always English (your answer)", () => {
+  const claim = "भारत की आबादी 200 करोड़ है";
+  it("an English note passes, also when it quotes the Hindi claim; a Hindi note doesn't", () => {
+    expect(noteIsEnglish("India's population is about 140 crore (2023), not 200 crore.", claim)).toBe(true);
+    expect(noteIsEnglish(`"${claim}" overstates it: the population is about 140 crore.`, claim)).toBe(true);
+    expect(noteIsEnglish(`${claim} is wrong.`, claim)).toBe(true);
+    expect(noteIsEnglish("भारत की आबादी लगभग 140 करोड़ है, 200 करोड़ नहीं। कृपया जांच लें।", claim)).toBe(false);
+  });
+
+  it("a Hindi note fails the reply schema with the note's path, so generateJson asks for a repair", () => {
+    const bad = AccuracyReply.safeParse({ flags: [{ sceneId: "s2", claim, note: "भारत की आबादी लगभग 140 करोड़ है, 200 करोड़ नहीं। कृपया जांच लें।", kind: "number" }] });
+    expect(bad.success).toBe(false);
+    expect(bad.error!.issues[0]).toMatchObject({ path: ["flags", 0, "note"] });
+    expect(AccuracyReply.safeParse({ flags: [{ sceneId: "s2", claim, note: "The population is about 140 crore, not 200 crore.", kind: "number" }] }).success).toBe(true);
   });
 });
 
