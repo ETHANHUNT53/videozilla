@@ -245,7 +245,7 @@ Immutable once inserted (only `accuracyReport` may be filled in later by the asy
 | `changeSummary` | string | R | ≤ 300 |
 | `changedSceneIds` | string[] | R | drives the incremental build |
 | `validationReport` | object | R | `{ repairs[], warnings[], wordCount, estimatedDurationSec }` |
-| `accuracyReport` | object? | | per-scene flags (PRD F3-FR10) |
+| `accuracyReport` | object? | | per-scene flags (PRD F3-FR10; F3.7): `{ status: pending|done|failed, flags: [{ id, sceneId, claim, note, kind, dismissed }], uncheckedSceneIds, startedAt, checkedAt, model?, provider? }`. Missing or null: never checked. Copied to a new manual / caption version for its unchanged scenes |
 | `model` | string? | | Gemini model used |
 | `createdAt` | Date | R | |
 

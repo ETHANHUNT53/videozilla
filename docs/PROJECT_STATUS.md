@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-22 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **F3.7 Accuracy check flags** — design written ([note](features/F3.7-accuracy-check.md)), waiting for your answers before building |
+| **Next feature** | None — stop point reached (F3.7 done). F3.8 doesn't start until you say so |
 | **Agreed scope (2026-10-22, updated again)** | Build **up to F3.7** (accuracy check flags), then stop: F3.8 doesn't start until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 6 | 0 | 0 (+1 in design) | 0 |
+| F3 Storyboard | 7 | 0 | 0 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
@@ -115,7 +115,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F3.4 | Instagram caption + hashtags panel | ✅ | Done 2026-10-21 ([design note](features/F3.4-caption-hashtags.md#built-2026-10-21), approved: rewrite counts 1 revision, Edit → Save / Cancel, Instagram's limits with 5–15 as a hint, cover text editable). The panel under the scenes: Copy text (as posted), Edit (caption, hashtag chips, cover text; limits checked as you type), ✨ Rewrite with AI (fills the form); each Save is a new storyboard version with the scenes unchanged; `PATCH …/storyboard/social`, `POST …/social/rewrite`. 27 new tests (892). Not checked live (your step) |
 | F3.5 | Version history + restore | ✅ | Done 2026-10-21 ([design note](features/F3.5-version-history.md#built-2026-10-21), approved: restore moves the pointer back, no copy; newest 30 kept, never the current; read-only preview; settings follow the restored language / length; not counted). The `Version N ▾` chip opens the history; View shows a version read-only in place; Restore makes it current (and newer ones stay, restorable forward). API and DB designs updated. 19 new tests (916). Not checked live (your step) |
 | F3.6 | Manual scene edits (text, type, delete, reorder) | ✅ | Done 2026-10-22 ([design note](features/F3.6-scene-edits.md#built-2026-10-22), approved: the scene type too; any scene down to 1, with a warning for the hook / last recap; drag and drop with keyboard, touch and screen-reader support; ask each time cues or chapters change; Edit → Save / Cancel per scene; not counted). ✎ Edit, 🗑 Delete and ⋮⋮ drag on each card of the current version; each change is a new version (If-Match / 412). PRD and API design updated. 35 new tests (951), QA fixes included. Not checked live (your step) |
-| F3.7 | Accuracy check flags | 🔵 | Design written 2026-10-22, waiting for your answers ([design note](features/F3.7-accuracy-check.md)): after a generate, a quick AI check flags doubtful claims (numbers, dates, names, quotes) per scene, with ⚠ on the card, why it's doubtful, Edit scene / Dismiss; never blocks; Check now on demand. P1 |
+| F3.7 | Accuracy check flags | ✅ | Done 2026-10-22 ([design note](features/F3.7-accuracy-check.md#built-2026-10-22), approved: automatic after each generate + Check now; Check now = 1 revision, refunded on failure; ⚠ and an orange box with Edit scene / Dismiss; dismissals carry over, Show dismissed; conservative, 2 per scene / 6 per video; notes always in English; no suggested fix; never blocks). API and DB designs updated. 31 new tests (986). Not checked live (your step) |
 
 ### F4–F6 — Video engine (motion graphics, voice, sync)
 
@@ -342,4 +342,5 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-22 | **F3.6 done** — manual scene edits ([details](features/F3.6-scene-edits.md#built-2026-10-22)): on the Storyboard step each scene card has Edit (narration, headline, scene type and its fields), Delete and a drag handle (mouse, finger or keyboard). Before a change that re-times visuals or moves chapters, and before a delete, a short confirm says what will change. Every change is a new version you can restore from the history. Checked in the browser on desktop and a 360 px phone; 29 new tests (945 in total). Stop point: F3.7 doesn't start until you say so. |
 | 2026-10-22 | **F3.6 QA fixes** ([details](features/F3.6-scene-edits.md#qa-fixes-2026-10-22)): switching a scene's type no longer loses items or carries a "0" along; an edit refused because another tab changed the storyboard is kept and put back in the form; the form and the card show the same length; the scene buttons are finger-sized (44 px); problems read as plain sentences ("Call to action is empty."); a move shows its new times while asking. 6 new tests (951 in total). |
 | 2026-10-22 | You asked for **F3.7** next; scope is now "up to F3.7". **Design written** ([note](features/F3.7-accuracy-check.md)): after each generate, a quick AI check marks claims worth verifying on the scene cards (⚠, the claim, why, Edit scene / Dismiss), plus a small "check facts before posting" note; it never blocks the video. 8 questions for you. Not built yet. |
+| 2026-10-22 | **F3.7 done** — accuracy check ([details](features/F3.7-accuracy-check.md#built-2026-10-22)): after each generate, a quick AI check marks claims worth verifying (numbers, dates, names, quotes, "the largest / first"). The scene gets a ⚠ and an orange box with the claim, why it's doubtful (in English, Hindi videos too), Edit scene and Dismiss. The chip by the version says how it went; Check now checks again for 1 revision (given back if it fails). Edits keep the flags of unchanged scenes. It never blocks the video. Checked in the browser on desktop and a 360 px phone; 31 new tests (986 in total). Stop point: F3.8 doesn't start until you say so. |
 | 2026-10-22 | F3.6 review: the scene-edit step is sound (type change, delete down to 1, moves, cue re-anchoring, chapter reflow, the confirm matching the save). One gap closed: a manual edit can no longer save list items with a missing or repeated id (only reachable by calling the API directly); they are cue targets and render keys. |

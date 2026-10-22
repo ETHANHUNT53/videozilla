@@ -33,6 +33,9 @@ export function useAccuracy(opts: {
   const [busy, setBusy] = useState<string | null>(null); // "check" or a flag id
   const [error, setError] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);
+  // Nothing dismissed any more: "Show dismissed" switches off, so the next Dismiss hides its flag (adjusting state
+  // during render, as React recommends).
+  if (showDismissed && version.accuracy.dismissedCount === 0) setShowDismissed(false);
   const [announce, setAnnounce] = useState("");
   const onVersion = useRef(opts.onVersion);
   useEffect(() => {
@@ -104,6 +107,21 @@ export function useAccuracy(opts: {
 
 export type AccuracyControls = ReturnType<typeof useAccuracy>;
 
+/**
+ * Keeps focus on the page after a button's request (QA, F3.7): on the button itself while it's still there, else on
+ * the first of `fallbacks` that exists (the scene's Edit button, the chip's buttons). Buttons use aria-disabled while
+ * busy, not disabled, which would drop focus to the page.
+ */
+function keepFocus(button: HTMLElement, fallbacks: string[]) {
+  setTimeout(() => {
+    if (button.isConnected) return button.focus();
+    for (const sel of fallbacks) {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (el) return el.focus();
+    }
+  }, 0);
+}
+
 /** The chip in the details row, and Check now / Check again next to it (on the current version only). */
 export function AccuracyChipItems({ version, controls, editable, position }: { version: StoryboardVersionResource; controls: AccuracyControls; editable: boolean; position: (sceneId: string) => number }) {
   const chip = accuracyChip(version.accuracy, position);
@@ -123,9 +141,14 @@ export function AccuracyChipItems({ version, controls, editable, position }: { v
         <li>
           <button
             type="button"
-            className="rounded-lg border border-line px-2.5 py-1 text-cyan hover:bg-surface disabled:opacity-50"
-            onClick={() => void controls.checkNow()}
-            disabled={controls.busy !== null}
+            id="check-facts"
+            className="rounded-lg border border-line px-2.5 py-1 text-cyan hover:bg-surface aria-disabled:opacity-50"
+            onClick={(e) => {
+              if (controls.busy !== null) return;
+              const el = e.currentTarget;
+              void controls.checkNow().then(() => keepFocus(el, ["#check-facts", 'ol[aria-label="Scenes"]']));
+            }}
+            aria-disabled={controls.busy !== null}
             aria-busy={controls.busy === "check"}
             title="Checks every scene again. Uses 1 of today's revisions (given back if it fails)."
             aria-describedby="check-now-cost"
@@ -139,7 +162,7 @@ export function AccuracyChipItems({ version, controls, editable, position }: { v
       ) : null}
       {dismissed > 0 ? (
         <li>
-          <button type="button" className="rounded-lg px-1.5 py-1 text-muted underline-offset-2 hover:text-fg hover:underline" aria-pressed={controls.showDismissed} onClick={controls.toggleDismissed}>
+          <button type="button" id="show-dismissed" className="rounded-lg px-1.5 py-1 text-muted underline-offset-2 hover:text-fg hover:underline" aria-pressed={controls.showDismissed} onClick={controls.toggleDismissed}>
             {controls.showDismissed ? "Hide dismissed" : `Show dismissed (${dismissed})`}
           </button>
         </li>
@@ -191,11 +214,16 @@ export function SceneFlags({ flags, number, editable, controls, onEdit }: { flag
               ) : null}
               <button
                 type="button"
-                className="text-muted underline-offset-2 hover:text-fg hover:underline disabled:opacity-50"
-                disabled={controls.busy !== null}
+                className="text-muted underline-offset-2 hover:text-fg hover:underline aria-disabled:opacity-50"
+                aria-disabled={controls.busy !== null}
                 aria-busy={controls.busy === f.id}
                 aria-label={`${f.dismissed ? "Bring back" : "Dismiss"} the flag on “${f.claim}” in scene ${number}`}
-                onClick={() => void controls.setDismissed(f.id, !f.dismissed)}
+                onClick={(e) => {
+                  if (controls.busy !== null) return;
+                  const el = e.currentTarget;
+                  // A dismissed flag disappears (unless dismissed ones are shown): focus goes to its scene's Edit button.
+                  void controls.setDismissed(f.id, !f.dismissed).then(() => keepFocus(el, [`[data-scene="${f.sceneId}"][data-action="edit"]`, "#show-dismissed", "#check-facts"]));
+                }}
               >
                 {f.dismissed ? "Bring back" : "Dismiss"}
               </button>

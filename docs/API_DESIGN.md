@@ -453,7 +453,10 @@ interface StoryboardVersion {
   storyboard: Storyboard;                       // System Design §7.1
   estimatedDurationSec: number; wordCount: number;
   warnings: string[];
-  accuracyFlags: { sceneId: string; claim: string; note: string }[];
+  accuracy: { status: "none" | "pending" | "done" | "failed"; checkedAt: string | null;   // F3.7
+              openCount: number; dismissedCount: number; uncheckedSceneIds: string[] };
+  accuracyFlags: { id: string; sceneId: string; claim: string; note: string;          // note always in English
+                   kind: "number" | "date" | "name" | "quote" | "fact"; dismissed: boolean }[];
   isCurrent: boolean; createdAt: string;
 }
 
@@ -620,6 +623,19 @@ Each edit creates a new version.
 
 - **Response** (for the synchronous ones): `201 StoryboardVersion`.
 - Edited props are validated against the scene type's schema → `400 VALIDATION_FAILED` with `details[].field = "props.items[2].text"`.
+
+**Accuracy check (F3.7, PRD F3-FR10):**
+
+| Method | Path | Request | Response |
+|---|---|---|---|
+| POST | `/projects/{id}/storyboard/accuracy-check` | `If-Match: "<currentStoryboardVersion>"` | `200 { version: StoryboardVersion, project }` |
+| POST | `/projects/{id}/storyboard/accuracy-flags/{flagId}/dismiss` | `If-Match` | `200 { version, project }` |
+| POST | `/projects/{id}/storyboard/accuracy-flags/{flagId}/restore` | `If-Match` | `200 { version, project }` |
+
+- The check also runs by itself after every generate / regenerate (free; the version shows `accuracy.status: "pending"` until it's done, and the page polls `GET …/storyboard`). It never blocks anything.
+- **Check now** (`accuracy-check`) re-checks every scene of the current version, synchronously (≤ 15 s), and costs **1 `revisions` unit**, given back when the check fails (`503 AI_BUSY`, earlier flags kept). Errors: `404`, `409` outside `storyboard_ready` or while a check is running, `412`, `429 LIMIT_REACHED`.
+- Dismiss / restore change the flag only (no new version, not counted). `404` for an unknown flag.
+- New versions (manual edits, caption edits) carry the flags of unchanged scenes; changed scenes are listed in `accuracy.uncheckedSceneIds` until Check now.
 
 ### 13.5 Revisions (chat)
 
