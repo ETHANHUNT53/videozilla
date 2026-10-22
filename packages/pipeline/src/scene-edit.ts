@@ -244,6 +244,17 @@ export function sceneProblems(scene: Pick<Scene, "narration" | "type" | "props" 
       problems.push({ field: path, issue: i.code === "too_small" && /string/.test(i.message) ? "is empty" : i.message });
     }
   }
+  // List items are cue targets and render keys: each needs its own id (the page makes them; a direct API call might not).
+  for (const f of SCENE_FORMS[scene.type]) {
+    if (f.kind !== "list" || f.strings) continue;
+    const seen = new Set<string>();
+    (((scene.props as any)?.[f.key] ?? []) as any[]).forEach((item, i) => {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      if (!id) problems.push({ field: `props.${f.key}[${i}].id`, issue: "is missing" });
+      else if (seen.has(id)) problems.push({ field: `props.${f.key}[${i}].id`, issue: `"${id}" is used twice` });
+      seen.add(id);
+    });
+  }
   if (scene.type === "Illustration") {
     const ids = new Set(((scene.props as any)?.actors ?? []).map((a: any) => a.id));
     ((scene.props as any)?.flows ?? []).forEach((f: any, i: number) => {

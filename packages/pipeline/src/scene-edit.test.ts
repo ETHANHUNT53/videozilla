@@ -119,6 +119,18 @@ describe("edit", () => {
   });
 });
 
+describe("list item ids (cue targets and render keys)", () => {
+  it("a missing or repeated item id is refused with its field path; the page's own ids pass", () => {
+    const narration = "Light has steps worth remembering for the exam today.";
+    const items = (ids: unknown[]) => ({ items: ids.map((id, i) => ({ id, text: `Step ${i + 1}` })) });
+    expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", "i2"]), beats: [] })).toEqual([]);
+    expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", "i1"]), beats: [] })).toContainEqual({ field: "props.items[1].id", issue: '"i1" is used twice' });
+    expect(sceneProblems({ narration, type: "BulletSteps", props: items(["i1", " "]), beats: [] })).toContainEqual({ field: "props.items[1].id", issue: "is missing" });
+    const res = applySceneOp(board(), { kind: "edit", sceneId: "s2", type: "BulletSteps", props: items(["x", "x"]) });
+    expect(res.ok).toBe(false);
+  });
+});
+
 describe("delete", () => {
   it("any scene down to 1; deleting the hook or the closing recap warns; chapters and diagram steps reflow", () => {
     let sb = board();
