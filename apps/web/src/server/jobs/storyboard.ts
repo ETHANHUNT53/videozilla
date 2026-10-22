@@ -5,6 +5,7 @@ import { RawStoryboard, WORD_BUDGET, type Storyboard } from "@videozilla/schema"
 import { ObjectId } from "mongodb";
 import { after } from "next/server";
 import { env } from "../env";
+import { runAccuracyCheck } from "../repos/accuracy";
 import { logAiCall } from "../repos/ai-calls";
 import {
   failRun,
@@ -32,7 +33,7 @@ import { inngest } from "./inngest";
  */
 
 /** Runs one named step: Inngest's `step.run` (memoised, retried), or just the function (inline). */
-export type StepRunner = <T>(name: StoryboardStep, fn: () => Promise<T>) => Promise<T>;
+export type StepRunner = <T>(name: StoryboardStep | "check_facts", fn: () => Promise<T>) => Promise<T>;
 const inline: StepRunner = (_name, fn) => fn();
 
 type Outcome = "saved" | "failed" | "cancelled";
@@ -147,11 +148,29 @@ export async function runStoryboardJob(runId: string, step: StepRunner = inline)
   });
   if (!checked) return finish(id);
 
-  return step("save_version", async (): Promise<Outcome> => {
-    if (!(await stepStarted(id, "save_version"))) return finish(id);
-    const saved = await saveStoryboardVersion(id, checked.storyboard, checked.report, { model: checked.model, provider: checked.provider });
-    return saved === "cancelled" ? finish(id) : "saved";
+  const saved = await step("save_version", async (): Promise<{ outcome: Outcome; version?: number }> => {
+    if (!(await stepStarted(id, "save_version"))) return { outcome: await finish(id) };
+    const result = await saveStoryboardVersion(id, checked.storyboard, checked.report, { model: checked.model, provider: checked.provider });
+    return result === "cancelled" ? { outcome: await finish(id) } : { outcome: "saved", version: result.version.version };
   });
+  if (saved.outcome !== "saved" || !saved.version) return saved.outcome;
+
+  // F3.7: the accuracy check, after the run is done (the storyboard already shows). Free, and it never fails the run:
+  // a failure is saved on the version as "not checked", and the page offers Check now.
+  await step("check_facts", async (): Promise<boolean> => {
+    try {
+      const result = await runAccuracyCheck(ctx.userId, new ObjectId(ctx.projectId), saved.version!, {
+        onCall: (entry) => logAiCall({ userId: ctx.userId, projectId: new ObjectId(ctx.projectId), runId: id, task: "accuracy", ...entry }),
+      });
+      if (!result.ok) console.warn(`[accuracy] check after generate failed: ${result.error instanceof Error ? result.error.message : String(result.error)}`);
+      return result.ok;
+    } catch (err) {
+      // A database error: the report stays pending and shows as "not checked" once it's stale (ACCURACY_STALE_MS).
+      console.warn(`[accuracy] check after generate crashed: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  });
+  return "saved";
 }
 
 /**

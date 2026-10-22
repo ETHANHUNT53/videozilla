@@ -162,8 +162,9 @@ describe("the storyboard.generate job (mock AI)", () => {
     expect(run).toMatchObject({ status: "succeeded", active: false, progress: 100 });
     expect(run.steps.every((s) => s.status === "succeeded" && s.attempt === 1)).toBe(true);
     expect(await used()).toBe(1);
-    const logs = await testMongo.db.collection("ai_calls").find({ userId: ME.id }).toArray();
-    expect(logs).toHaveLength(1);
+    // The storyboard, then the free accuracy check after the save (F3.7).
+    const logs = await testMongo.db.collection("ai_calls").find({ userId: ME.id }).sort({ createdAt: 1 }).toArray();
+    expect(logs.map((l) => l.task)).toEqual(["storyboard", "accuracy"]);
     expect(logs[0]).toMatchObject({ task: "storyboard", provider: "mock", status: "ok", projectId: oid(), runId: new ObjectId(res.json.run.id) });
   });
 
@@ -184,7 +185,7 @@ describe("the storyboard.generate job (mock AI)", () => {
     const { res } = await generateAndRun();
     const sb = await get(current, "/storyboard");
     expect(sb.status).toBe(200);
-    expect(sb.json).toMatchObject({ version: 1, source: "generate", isCurrent: true, accuracyFlags: [], storyboard: { language: "en", targetDurationSec: 60 } });
+    expect(sb.json).toMatchObject({ version: 1, source: "generate", isCurrent: true, accuracy: { status: "done" }, storyboard: { language: "en", targetDurationSec: 60 } });
     expect(sb.json.wordCount).toBeGreaterThan(0);
     const st = await get(statusRoute, "/status");
     expect(st.json).toMatchObject({ project: { id: projectId, status: "storyboard_ready", currentStoryboardVersion: 1 }, activeRuns: [], pollAfterMs: null, renderQueue: null });
@@ -229,7 +230,7 @@ describe("the storyboard.generate job (mock AI)", () => {
     expect(version.validationReport.lengthFixed).toBe(true);
     expect(version.validationReport.wordCount).toBeLessThanOrEqual(WORD_BUDGET.en[60][1]);
     const tasks = (await testMongo.db.collection("ai_calls").find({ userId: ME.id }).toArray()).map((l) => l.task);
-    expect(tasks.sort()).toEqual(["length_fix", "storyboard"]);
+    expect(tasks.sort()).toEqual(["accuracy", "length_fix", "storyboard"]);
     expect(await used()).toBe(1); // the length fix doesn't count extra
   });
 
@@ -292,7 +293,7 @@ describe("the storyboard.generate job (mock AI)", () => {
     const names: string[] = [];
     const step = { run: (name: string, f: () => Promise<unknown>) => (names.push(name), f()) };
     expect(await fn.fn({ event: { data: { runId: res.json.run.id } }, step })).toMatchObject({ outcome: "saved" });
-    expect(names).toEqual(["load_context", "write_script", "check", "save_version"]);
+    expect(names).toEqual(["load_context", "write_script", "check", "save_version", "check_facts"]);
 
     const again = await post({ regenerate: true });
     await fn.config.onFailure({ event: { data: { event: { data: { runId: again.json.run.id } } } }, error: new Error("x") });

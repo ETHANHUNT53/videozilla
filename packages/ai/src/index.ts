@@ -8,5 +8,6 @@ export * from "./idea-chat";
 export * from "./notes";
 export * from "./storyboard";
 export * from "./caption";
+export * from "./accuracy";
 export { mockBrief, mockBriefRewrite, mockIdeaChat, mockIdeas } from "./mock";
 export { mockStoryboard } from "./storyboard-mock";

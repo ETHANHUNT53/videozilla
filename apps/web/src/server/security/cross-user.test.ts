@@ -35,6 +35,9 @@ import * as oneVersion from "@/app/api/v1/projects/[id]/storyboard/versions/[ver
 import * as restoreVersion from "@/app/api/v1/projects/[id]/storyboard/versions/[version]/restore/route";
 import * as sceneEdit from "@/app/api/v1/projects/[id]/storyboard/scenes/[sceneId]/route";
 import * as sceneMove from "@/app/api/v1/projects/[id]/storyboard/scenes/[sceneId]/move/route";
+import * as accuracyCheck from "@/app/api/v1/projects/[id]/storyboard/accuracy-check/route";
+import * as flagDismiss from "@/app/api/v1/projects/[id]/storyboard/accuracy-flags/[flagId]/dismiss/route";
+import * as flagRestore from "@/app/api/v1/projects/[id]/storyboard/accuracy-flags/[flagId]/restore/route";
 import { clearCollections, startTestMongo, stopTestMongo, testMongo } from "../../../test/mongo";
 import { needsWelcome } from "../onboarding";
 import { USER_DATA_COLLECTIONS } from "../repos/account";
@@ -253,6 +256,7 @@ describe("B against A's projects (id routes)", () => {
       await expectLikeUnknown(social.PATCH, "PATCH", "/storyboard/social", id, { coverText: "B was here" }, { "if-match": '"1"' });
       await expectLikeUnknown(rewrite.POST, "POST", "/storyboard/social/rewrite", id, {});
       await expectLikeUnknown(versions.GET, "GET", "/storyboard/versions", id);
+      await expectLikeUnknown(accuracyCheck.POST, "POST", "/storyboard/accuracy-check", id, undefined, { "if-match": '"1"' });
     }
     // The version routes take a second path param: same check, by hand.
     for (const id of [a.live, a.deleted, a.attention]) {
@@ -262,10 +266,13 @@ describe("B against A's projects (id routes)", () => {
         [sceneEdit.PATCH, "PATCH", "/storyboard/scenes/s1", { narration: "B was here" }],
         [sceneEdit.DELETE, "DELETE", "/storyboard/scenes/s1", undefined],
         [sceneMove.POST, "POST", "/storyboard/scenes/s1/move", { afterSceneId: null }],
+        [flagDismiss.POST, "POST", "/storyboard/accuracy-flags/f1/dismiss", undefined],
+        [flagRestore.POST, "POST", "/storyboard/accuracy-flags/f1/restore", undefined],
       ] as const) {
+        const second: Record<string, string> = suffix.includes("/scenes/") ? { sceneId: "s1" } : suffix.includes("/accuracy-flags/") ? { flagId: "f1" } : { version: "1" };
         const unknown = new ObjectId().toHexString();
-        const foreign = await call(handler as Handler, method, `/api/v1/projects/${id}${suffix}`, { id, ...(suffix.includes("/scenes/") ? { sceneId: "s1" } : { version: "1" }) }, body, { "if-match": '"1"' });
-        const missing = await call(handler as Handler, method, `/api/v1/projects/${unknown}${suffix}`, { id: unknown, ...(suffix.includes("/scenes/") ? { sceneId: "s1" } : { version: "1" }) }, body, { "if-match": '"1"' });
+        const foreign = await call(handler as Handler, method, `/api/v1/projects/${id}${suffix}`, { id, ...second }, body, { "if-match": '"1"' });
+        const missing = await call(handler as Handler, method, `/api/v1/projects/${unknown}${suffix}`, { id: unknown, ...second }, body, { "if-match": '"1"' });
         expect(foreign.status).toBe(404);
         expect({ code: foreign.json?.error?.code, message: foreign.json?.error?.message, headers: foreign.headers }).toEqual({ code: missing.json?.error?.code, message: missing.json?.error?.message, headers: missing.headers });
       }
@@ -374,6 +381,9 @@ const HANDLERS: [string, Handler, string, string, Record<string, string>?][] = [
   ["PATCH /projects/{id}/storyboard/scenes/{sceneId}", sceneEdit.PATCH, "PATCH", "/api/v1/projects/x/storyboard/scenes/s1", { id: "x", sceneId: "s1" }],
   ["DELETE /projects/{id}/storyboard/scenes/{sceneId}", sceneEdit.DELETE, "DELETE", "/api/v1/projects/x/storyboard/scenes/s1", { id: "x", sceneId: "s1" }],
   ["POST /projects/{id}/storyboard/scenes/{sceneId}/move", sceneMove.POST, "POST", "/api/v1/projects/x/storyboard/scenes/s1/move", { id: "x", sceneId: "s1" }],
+  ["POST /projects/{id}/storyboard/accuracy-check", accuracyCheck.POST, "POST", "/api/v1/projects/x/storyboard/accuracy-check", { id: "x" }],
+  ["POST /projects/{id}/storyboard/accuracy-flags/{flagId}/dismiss", flagDismiss.POST, "POST", "/api/v1/projects/x/storyboard/accuracy-flags/f1/dismiss", { id: "x", flagId: "f1" }],
+  ["POST /projects/{id}/storyboard/accuracy-flags/{flagId}/restore", flagRestore.POST, "POST", "/api/v1/projects/x/storyboard/accuracy-flags/f1/restore", { id: "x", flagId: "f1" }],
 ];
 
 describe("every route needs a session, and a verified email", () => {
@@ -418,19 +428,22 @@ const MODULES: Record<string, Record<string, unknown>> = {
   "/projects/[id]/storyboard/versions/[version]/restore": restoreVersion,
   "/projects/[id]/storyboard/scenes/[sceneId]": sceneEdit,
   "/projects/[id]/storyboard/scenes/[sceneId]/move": sceneMove,
+  "/projects/[id]/storyboard/accuracy-check": accuracyCheck,
+  "/projects/[id]/storyboard/accuracy-flags/[flagId]/dismiss": flagDismiss,
+  "/projects/[id]/storyboard/accuracy-flags/[flagId]/restore": flagRestore,
 };
 const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
 
 describe("coverage", () => {
   it("every exported method of every route is either a 405 or has a cross-user case above", async () => {
-    const covered = new Set(HANDLERS.map(([label]) => label.replace("{id}", "[id]").replace("{version}", "[version]").replace("{sceneId}", "[sceneId]")));
+    const covered = new Set(HANDLERS.map(([label]) => label.replace("{id}", "[id]").replace("{version}", "[version]").replace("{sceneId}", "[sceneId]").replace("{flagId}", "[flagId]")));
     for (const [route, mod] of Object.entries(MODULES)) {
       if (route === "/[...path]") continue; // the 404 catch-all, checked separately
       for (const method of METHODS.filter((m) => typeof mod[m] === "function")) {
         const label = `${method} ${route}`;
         if (covered.has(label)) continue;
-        const url = `/api/v1${route.replace("[id]", "x").replace("[version]", "1").replace("[sceneId]", "s1")}`;
-        const params = route.includes("[id]") ? { id: "x", ...(route.includes("[version]") ? { version: "1" } : {}), ...(route.includes("[sceneId]") ? { sceneId: "s1" } : {}) } : undefined;
+        const url = `/api/v1${route.replace("[id]", "x").replace("[version]", "1").replace("[sceneId]", "s1").replace("[flagId]", "f1")}`;
+        const params = route.includes("[id]") ? { id: "x", ...(route.includes("[version]") ? { version: "1" } : {}), ...(route.includes("[sceneId]") ? { sceneId: "s1" } : {}), ...(route.includes("[flagId]") ? { flagId: "f1" } : {}) } : undefined;
         const { status } = await call(mod[method] as Handler, method, url, params, method === "GET" || method === "HEAD" ? undefined : {});
         expect(status, `${label} is a real handler with no cross-user case: add one to HANDLERS and the tests above`).toBe(405);
       }
@@ -449,7 +462,7 @@ describe("coverage", () => {
     };
     walk(root, "");
     expect(found.sort()).toEqual(Object.keys(MODULES).sort());
-    const routesWithCases = new Set(["/[...path]", ...HANDLERS.map(([label]) => label.split(" ")[1].replace("{id}", "[id]").replace("{version}", "[version]").replace("{sceneId}", "[sceneId]"))]);
+    const routesWithCases = new Set(["/[...path]", ...HANDLERS.map(([label]) => label.split(" ")[1].replace("{id}", "[id]").replace("{version}", "[version]").replace("{sceneId}", "[sceneId]").replace("{flagId}", "[flagId]"))]);
     expect([...routesWithCases].sort()).toEqual(Object.keys(MODULES).sort());
   });
 });

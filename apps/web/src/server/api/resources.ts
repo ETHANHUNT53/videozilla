@@ -1,5 +1,6 @@
 import type { ChatMessageDoc, IdeaBriefDoc, IdeaSessionDoc, ProfileDoc, ProjectDoc } from "../db/types";
 import { toSummary } from "../repos/projects";
+import { ACCURACY_STALE_MS, type AccuracyReport } from "@videozilla/pipeline";
 import type { PipelineRunDoc, StoryboardVersionDoc } from "../repos/storyboards";
 import { allowedActions } from "../rules/project-actions";
 import type { SessionUser } from "./session";
@@ -150,6 +151,26 @@ export function toRun(r: PipelineRunDoc) {
 }
 export type RunResource = ReturnType<typeof toRun>;
 
+/**
+ * The accuracy check's state and flags on a version (F3.7): `none` before any check (or one that didn't carry over),
+ * `pending` while it runs (one that never finished shows as `failed` after ACCURACY_STALE_MS), `done`, `failed`.
+ */
+export function accuracyOf(report: AccuracyReport | null | undefined, now = Date.now()) {
+  const stale = report?.status === "pending" && (!report.startedAt || now - new Date(report.startedAt).getTime() > ACCURACY_STALE_MS);
+  const status: "none" | "pending" | "done" | "failed" = !report ? "none" : stale ? "failed" : report.status;
+  const flags = (report?.flags ?? []).map((f) => ({ id: f.id, sceneId: f.sceneId, claim: f.claim, note: f.note, kind: f.kind, dismissed: f.dismissed }));
+  return {
+    accuracy: {
+      status,
+      checkedAt: report?.checkedAt ? new Date(report.checkedAt).toISOString() : null,
+      openCount: flags.filter((f) => !f.dismissed).length,
+      dismissedCount: flags.filter((f) => f.dismissed).length,
+      uncheckedSceneIds: report?.uncheckedSceneIds ?? [],
+    },
+    accuracyFlags: flags,
+  };
+}
+
 /** A storyboard version (API Design §12 `StoryboardVersion`). */
 export function toStoryboardVersion(v: StoryboardVersionDoc, currentVersion: number | null) {
   return {
@@ -162,7 +183,7 @@ export function toStoryboardVersion(v: StoryboardVersionDoc, currentVersion: num
     estimatedDurationSec: v.validationReport.estimatedDurationSec,
     wordCount: v.validationReport.wordCount,
     warnings: v.validationReport.warnings,
-    accuracyFlags: [] as { sceneId: string; claim: string; note: string }[], // F3.7
+    ...accuracyOf(v.accuracyReport),
     isCurrent: v.version === currentVersion,
     createdAt: v.createdAt.toISOString(),
   };

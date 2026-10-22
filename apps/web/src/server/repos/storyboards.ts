@@ -1,6 +1,6 @@
 import "server-only";
 import type { Social, Storyboard } from "@videozilla/schema";
-import { applySceneOp, measureStoryboard, type SceneOp } from "@videozilla/pipeline";
+import { applySceneOp, carryAccuracy, measureStoryboard, type AccuracyReport, type SceneOp } from "@videozilla/pipeline";
 import type { ValidationReport } from "@videozilla/pipeline";
 import { MongoServerError, ObjectId, type ClientSession, type Collection } from "mongodb";
 import { ApiError } from "../api/errors";
@@ -95,6 +95,8 @@ export interface StoryboardVersionDoc {
   validationReport: ValidationReport & { lengthFixed?: boolean };
   model?: string | null;
   provider?: string | null;
+  /** F3.7: the accuracy check's flags; filled in after the save (DB §4.6). Missing or null: never checked. */
+  accuracyReport?: AccuracyReport | null;
   createdAt: Date;
 }
 
@@ -334,6 +336,8 @@ export async function saveStoryboardVersion(
       validationReport: report,
       model: ai.model,
       provider: ai.provider,
+      // The job checks the facts right after this save (F3.7); the page shows "Checking facts…" meanwhile.
+      accuracyReport: { status: "pending", flags: [], uncheckedSceneIds: [], startedAt: now, checkedAt: null },
       createdAt: now,
     };
     await versions().insertOne(version, { session });
@@ -455,7 +459,10 @@ export async function saveSocialEdit(
       changedSceneIds: [],
       createdAt: now,
     };
-    delete (version as Partial<StoryboardVersionDoc> & { accuracyReport?: unknown }).accuracyReport;
+    // F3.7: flags on unchanged scenes carry over; changed scenes wait for "Check now".
+    const accuracy = carryAccuracy(current.accuracyReport, current.data, version.data);
+    if (accuracy) version.accuracyReport = accuracy;
+    else delete version.accuracyReport;
     await versions().insertOne(version, { session });
     const saved = await collections.projects().findOneAndUpdate(
       { _id, userId, status: "storyboard_ready", currentStoryboardVersion: current.version },
@@ -609,7 +616,10 @@ export async function saveSceneOp(userId: string, projectId: string, basedOn: nu
       validationReport: measureStoryboard(result.storyboard),
       createdAt: now,
     };
-    delete (version as Partial<StoryboardVersionDoc> & { accuracyReport?: unknown }).accuracyReport;
+    // F3.7: flags on unchanged scenes carry over; changed scenes wait for "Check now".
+    const accuracy = carryAccuracy(current.accuracyReport, current.data, version.data);
+    if (accuracy) version.accuracyReport = accuracy;
+    else delete version.accuracyReport;
     await versions().insertOne(version, { session });
     const saved = await collections.projects().findOneAndUpdate(
       { _id, userId, status: "storyboard_ready", currentStoryboardVersion: current.version },
