@@ -10,7 +10,7 @@
 |---|---|
 | **Last updated** | 2026-10-22 |
 | **Current phase** | **M2 — Idea Studio + Storyboard** ([M2 design](M2_DESIGN.md), approved 2026-10-17). F1 done except F1.4 Google sign-in (waits for your Google keys) |
-| **Next feature** | **F3.6 Manual scene edits** — design written ([note](features/F3.6-scene-edits.md)), waiting for your answers before building |
+| **Next feature** | None — stop point reached (F3.6 done). F3.7 doesn't start until you say so |
 | **Agreed scope (2026-10-22, updated)** | Build **up to F3.6** (manual scene edits: text, delete, reorder), then stop: F3.7 doesn't start until you say so |
 | **Blockers** | ElevenLabs paid plan (your two voices need it), Meta App Review (Instagram, later) |
 
@@ -32,7 +32,7 @@
 | F0 Foundation | 5 | 0 | 0 | 0 |
 | F1 Accounts & library | 13 | 0 | 0 (+1 in progress) | 0 |
 | F2 Idea Studio | 8 | 0 | 0 | 0 |
-| F3 Storyboard | 5 | 0 | 1 (+1 in design) | 0 |
+| F3 Storyboard | 6 | 0 | 1 | 0 |
 | F4–F6 Video engine (from M0) | 4 | 4 | 5 | 1 |
 | F7 Revisions | 0 | 0 | 5 | 0 |
 | F8 Build, preview & export | 0 | 0 | 8 | 0 |
@@ -114,7 +114,7 @@ The M1 draft in `apps/web` covers most of this and was tested by hand in the bro
 | F3.3 | Storyboard Review screen: scene cards with animated thumbnails | ✅ | Done 2026-10-21 ([design note](features/F3.3-storyboard-screen.md#built-2026-10-21), approved: the Storyboard step, stills that play on hover / tap, placeholders, Approve disabled). Stitch 10 on the project page's Storyboard step: chips (language, estimate with the duration guard, scenes, voice, theme, version), scene cards by chapter with narration, on-screen text and a 9:16 preview drawn by the M0 scene components in the video's theme (one plays at a time); read-only caption; settings + "revise with AI arrives in M5"; Approve shown disabled until M3. 20 new tests (864). Not checked live (your step) |
 | F3.4 | Instagram caption + hashtags panel | ✅ | Done 2026-10-21 ([design note](features/F3.4-caption-hashtags.md#built-2026-10-21), approved: rewrite counts 1 revision, Edit → Save / Cancel, Instagram's limits with 5–15 as a hint, cover text editable). The panel under the scenes: Copy text (as posted), Edit (caption, hashtag chips, cover text; limits checked as you type), ✨ Rewrite with AI (fills the form); each Save is a new storyboard version with the scenes unchanged; `PATCH …/storyboard/social`, `POST …/social/rewrite`. 27 new tests (892). Not checked live (your step) |
 | F3.5 | Version history + restore | ✅ | Done 2026-10-21 ([design note](features/F3.5-version-history.md#built-2026-10-21), approved: restore moves the pointer back, no copy; newest 30 kept, never the current; read-only preview; settings follow the restored language / length; not counted). The `Version N ▾` chip opens the history; View shows a version read-only in place; Restore makes it current (and newer ones stay, restorable forward). API and DB designs updated. 19 new tests (916). Not checked live (your step) |
-| F3.6 | Manual scene edits (text, delete, reorder) | 🔵 | Design written 2026-10-22, waiting for your answers ([design note](features/F3.6-scene-edits.md)): Edit (narration and on-screen text, per scene type's limits), Delete and Move up / down on each card; each a new storyboard version; cues re-anchored and chapters renumbered automatically; hook first and recap last stay put; the API from API Design §13.4. P1 |
+| F3.6 | Manual scene edits (text, type, delete, reorder) | ✅ | Done 2026-10-22 ([design note](features/F3.6-scene-edits.md#built-2026-10-22), approved: the scene type too; any scene down to 1, with a warning for the hook / last recap; drag and drop with keyboard, touch and screen-reader support; ask each time cues or chapters change; Edit → Save / Cancel per scene; not counted). ✎ Edit, 🗑 Delete and ⋮⋮ drag on each card of the current version; each change is a new version (If-Match / 412). PRD and API design updated. 29 new tests (945). Not checked live (your step) |
 | F3.7 | Accuracy check flags | ⬜ | P1 |
 
 ### F4–F6 — Video engine (motion graphics, voice, sync)
@@ -339,3 +339,4 @@ Proven in M0; code now lives in `packages/*` (F0.1). Each becomes ✅ once cover
 | 2026-10-21 | F3.5 review: no defects in restore or pruning. One small fix: a caption edit kept after a 412 (F3.4) is no longer put into an older version opened read-only from the history; it waits for the current version. |
 | 2026-10-21 | F3.5 QA fixes ([details](features/F3.5-version-history.md#qa-fixes-2026-10-21-after-49e7b95)): keyboard focus now follows you through View, Back to current, the restore confirm (Escape cancels) and a restore, which is also announced to screen readers; while you look at an older version the settings are locked with a note; during your own regenerate a refused action no longer blames "another tab". |
 | 2026-10-22 | You asked for **F3.6** next; scope is now "up to F3.6". **Design written** ([note](features/F3.6-scene-edits.md)): on the Storyboard step each scene card gets Edit (its narration and on-screen text), Delete and Move up / down; every change is a new storyboard version you can undo from the history; the timing, chapters and length follow automatically. 6 questions for you. Not built yet. |
+| 2026-10-22 | **F3.6 done** — manual scene edits ([details](features/F3.6-scene-edits.md#built-2026-10-22)): on the Storyboard step each scene card has Edit (narration, headline, scene type and its fields), Delete and a drag handle (mouse, finger or keyboard). Before a change that re-times visuals or moves chapters, and before a delete, a short confirm says what will change. Every change is a new version you can restore from the history. Checked in the browser on desktop and a 360 px phone; 29 new tests (945 in total). Stop point: F3.7 doesn't start until you say so. |
