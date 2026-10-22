@@ -1,9 +1,10 @@
 "use client";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- scene props differ per scene type; the form is driven by SCENE_FORMS. */
-import { cleanProps, convertProps, FLOW_EDGES, newListItem, SCENE_FORMS, sceneProblems, type FieldSpec, type SceneOp } from "@videozilla/pipeline";
-import { SCENE_TYPES, type Scene, type SceneType } from "@videozilla/schema";
-import { useEffect, useId, useRef, useState } from "react";
+import { cleanProps, editedSceneSec, FLOW_EDGES, lengthLabel, newListItem, problemText, SCENE_FORMS, sceneProblems, switchSceneType, type FieldSpec, type SceneOp } from "@videozilla/pipeline";
+import { SCENE_TYPES, type Scene, type SceneType, type Storyboard } from "@videozilla/schema";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { SceneDraft } from "@/lib/scene-draft";
 import { Button, cx, inputStyles } from "./ui";
 
 /**
@@ -26,13 +27,30 @@ const TYPE_LABEL: Record<SceneType, string> = {
 
 const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 
-export function SceneEditForm(props: { scene: Scene; position: number; busy: boolean; error: string | null; onCancel: () => void; onSubmit: (op: SceneOp) => void }) {
-  const { scene, position, busy, error, onCancel, onSubmit } = props;
+export function SceneEditForm(props: {
+  scene: Scene;
+  /** The storyboard the scene is in, for its estimated length (the same estimate as the card's). */
+  storyboard: Storyboard;
+  styleId: string;
+  position: number;
+  busy: boolean;
+  error: string | null;
+  /** An edit kept after a 412, put back on the newer storyboard (F3.6 QA). */
+  restored?: SceneDraft | null;
+  onCancel: () => void;
+  onSubmit: (op: SceneOp) => void;
+}) {
+  const { scene, storyboard, styleId, position, busy, error, restored, onCancel, onSubmit } = props;
   const id = useId();
-  const [narration, setNarration] = useState(scene.narration);
-  const [type, setType] = useState<SceneType>(scene.type);
-  const [draft, setDraft] = useState<any>(() => structuredClone(scene.props));
-  const [headlines, setHeadlines] = useState(scene.beats.map((b) => b.headline));
+  const [narration, setNarration] = useState(restored?.narration ?? scene.narration);
+  const [type, setType] = useState<SceneType>(restored?.type ?? scene.type);
+  const [draft, setDraft] = useState<any>(() => structuredClone(restored?.props ?? scene.props));
+  // Each type's draft, so switching back shows what was typed there (switchSceneType).
+  const [drafts, setDrafts] = useState<Partial<Record<SceneType, any>>>({});
+  const [headlines, setHeadlines] = useState(() => {
+    const saved = scene.beats.map((b) => b.headline);
+    return restored && restored.headlines.length === saved.length ? restored.headlines : saved;
+  });
   const narrationBox = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     narrationBox.current?.focus();
@@ -40,11 +58,14 @@ export function SceneEditForm(props: { scene: Scene; position: number; busy: boo
 
   const problems = sceneProblems({ narration, type, props: cleanProps(type, draft), beats: headlines.map((h, i) => ({ ...scene.beats[i], headline: h })) });
   const words = wordCount(narration);
-  const seconds = Math.round((words / 150) * 60);
+  // The card's estimate for these words (QA: the form said ~6s where the card said ~7s).
+  const length = useMemo(() => lengthLabel(editedSceneSec(storyboard, scene.id, narration, styleId)), [storyboard, scene.id, narration, styleId]);
 
   const changeType = (next: SceneType) => {
-    // Convert from what's on screen now (the draft), so edits made before switching carry over too.
-    setDraft(convertProps(type, cleanProps(type, draft), next, narration));
+    // From the saved scene each time (plus what was typed in its own type), not from the last type shown (QA, F3.6).
+    const out = switchSceneType({ saved: scene, drafts, current: type, draft, next, narration });
+    setDrafts(out.drafts);
+    setDraft(out.draft);
     setType(next);
   };
 
@@ -73,7 +94,7 @@ export function SceneEditForm(props: { scene: Scene; position: number; busy: boo
           onChange={(e) => setNarration(e.target.value)}
         />
         <p className={cx("font-mono text-xs", words < 8 || words > 40 ? "text-orange" : "text-muted")}>
-          {words} words · ~{seconds}s{words < 8 || words > 40 ? " · 8–40 words usually work best" : ""}
+          {words} words · {length}{words < 8 || words > 40 ? " · 8–40 words usually work best" : ""}
         </p>
       </div>
 
@@ -114,10 +135,16 @@ export function SceneEditForm(props: { scene: Scene; position: number; busy: boo
         <ul className="flex flex-col gap-0.5 text-sm text-red" aria-live="polite">
           {problems.slice(0, 6).map((p) => (
             <li key={p.field + p.issue}>
-              {fieldName(p.field)} {p.issue}.
+              {problemText(type, p)}
             </li>
           ))}
         </ul>
+      ) : null}
+      {restored ? (
+        <p role="status" className="text-sm text-cyan">
+          The storyboard changed (another tab or a regenerate), so your edit wasn&apos;t saved. It&apos;s back in the form: Save to keep it on the
+          newer storyboard, or Cancel to see the scene as it is now.
+        </p>
       ) : null}
       {error ? (
         <p role="alert" className="text-sm text-red">
@@ -134,16 +161,6 @@ export function SceneEditForm(props: { scene: Scene; position: number; busy: boo
       </div>
     </form>
   );
-}
-
-/** "props.items[2].text" → "Item 3:" (what the person sees in the form). */
-function fieldName(field: string): string {
-  const m = field.match(/^props\.(\w+)(?:\[(\d+)\])?(?:\.(\w+))?/);
-  if (field === "narration") return "Narration";
-  if (field.startsWith("beats")) return `Headline ${Number(field.match(/\[(\d+)\]/)?.[1] ?? 0) + 1}`;
-  if (!m) return "This";
-  const [, key, i, sub] = m;
-  return `${key[0].toUpperCase()}${key.slice(1)}${i !== undefined ? ` ${Number(i) + 1}` : ""}${sub ? ` (${sub})` : ""}:`;
 }
 
 /** One type's fields, from its SCENE_FORMS entry. */

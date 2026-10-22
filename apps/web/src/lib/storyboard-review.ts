@@ -3,7 +3,7 @@
  * the duration guard (PRD F3-FR9). Pure, so it can be unit-tested; components/storyboard-review.tsx renders it. Safe to
  * import from client components.
  */
-import { clock, estimateTimeline, onScreenText } from "@videozilla/pipeline";
+import { clock, estimateTimeline, lengthLabel, onScreenText } from "@videozilla/pipeline";
 import type { Storyboard, Timeline } from "@videozilla/schema";
 
 /** The target window per length preset (PRD §15.2). */
@@ -49,7 +49,7 @@ export function reviewModel(storyboard: Storyboard, styleId: string, estimatedDu
       type: s.type,
       narration: s.narration,
       onScreen: onScreenText(s),
-      length: `~${Math.max(1, Math.round(t.durationSec))}s`,
+      length: lengthLabel(t.durationSec),
       range: `${clock(t.startSec)} – ${clock(t.endSec)}`,
       chapterHeading: startsChapter ? { index: chapter.index, headline: chapter.headline, ...(chapter.subhead ? { subhead: chapter.subhead } : {}) } : null,
     };

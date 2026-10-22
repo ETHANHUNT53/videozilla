@@ -37,6 +37,21 @@ export function estimateTimeline(storyboard: Storyboard, styleId: string): { tim
   return { timeline, scenes };
 }
 
+/** A scene's length as the cards show it: "~7s" (at least 1). */
+export function lengthLabel(durationSec: number): string {
+  return `~${Math.max(1, Math.round(durationSec))}s`;
+}
+
+/**
+ * One scene's estimated length with a narration still being typed (F3.6 QA): the same timeline the cards use, so the
+ * edit form and the card agree on the same words.
+ */
+export function editedSceneSec(storyboard: Storyboard, sceneId: string, narration: string, styleId: string): number {
+  const scenes = storyboard.scenes.map((s) => (s.id === sceneId ? { ...s, narration } : s));
+  const { scenes: timing } = estimateTimeline({ ...storyboard, scenes }, styleId);
+  return timing.find((t) => t.id === sceneId)?.durationSec ?? 0;
+}
+
 /** A timeline with only the scene at `index`, starting at frame 0 (a card's preview): its headlines move with it. */
 export function sceneTimeline(timeline: Timeline, index: number): Timeline {
   const scene = timeline.scenes[index];

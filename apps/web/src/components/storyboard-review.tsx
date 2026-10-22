@@ -46,12 +46,14 @@ export function StoryboardReview(props: {
   const version = viewing ?? props.version;
   const readOnly = viewing !== null;
   const sb = version.storyboard;
-  const model = useMemo(() => reviewModel(sb, project.styleId, version.estimatedDurationSec), [sb, project.styleId, version.estimatedDurationSec]);
-  const [playing, setPlaying] = useState<string | null>(null);
-  const failure = runFailure(storyboard.run);
   // F3.6: edit, delete and move scenes, on the current version only (not an old one being viewed).
   const editable = !readOnly && project.status === "storyboard_ready" && project.currentStoryboardVersion === version.version;
-  const ops = useSceneOps({ projectId: project.id, version, onSaved, onStale, onActivity });
+  const ops = useSceneOps({ projectId: project.id, version, editable, onSaved, onStale, onActivity });
+  // While a move waits for its confirm, the cards show the new order's times (QA: the moved card kept its old range).
+  const shownSb = ops.pending?.op.kind === "move" ? ops.pending.preview : sb;
+  const model = useMemo(() => reviewModel(shownSb, project.styleId, version.estimatedDurationSec), [shownSb, project.styleId, version.estimatedDurationSec]);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const failure = runFailure(storyboard.run);
   const position = (id: string) => sb.scenes.findIndex((x) => x.id === id) + 1;
   const reorder = useReorder({
     ids: sb.scenes.map((x) => x.id),
@@ -161,7 +163,10 @@ export function StoryboardReview(props: {
               body={
                 editable && ops.editing === card.id ? (
                   <SceneEditForm
-                    scene={sb.scenes[card.index]}
+                    scene={sb.scenes.find((x) => x.id === card.id)!}
+                    storyboard={sb}
+                    styleId={project.styleId}
+                    restored={ops.restored?.sceneId === card.id ? ops.restored : null}
                     position={card.index + 1}
                     busy={ops.busy}
                     error={ops.error}

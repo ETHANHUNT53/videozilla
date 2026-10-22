@@ -199,7 +199,8 @@ export function convertProps(from: SceneType, props: any, to: SceneType, narrati
       const source = [...pool, narration].join(" ");
       const m = source.match(/-?\d[\d,]*(?:\.\d+)?/);
       const label = pool.find((t) => !/^\s*[-₹$]?\d/.test(t)) ?? "";
-      return { value: m ? Number(m[0].replace(/,/g, "")) : 0, label: cut(label, 60) };
+      // No number found: left empty for the user to fill (never a "0" that would carry into later types; QA, F3.6).
+      return { ...(m ? { value: Number(m[0].replace(/,/g, "")) } : {}), label: cut(label, 60) };
     }
     case "RecapOutro":
       return { points: list(3, 50, "p"), cta: "" };
@@ -208,6 +209,19 @@ export function convertProps(from: SceneType, props: any, to: SceneType, narrati
     case "UnitGrid":
       return { total: 100, unit: "dot", ...(pool[0] ? { label: cut(pool[0], 20) } : {}), states: [{ id: "g1", active: 50, color: "cyan" }] };
   }
+}
+
+/**
+ * The form's props after switching the scene's type (QA, F3.6). Always converted from the SAVED scene, with what the
+ * user typed in the saved type's own form, so a chain of switches (BulletSteps → Flowchart → StatCounter → …) doesn't
+ * lose items or carry one type's leftovers into the next. Each type's draft is remembered, so switching back to a type
+ * shows what was typed there. Narration and headlines are shared by every type and stay as typed.
+ */
+export function switchSceneType(o: { saved: { type: SceneType; props: any }; drafts: Partial<Record<SceneType, any>>; current: SceneType; draft: any; next: SceneType; narration: string }): { draft: any; drafts: Partial<Record<SceneType, any>> } {
+  const drafts = { ...o.drafts, [o.current]: o.draft };
+  if (drafts[o.next] !== undefined) return { draft: structuredClone(drafts[o.next]), drafts };
+  const source = drafts[o.saved.type] ?? o.saved.props;
+  return { draft: convertProps(o.saved.type, cleanProps(o.saved.type, source), o.next, o.narration), drafts };
 }
 
 /** Positions for Illustration actors that have none: spread across the picture. */
@@ -241,7 +255,7 @@ export function sceneProblems(scene: Pick<Scene, "narration" | "type" | "props" 
   if (!parsed.success) {
     for (const i of parsed.error.issues.slice(0, 8)) {
       const path = i.path.reduce<string>((p, k) => (typeof k === "number" ? `${p}[${k}]` : `${p}.${String(k)}`), "props");
-      problems.push({ field: path, issue: i.code === "too_small" && /string/.test(i.message) ? "is empty" : i.message });
+      problems.push({ field: path, issue: plainIssue(i as any) });
     }
   }
   // List items are cue targets and render keys: each needs its own id (the page makes them; a direct API call might not).
@@ -266,6 +280,83 @@ export function sceneProblems(scene: Pick<Scene, "narration" | "type" | "props" 
     else if (Array.from(b.headline).length > 70) problems.push({ field: `beats[${i}].headline`, issue: "is longer than 70 characters" });
   });
   return problems;
+}
+
+/** A schema issue in plain words ("is empty", "needs at least 2"), not Zod's ("Too small: expected …"). */
+function plainIssue(i: { code: string; origin?: string; minimum?: number | bigint; maximum?: number | bigint; message: string; input?: unknown }): string {
+  const min = Number(i.minimum);
+  const max = Number(i.maximum);
+  if (i.code === "invalid_type" && (i.input === undefined || /undefined/.test(i.message))) return "is empty";
+  if (i.code === "invalid_type") return "isn't valid";
+  if (i.code === "too_small") {
+    if (i.origin === "string") return min <= 1 ? "is empty" : `needs at least ${min} characters`;
+    if (i.origin === "array" || i.origin === "set") return `needs at least ${min}`;
+    return `must be at least ${min}`;
+  }
+  if (i.code === "too_big") {
+    if (i.origin === "string") return `is longer than ${max} characters`;
+    if (i.origin === "array" || i.origin === "set") return `can have at most ${max}`;
+    return `must be at most ${max}`;
+  }
+  if (i.code === "invalid_value" || i.code === "invalid_enum_value") return "isn't one of the choices";
+  return i.message;
+}
+
+const capital = (t: string) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const shortLabel = (t: string) => t.replace(/\s*\(.*\)\s*$/, "");
+
+/**
+ * The name the form shows for a problem's field (QA, F3.6): "props.cta" → "Call to action", "props.items[2].text" →
+ * "Item 3", "props.left.points[0]" → "Left point 1", "props.actors[1].kind" → "Thing 2 (what)", "beats[0].headline" →
+ * "Headline 1". Falls back to "This" for paths outside the form.
+ */
+export function fieldLabel(type: SceneType, field: string): string {
+  if (field === "narration") return "Narration";
+  if (field === "type") return "Scene type";
+  const beat = field.match(/^beats\[(\d+)\]/);
+  if (beat) return `Headline ${Number(beat[1]) + 1}`;
+  if (!field.startsWith("props")) return "This";
+  const parts = [...field.slice(5).matchAll(/\.(\w+)|\[(\d+)\]/g)].map((m) => (m[1] !== undefined ? m[1] : Number(m[2])));
+  let fields: FieldSpec[] = SCENE_FORMS[type] ?? [];
+  let label = "";
+  for (let k = 0; k < parts.length; k++) {
+    const part = parts[k];
+    if (typeof part === "number") continue;
+    const spec = fields.find((f) => f.key === part);
+    if (!spec) {
+      if (part === "id") break;
+      return label ? capital(label) : "This";
+    }
+    if (spec.kind === "list") {
+      const index = parts[k + 1];
+      if (typeof index === "number") {
+        const side = label && spec.strings ? `${label.split(" ")[0]} ` : "";
+        label = `${side}${spec.itemLabel} ${index + 1}`;
+        k++;
+        if (spec.strings) break;
+        fields = spec.item;
+        const sub = parts[k + 1];
+        const subSpec = typeof sub === "string" ? spec.item.find((f) => f.key === sub) : undefined;
+        if (subSpec && shortLabel(subSpec.label) !== spec.itemLabel && sub !== "text") label += ` (${shortLabel(subSpec.label)})`;
+        break;
+      }
+      label = spec.label;
+      break;
+    }
+    if (spec.kind === "group") {
+      label = spec.label;
+      fields = spec.fields;
+      continue;
+    }
+    label = shortLabel(spec.label);
+    break;
+  }
+  return capital(label || "This");
+}
+
+/** "Call to action is empty." */
+export function problemText(type: SceneType, p: EditProblem): string {
+  return `${fieldLabel(type, p.field)} ${p.issue}.`;
 }
 
 // ---------- Cues (sync points) after an edit ----------

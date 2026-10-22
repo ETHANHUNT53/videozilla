@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- tests poke at props of every scene type. */
 import { SCENE_PROPS, SCENE_TYPES, type Scene, type Storyboard } from "@videozilla/schema";
 import { describe, expect, it } from "vitest";
-import { applySceneOp, cleanProps, convertProps, describeChanges, findAnchor, measureStoryboard, needsConfirm, propTexts, rebuildCues, reflowBeats, sceneProblems } from "./scene-edit";
+import { editedSceneSec, estimateTimeline, lengthLabel } from "./estimate";
+import { applySceneOp, cleanProps, convertProps, describeChanges, fieldLabel, findAnchor, measureStoryboard, needsConfirm, problemText, propTexts, rebuildCues, reflowBeats, sceneProblems, switchSceneType } from "./scene-edit";
 
 /** F3.6: manual scene edits as one pure step (shared by the page and the API). */
 
@@ -54,6 +55,57 @@ describe("type forms and conversion", () => {
     expect(convertProps("TitleHook", { headline: "Why?" }, "RecapOutro")).toEqual({ points: [{ id: "p1", text: "Why?" }], cta: "" });
     const ill = convertProps("KeywordReveal", { keywords: [{ id: "k1", text: "Sun" }] }, "Illustration");
     expect(ill.actors[0]).toMatchObject({ id: "a1", kind: "", label: "Sun", y: 55 });
+  });
+
+  it("switching type converts from the saved scene each time: no lost items, no \"0\" carried along (QA)", () => {
+    const saved = { type: "BulletSteps" as const, props: { items: [{ id: "i1", text: "Cut" }, { id: "i2", text: "Cry" }] } };
+    let state = { type: saved.type as any, draft: structuredClone(saved.props) as any, drafts: {} as any };
+    const go = (next: any) => {
+      const out = switchSceneType({ saved, drafts: state.drafts, current: state.type, draft: state.draft, next, narration: "Onions make you cry." });
+      state = { type: next, draft: out.draft, drafts: out.drafts };
+      return out.draft;
+    };
+    expect(go("Flowchart").nodes.map((n: any) => n.label)).toEqual(["Cut", "Cry"]);
+    // No number anywhere: the value is left empty, not 0.
+    expect(go("StatCounter")).toEqual({ label: "Cut" });
+    expect(go("RecapOutro").points.map((x: any) => x.text)).toEqual(["Cut", "Cry"]);
+    const hook = go("TitleHook");
+    expect(hook).toEqual({ headline: "Cut", subline: "Cry" });
+    expect(JSON.stringify(hook)).not.toContain('"0"');
+    // Back to a type already shown: what was typed there comes back.
+    state.draft = { ...state.draft, headline: "Typed" };
+    go("KeywordReveal");
+    expect(go("TitleHook").headline).toBe("Typed");
+    // Typed into the saved type's own form: that carries into new types.
+    go("BulletSteps");
+    state.draft = { items: [{ id: "i1", text: "Slice" }, { id: "i2", text: "Cry" }] };
+    expect(go("UnitGrid").label).toBe("Slice");
+    expect(convertProps("TitleHook", { headline: "No digits" }, "StatCounter", "none here")).toEqual({ label: "No digits" });
+  });
+
+  it("problems read as plain sentences with the form's own labels (QA)", () => {
+    expect(fieldLabel("RecapOutro", "props.cta")).toBe("Call to action");
+    expect(fieldLabel("BulletSteps", "props.items[2].text")).toBe("Item 3");
+    expect(fieldLabel("Flowchart", "props.nodes[0].label")).toBe("Step 1");
+    expect(fieldLabel("Comparison", "props.left.points[0]")).toBe("Left point 1");
+    expect(fieldLabel("Comparison", "props.right.title")).toBe("Right title");
+    expect(fieldLabel("Illustration", "props.actors[1].kind")).toBe("Thing 2 (what)");
+    expect(fieldLabel("StatCounter", "props.value")).toBe("Number");
+    expect(fieldLabel("TitleHook", "beats[1].headline")).toBe("Headline 2");
+    const recap = sceneProblems({ narration: "x", type: "RecapOutro", props: { points: [{ id: "p1", text: "a" }], cta: "" }, beats: [] });
+    expect(recap.map((p) => problemText("RecapOutro", p))).toEqual(["Call to action is empty."]);
+    const stat = sceneProblems({ narration: "x", type: "StatCounter", props: { label: "people" }, beats: [] });
+    expect(stat.map((p) => problemText("StatCounter", p))).toEqual(["Number is empty."]);
+    const flow = sceneProblems({ narration: "x", type: "Flowchart", props: { nodes: [{ id: "n1", label: "only" }] }, beats: [] });
+    expect(problemText("Flowchart", flow[0])).toBe("Steps needs at least 2.");
+    for (const p of [...recap, ...stat, ...flow]) expect(p.issue).not.toMatch(/expected|Too small|Invalid/);
+  });
+
+  it("the form's length estimate is the card's for the same narration (QA)", () => {
+    const sb = board();
+    const card = estimateTimeline(sb, "midnight").scenes[1].durationSec;
+    expect(lengthLabel(editedSceneSec(sb, "s2", sb.scenes[1].narration, "midnight"))).toBe(lengthLabel(card));
+    expect(editedSceneSec(sb, "s2", `${sb.scenes[1].narration} ${"more words ".repeat(10)}`, "midnight")).toBeGreaterThan(card);
   });
 
   it("an empty field after a type change blocks the save with a field path", () => {

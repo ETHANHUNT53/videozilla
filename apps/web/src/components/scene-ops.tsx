@@ -2,7 +2,9 @@
 
 import { applySceneOp, describeChanges, needsConfirm, type SceneOp } from "@videozilla/pipeline";
 import { useEffect, useRef, useState } from "react";
+import type { Storyboard } from "@videozilla/schema";
 import { ApiClientError, apiCall } from "@/lib/api-client";
+import { keepSceneDraft, takeSceneDraft, type SceneDraft } from "@/lib/scene-draft";
 import { isStaleState, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
 import { Button } from "./ui";
@@ -18,23 +20,40 @@ export interface PendingChange {
   sceneId: string;
   title: string;
   lines: string[];
+  /** The storyboard as it will be once saved (a move's cards show their new times while asking; QA, F3.6). */
+  preview: Storyboard;
   onCancelled?: () => void;
 }
 
 export function useSceneOps(opts: {
   projectId: string;
   version: StoryboardVersionResource;
+  /** The current version, ready, not an old one being viewed: where a kept draft may open again. */
+  editable: boolean;
   onSaved: (version: StoryboardVersionResource, project: ProjectResource) => void;
   onStale: (action: StaleAction, opts?: { quiet?: boolean }) => void;
   onActivity: () => void;
 }) {
-  const { projectId, version, onSaved, onStale, onActivity } = opts;
+  const { projectId, version, editable, onSaved, onStale, onActivity } = opts;
   const [editing, setEditing] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingChange | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announce, setAnnounce] = useState("");
+  // An edit refused with 412 before the reload (see commit): its form opens again on the newer version (QA, F3.6).
+  const [restored, setRestored] = useState<SceneDraft | null>(null);
   const sb = version.storyboard;
+  const sceneIds = sb.scenes.map((s) => s.id).join(",");
+  useEffect(() => {
+    if (!editable) return; // not into an old version being viewed, nor while a storyboard is being written
+    const kept = takeSceneDraft(projectId, sceneIds.split(","));
+    if (!kept) return;
+    // Restoring from browser storage after the newer version arrives (it isn't there during the server render).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRestored(kept);
+    setPending(null);
+    setEditing(kept.sceneId);
+  }, [projectId, editable, version.version, sceneIds]);
   const position = (id: string) => sb.scenes.findIndex((s) => s.id === id) + 1;
   // Where focus goes once a change is saved or a confirm closes: the cards re-render and the confirm unmounts, which
   // would drop focus to the page (QA, F3.6). Found by data attributes, after React has re-rendered.
@@ -61,6 +80,7 @@ export function useSceneOps(opts: {
       );
       setEditing(null);
       setPending(null);
+      setRestored(null);
       onActivity();
       onSaved(data.version, data.project);
       if (op.kind === "delete") {
@@ -74,10 +94,16 @@ export function useSceneOps(opts: {
       const stale = err instanceof ApiClientError && (err.code === "PRECONDITION_FAILED" || isStaleState(err));
       setError(err instanceof ApiClientError ? (err.details[0]?.field && err.code === "VALIDATION_FAILED" ? `${err.message} (${err.details.map((d) => `${d.field}: ${d.issue}`).join("; ")})` : err.message) : "Couldn't save that change. Please try again.");
       if (stale) {
+        // What was typed isn't thrown away: kept in this tab and put back in the form on the newer version.
+        // Only on a 412 (the storyboard changed); a 409 means a new storyboard is being written, whose scenes are new.
+        const kept = op.kind === "edit" && err.code === "PRECONDITION_FAILED";
+        if (kept) keepSceneDraft(projectId, { sceneId: op.sceneId, narration: op.narration ?? "", type: op.type ?? sb.scenes[position(op.sceneId) - 1].type, props: (op.props ?? {}) as Record<string, unknown>, headlines: (op.beats ?? []).map((b) => b.headline) });
+        setRestored(null);
         pending?.onCancelled?.();
         setPending(null);
         setEditing(null);
-        onStale("scene_edit");
+        // A kept edit says it itself, in the form that opens again (as the caption panel does): no second line.
+        onStale("scene_edit", { quiet: kept });
       }
     } finally {
       setBusy(false);
@@ -107,6 +133,7 @@ export function useSceneOps(opts: {
         sceneId: op.sceneId,
         title: op.kind === "delete" ? `Delete scene ${n}?` : op.kind === "move" ? `Move scene ${n}?` : `Save scene ${n}?`,
         lines,
+        preview: local.storyboard,
         onCancelled,
       });
       return;
@@ -118,11 +145,13 @@ export function useSceneOps(opts: {
     editing,
     pending,
     busy,
-    error: pending ? error : error,
+    error,
     announce,
+    restored,
     run,
     edit: (id: string) => {
       setError(null);
+      setRestored(null);
       setPending(null);
       onActivity();
       setEditing(id);
@@ -131,6 +160,7 @@ export function useSceneOps(opts: {
       const id = editing ?? undefined;
       setEditing(null);
       setError(null);
+      setRestored(null);
       focusScene(id, "edit");
     },
     confirm: () => {
@@ -149,7 +179,8 @@ export function useSceneOps(opts: {
 /** The card's actions (Stitch 10): Edit ✎, Delete 🗑 and the ⋮⋮ handle for drag-and-drop. */
 export function SceneActions(props: { sceneId: string; number: number; disabled: boolean; onEdit: () => void; onDelete: () => void; handle: Record<string, unknown> }) {
   const { sceneId, number, disabled, onEdit, onDelete, handle } = props;
-  const icon = "grid size-8 place-items-center rounded-lg text-muted hover:bg-surface hover:text-fg disabled:opacity-40";
+  // 44 × 44: a finger-sized target (QA, F3.6).
+  const icon = "grid size-11 place-items-center rounded-lg text-muted hover:bg-surface hover:text-fg disabled:opacity-40";
   return (
     <div className="flex items-center gap-1">
       <button type="button" className={icon} onClick={onEdit} disabled={disabled} data-scene={sceneId} data-action="edit" aria-label={`Edit scene ${number}`} title="Edit">

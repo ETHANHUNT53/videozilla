@@ -16,6 +16,7 @@ vi.mock("@/lib/api-client", () => ({ apiCall: async () => ({ data: {} }), ApiCli
 import { mockStoryboard } from "@videozilla/ai";
 import { validateStoryboard } from "@videozilla/pipeline";
 import { RawStoryboard } from "@videozilla/schema";
+import { reviewModel } from "@/lib/storyboard-review";
 import { ProjectView } from "./project-view";
 import { SceneEditForm } from "./scene-edit";
 import { SettingsPanel } from "./settings-panel";
@@ -245,14 +246,24 @@ describe("Idea Studio layout (Stitch 09)", () => {
 
   it("F3.6: the edit form: narration with a word count, headlines, the type menu with all 9 types, the type's own fields", () => {
     const scene = { ...VERSION.storyboard.scenes[1], type: "Comparison", props: { left: { title: "Myth", points: ["a"] }, right: { title: "Fact", points: ["b"] } } };
-    const html = renderToString(createElement(SceneEditForm, { scene, position: 2, busy: false, error: null, onCancel: () => {}, onSubmit: () => {} } as never));
+    const storyboard = { ...VERSION.storyboard, scenes: VERSION.storyboard.scenes.map((x, i) => (i === 1 ? scene : x)) };
+    const html = renderToString(createElement(SceneEditForm, { scene, storyboard, styleId: "midnight", position: 2, busy: false, error: null, onCancel: () => {}, onSubmit: () => {} } as never));
     expect(html).toMatch(/aria-label="Edit scene 2"/);
-    expect(html).toMatch(/\d+<!-- --> words · ~<!-- -->\d+<!-- -->s/);
+    // The card's own estimate for the same words (QA: the form said ~6s where the card said ~7s).
+    const cardLength = reviewModel(storyboard as never, "midnight", 60).cards[1].length;
+    expect(html).toContain(`words · <!-- -->${cardLength}`);
     expect(html.match(/<option value="(TitleHook|KeywordReveal|BulletSteps|Flowchart|Comparison|StatCounter|RecapOutro|Illustration|UnitGrid)"/g)).toHaveLength(9);
     expect(html).toContain("left title");
     expect(html).toContain("right points<!-- --> (<!-- -->1<!-- -->–<!-- -->3<!-- -->)");
     expect(html).toContain("+ add <!-- -->point");
     expect(html).toMatch(/>Save</);
+    expect(html).not.toContain("wasn&#x27;t saved");
+    // A draft kept after a 412 opens with what was typed, and says why.
+    const restored = { sceneId: scene.id, narration: "Typed before the other tab saved.", type: "TitleHook", props: { headline: "Mine" }, headlines: scene.beats.map(() => "Kept") };
+    const again = renderToString(createElement(SceneEditForm, { scene, storyboard, styleId: "midnight", position: 2, busy: false, error: null, restored, onCancel: () => {}, onSubmit: () => {} } as never));
+    expect(again).toContain("Typed before the other tab saved.");
+    expect(again).toContain('value="Mine"');
+    expect(again).toContain("so your edit wasn&#x27;t saved. It&#x27;s back in the form");
   });
 
   it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {
