@@ -412,7 +412,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 | F3-FR4 | Social panel: **Instagram caption** (≤ 2,200 chars), **hashtags** (5–15, max 30), and a suggested cover text. | P0 |
 | F3-FR5 | **Revision chat** panel (see F7) is docked on the right (desktop) or as a bottom sheet (tablet). | P0 |
 | F3-FR6 | Users can **select a scene** (click card), which scopes the next chat message to that scene (chip shows "Editing: Scene 3"). | P0 |
-| F3-FR7 | Light direct edits without chat: edit narration text inline, edit on-screen text inline, delete a scene, reorder scenes (drag), and "Regenerate this scene" button. Each edit creates a new storyboard version. | P1 |
+| F3-FR7 | Light direct edits without chat: edit narration text inline, edit on-screen text inline, **change a scene's type by hand** (its own form, pre-filled where the content carries over; decided 2026-10-22), delete a scene, reorder scenes (drag-and-drop, also by keyboard and touch), and "Regenerate this scene" button (AI, with the revision engine, M5). Each edit creates a new storyboard version; a change that re-times cues or moves chapters is confirmed first. | P1 |
 | F3-FR8 | **Version history** dropdown: list of versions with timestamp and change summary; "Restore this version". | P1 |
 | F3-FR9 | **Duration guard**: if estimated duration is outside the target window (see §15.2), show a warning chip and an auto-fix button ("Shorten to ~90s"). | P0 |
 | F3-FR10 | **Accuracy check badge**: after generation, a lightweight AI self-review flags claims it is unsure about (scene-level warning icon with explanation). Users can ask for a fix in chat or dismiss it. | P1 |
@@ -432,7 +432,7 @@ Each feature lists user stories, functional requirements (FR), UX notes, edge ca
 - LLM picks a scene type that doesn't exist or props that violate limits → the validator repairs automatically (truncate, split into two scenes, or swap to a fallback type such as KeywordReveal); log the repair.
 - A cue anchor phrase isn't present in the narration → the validator re-anchors to the closest matching word (fuzzy match) or falls back to even spacing across the scene.
 - User edits narration text so that it no longer contains a cue phrase → the affected cue shows "unsynced" and the system re-anchors at build time (fuzzy) and/or asks the LLM to repair that scene only.
-- User deletes all scenes but one → "Approve" is disabled below 3 scenes, with a hint.
+- User deletes scenes → any scene (hook and recap included) may be deleted or moved by hand, **down to 1 scene** (decided 2026-10-22); generation keeps its own scene ranges. Deleting the hook or the closing recap shows a non-blocking warning, and the length chip warns when the video is short.
 - Estimated duration is far off target (> ±25%) → automatic regeneration pass to tighten or expand before showing it to the user.
 - Hindi narration with English terms or numbers → numbers are written as digits in on-screen text and as words in narration where TTS needs it (normalization handled in §15.1).
 - Formula or equation content → uses the Equation scene type (KaTeX); validation that the LaTeX parses, else fallback to plain text.

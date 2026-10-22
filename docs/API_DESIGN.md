@@ -613,8 +613,8 @@ Each edit creates a new version.
 
 | Method | Path | Request |
 |---|---|---|
-| PATCH | `/projects/{id}/storyboard/scenes/{sceneId}` | `{ narration?, props?, beats? }` + `If-Match: "<currentStoryboardVersion>"` |
-| DELETE | `/projects/{id}/storyboard/scenes/{sceneId}` | `If-Match` (minimum 3 scenes → `409 INVALID_STATE`) |
+| PATCH | `/projects/{id}/storyboard/scenes/{sceneId}` | `{ narration?, type?, props?, beats? }` + `If-Match: "<currentStoryboardVersion>"` (F3.6: `type` may change; `props` then follow the new type's schema) |
+| DELETE | `/projects/{id}/storyboard/scenes/{sceneId}` | `If-Match` (F3.6: any scene, down to 1; deleting the last one → `409 INVALID_STATE`) |
 | POST | `/projects/{id}/storyboard/scenes/{sceneId}/move` | `{ afterSceneId: string \| null }` |
 | POST | `/projects/{id}/storyboard/scenes/{sceneId}/regenerate` | `{ instruction?: string }` → `202 { run }` |
 
