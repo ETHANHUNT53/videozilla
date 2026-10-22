@@ -68,7 +68,7 @@ const STORYBOARD = validateStoryboard(
   "en",
   60,
 ).storyboard;
-const VERSION = { version: 2, source: "generate", basedOnVersion: 1, changeSummary: "Regenerated from the brief", changedSceneIds: [], storyboard: STORYBOARD, estimatedDurationSec: 61, wordCount: 137, warnings: [], accuracyFlags: [], isCurrent: true, createdAt: "2026-10-21T08:00:00.000Z" };
+const VERSION = { version: 2, source: "generate", basedOnVersion: 1, changeSummary: "Regenerated from the brief", changedSceneIds: [], storyboard: STORYBOARD, estimatedDurationSec: 61, wordCount: 137, warnings: [], accuracy: { status: "none", checkedAt: null, openCount: 0, dismissedCount: 0, uncheckedSceneIds: [] }, accuracyFlags: [], isCurrent: true, createdAt: "2026-10-21T08:00:00.000Z" };
 const READY = { status: "storyboard_ready", currentStoryboardVersion: 2, voiceGender: "female", allowedActions: ["rename", "edit_idea", "generate", "delete", "duplicate"] };
 const RUN = {
   id: "r1",
@@ -153,7 +153,7 @@ describe("Idea Studio layout (Stitch 09)", () => {
   it("F3.3 QA: chips are a list with spoken sentences, card headings read once, the M3 note under Approve, no empty slot", () => {
     const html = renderWith(READY, { storyboard: VERSION });
     expect(html).toMatch(/<ul[^>]*aria-label="Storyboard details"/);
-    expect(html.match(/<li class="rounded-lg border px-2.5 py-1/g)).toHaveLength(5); // + the version menu (F3.5)
+    expect(html.match(/<li class="rounded-lg border px-2.5 py-1/g)).toHaveLength(6); // + the version menu (F3.5); the 6th is the facts chip (F3.7)
     expect(html).toContain("Estimated 61 seconds of a 60-second target");
     expect(html).toContain("Language: English");
     // Card headings: the visible parts are hidden from screen readers; the sentence is read.
@@ -242,6 +242,55 @@ describe("Idea Studio layout (Stitch 09)", () => {
     );
     expect(old).not.toContain("Edit scene 1");
     expect(old).not.toContain("Reorder scene 1");
+  });
+
+  it("F3.7: the facts chip, Check now and the note; a flagged scene has ⚠, the claim, why, Edit scene / Dismiss; an old version shows flags without actions", () => {
+    const sceneId = STORYBOARD.scenes[2].id;
+    const claim = STORYBOARD.scenes[2].narration.split(" ").slice(0, 4).join(" ");
+    const checked = {
+      ...VERSION,
+      accuracy: { status: "done", checkedAt: "2026-10-22T10:00:00.000Z", openCount: 1, dismissedCount: 1, uncheckedSceneIds: [] },
+      accuracyFlags: [
+        { id: "f1", sceneId, claim, note: "Light is slower in water.", kind: "number", dismissed: false },
+        { id: "f2", sceneId: STORYBOARD.scenes[4].id, claim: "Hidden one", note: "Dismissed note.", kind: "fact", dismissed: true },
+      ],
+    };
+    const html = renderWith(READY, { storyboard: checked });
+    expect(html).toContain("1 claim to check");
+    expect(html).toContain(">Check again<");
+    expect(html).toContain("Show dismissed (1)");
+    expect(html).toContain("AI can get facts wrong. Check names, numbers and dates before you post.");
+    expect(html).toContain("Scene 3, ");
+    expect(html).toMatch(/Scene 3, [^<]*, 1 claim to check/);
+    expect(html).toContain("⚠");
+    expect(html).toContain(`Claims to check in scene 3`);
+    expect(html).toContain("Light is slower in water.");
+    expect(html).toContain(">Edit scene<");
+    expect(html).toContain(">Dismiss<");
+    // The dismissed one stays hidden until "Show dismissed".
+    expect(html).not.toContain("Dismissed note.");
+    // Not checked yet: the chip says so and offers Check now.
+    const none = renderWith(READY, { storyboard: VERSION });
+    expect(none).toContain("Facts not checked");
+    expect(none).toContain(">Check now<");
+    expect(none).toContain("AI can get facts wrong.");
+    // An old version: flags show, no buttons.
+    const old = renderToString(
+      createElement(StoryboardReview, {
+        project: { ...project, ...READY },
+        version: VERSION,
+        viewing: { ...checked, version: 1, isCurrent: false },
+        storyboard: { run: null, error: null, starting: false, start: async () => {}, dismiss: () => {} },
+        onBackToIdea: () => {},
+        onSaved: () => {},
+        onStale: () => {},
+        onActivity: () => {},
+        onView: () => {},
+      } as never),
+    );
+    expect(old).toContain("Light is slower in water.");
+    expect(old).not.toContain(">Dismiss<");
+    expect(old).not.toContain(">Check again<");
   });
 
   it("F3.6: the edit form: narration with a word count, headlines, the type menu with all 9 types, the type's own fields", () => {

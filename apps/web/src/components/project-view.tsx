@@ -242,6 +242,7 @@ export function ProjectView(props: {
               onActivity={() => setStaleNote(null)}
               viewing={viewingOther ? viewingVersion : null}
               onView={(v) => setViewingVersion(v)}
+              onVersion={(v) => setVersion((cur) => (cur && cur.version === v.version ? v : cur))}
               banner={
                 viewingOther && viewingVersion ? (
                   <ViewingBanner

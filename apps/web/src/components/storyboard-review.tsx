@@ -7,6 +7,7 @@ import { LANGUAGE_OPTIONS, STYLE_LABELS, VOICE_OPTIONS, labelOf } from "@/lib/pr
 import { reviewModel, type SceneCard } from "@/lib/storyboard-review";
 import { runFailure, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
+import { AccuracyChipItems, AccuracyNote, SceneFlags, sceneFlags, useAccuracy } from "./accuracy-flags";
 import { SceneEditForm } from "./scene-edit";
 import { ConfirmChange, SceneActions, useSceneOps } from "./scene-ops";
 import { useReorder } from "./scene-reorder";
@@ -40,8 +41,10 @@ export function StoryboardReview(props: {
   /** The banner shown above the chips while `viewing` (Restore this version / Back to current). */
   banner?: React.ReactNode;
   onView: (v: StoryboardVersionResource) => void;
+  /** F3.7: the same version, now with its finished accuracy check. */
+  onVersion?: (v: StoryboardVersionResource) => void;
 }) {
-  const { project, storyboard, onBackToIdea, onSaved, onStale, onActivity, viewing = null, banner, onView } = props;
+  const { project, storyboard, onBackToIdea, onSaved, onStale, onActivity, viewing = null, banner, onView, onVersion } = props;
   // Viewing another version: show it, read-only.
   const version = viewing ?? props.version;
   const readOnly = viewing !== null;
@@ -62,6 +65,17 @@ export function StoryboardReview(props: {
     onDrop: (id, afterId) => ops.run({ kind: "move", sceneId: id, afterSceneId: afterId }, reorder.reset),
   });
   const cardsById = new Map(model.cards.map((c) => [c.id, c]));
+  // F3.7: the facts check's chip, Check now, and the flags on each scene.
+  const accuracy = useAccuracy({
+    projectId: project.id,
+    version,
+    editable,
+    current: !readOnly && project.currentStoryboardVersion === version.version,
+    onSaved,
+    onVersion: (v) => onVersion?.(v),
+    onStale,
+    onActivity,
+  });
   const theme = STYLE_LABELS[project.styleId] ?? STYLE_LABELS.midnight;
 
   return (
@@ -82,7 +96,9 @@ export function StoryboardReview(props: {
         <li>
           <VersionMenu projectId={project.id} current={project.currentStoryboardVersion ?? props.version.version} viewing={viewing?.version ?? null} onView={onView} />
         </li>
+        <AccuracyChipItems version={version} controls={accuracy} editable={editable} position={position} />
       </ul>
+      <AccuracyNote controls={accuracy} />
 
       {banner}
 
@@ -148,6 +164,16 @@ export function StoryboardReview(props: {
               timeline={model.timeline}
               playing={playing === card.id}
               onPlay={(on) => setPlaying((p) => (on ? card.id : p === card.id ? null : p))}
+              openFlags={version.accuracyFlags.filter((f) => f.sceneId === card.id && !f.dismissed).length}
+              flags={
+                <SceneFlags
+                  flags={sceneFlags(version, card.id, accuracy.showDismissed)}
+                  number={card.index + 1}
+                  editable={editable}
+                  controls={accuracy}
+                  onEdit={editable && ops.editing !== card.id && !ops.busy && ops.pending === null ? () => ops.edit(card.id) : null}
+                />
+              }
               actions={
                 editable ? (
                   <SceneActions
@@ -206,8 +232,11 @@ function SceneCardView(props: {
   body?: React.ReactNode;
   /** F3.6: "what will change" before a save. */
   confirm?: React.ReactNode;
+  /** F3.7: open accuracy flags on this scene (the ⚠ by its label), and their boxes. */
+  openFlags?: number;
+  flags?: React.ReactNode;
 }) {
-  const { card, timeline, playing, onPlay, actions, body, confirm } = props;
+  const { card, timeline, playing, onPlay, actions, body, confirm, openFlags = 0, flags } = props;
   const one = useMemo(() => sceneTimeline(timeline, card.index), [timeline, card.index]);
   const still = useMemo(() => stillFrame(one.scenes[0]), [one]);
   const box = useRef<HTMLDivElement>(null);
@@ -254,11 +283,17 @@ function SceneCardView(props: {
           <span aria-hidden className="font-semibold text-cyan">{card.label}</span>
           <span aria-hidden className="rounded-md border border-line bg-surface px-2 py-0.5 text-muted">{card.type}</span>
           <span aria-hidden className="text-muted">{card.length}</span>
-          <span className="sr-only">{`Scene ${number}, ${card.role}, ${card.type}, about ${card.length.replace("~", "")}`}</span>
+          {openFlags > 0 ? (
+            <span aria-hidden className="text-orange" title={`${openFlags} claim${openFlags === 1 ? "" : "s"} to check`}>
+              ⚠
+            </span>
+          ) : null}
+          <span className="sr-only">{`Scene ${number}, ${card.role}, ${card.type}, about ${card.length.replace("~", "")}${openFlags > 0 ? `, ${openFlags} claim${openFlags === 1 ? "" : "s"} to check` : ""}`}</span>
         </h3>
         {actions}
         </div>
         {confirm}
+        {flags}
         {body ?? (
           <>
             <p className="text-[15px] leading-relaxed">{card.narration}</p>
