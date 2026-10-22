@@ -7,6 +7,9 @@ import { LANGUAGE_OPTIONS, STYLE_LABELS, VOICE_OPTIONS, labelOf } from "@/lib/pr
 import { reviewModel, type SceneCard } from "@/lib/storyboard-review";
 import { runFailure, type StaleAction } from "@/lib/storyboard-run";
 import type { ProjectResource, StoryboardVersionResource } from "@/server/api/resources";
+import { SceneEditForm } from "./scene-edit";
+import { ConfirmChange, SceneActions, useSceneOps } from "./scene-ops";
+import { useReorder } from "./scene-reorder";
 import { SocialPanel } from "./social-panel";
 import { VersionMenu } from "./version-history";
 import type { StoryboardRun } from "./storyboard-run";
@@ -46,6 +49,17 @@ export function StoryboardReview(props: {
   const model = useMemo(() => reviewModel(sb, project.styleId, version.estimatedDurationSec), [sb, project.styleId, version.estimatedDurationSec]);
   const [playing, setPlaying] = useState<string | null>(null);
   const failure = runFailure(storyboard.run);
+  // F3.6: edit, delete and move scenes, on the current version only (not an old one being viewed).
+  const editable = !readOnly && project.status === "storyboard_ready" && project.currentStoryboardVersion === version.version;
+  const ops = useSceneOps({ projectId: project.id, version, onSaved, onStale, onActivity });
+  const position = (id: string) => sb.scenes.findIndex((x) => x.id === id) + 1;
+  const reorder = useReorder({
+    ids: sb.scenes.map((x) => x.id),
+    label: (id) => `scene ${position(id)}`,
+    disabled: !editable || ops.busy || ops.editing !== null,
+    onDrop: (id, afterId) => ops.run({ kind: "move", sceneId: id, afterSceneId: afterId }, reorder.reset),
+  });
+  const cardsById = new Map(model.cards.map((c) => [c.id, c]));
   const theme = STYLE_LABELS[project.styleId] ?? STYLE_LABELS.midnight;
 
   return (
@@ -106,9 +120,20 @@ export function StoryboardReview(props: {
         </button>
       </div>
 
+      {/* What the drag handles and saves did, for screen readers. */}
+      <p className="sr-only" aria-live="assertive">
+        {reorder.announce}
+      </p>
+      <p className="sr-only" aria-live="polite">
+        {ops.announce}
+      </p>
+      <p id="reorder-help" className="sr-only">
+        Press Space to pick the scene up, the arrow keys to move it, Space to drop it, Escape to cancel. Or drag it.
+      </p>
+
       <ol className="flex flex-col gap-4" aria-label="Scenes">
-        {model.cards.map((card) => (
-          <li key={card.id} className="flex flex-col gap-3">
+        {reorder.order.map((sceneId) => cardsById.get(sceneId)!).map((card) => (
+          <li key={card.id} ref={reorder.itemRef(card.id)} className={cx("flex flex-col gap-3", reorder.dragging === card.id && "opacity-80 [&>div]:border-cyan [&>div]:shadow-[0_0_24px_rgba(56,217,245,0.25)]")}>
             {card.chapterHeading ? (
               <p className="mt-2 px-1 font-mono text-sm text-cyan">
                 <Slashes />
@@ -116,7 +141,36 @@ export function StoryboardReview(props: {
                 {card.chapterHeading.subhead ? <span className="text-muted"> — {card.chapterHeading.subhead}</span> : null}
               </p>
             ) : null}
-            <SceneCardView card={card} timeline={model.timeline} playing={playing === card.id} onPlay={(on) => setPlaying((p) => (on ? card.id : p === card.id ? null : p))} />
+            <SceneCardView
+              card={card}
+              timeline={model.timeline}
+              playing={playing === card.id}
+              onPlay={(on) => setPlaying((p) => (on ? card.id : p === card.id ? null : p))}
+              actions={
+                editable ? (
+                  <SceneActions
+                    number={card.index + 1}
+                    disabled={ops.busy || (ops.editing !== null && ops.editing !== card.id) || ops.pending !== null}
+                    onEdit={() => ops.edit(card.id)}
+                    onDelete={() => ops.run({ kind: "delete", sceneId: card.id })}
+                    handle={reorder.handle(card.id)}
+                  />
+                ) : null
+              }
+              body={
+                editable && ops.editing === card.id ? (
+                  <SceneEditForm
+                    scene={sb.scenes[card.index]}
+                    position={card.index + 1}
+                    busy={ops.busy}
+                    error={ops.error}
+                    onCancel={ops.cancelEdit}
+                    onSubmit={(op) => ops.run(op)}
+                  />
+                ) : null
+              }
+              confirm={ops.pending?.sceneId === card.id ? <ConfirmChange pending={ops.pending} busy={ops.busy} error={ops.error} onConfirm={ops.confirm} onCancel={ops.cancelConfirm} /> : null}
+            />
           </li>
         ))}
       </ol>
@@ -135,7 +189,19 @@ function ChipBox({ children, tone, spoken }: { children: React.ReactNode; tone?:
   );
 }
 
-function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; timeline: ReturnType<typeof reviewModel>["timeline"]; playing: boolean; onPlay: (on: boolean) => void }) {
+function SceneCardView(props: {
+  card: SceneCard;
+  timeline: ReturnType<typeof reviewModel>["timeline"];
+  playing: boolean;
+  onPlay: (on: boolean) => void;
+  /** F3.6: the card's Edit / Delete / drag handle. */
+  actions?: React.ReactNode;
+  /** F3.6: the edit form, in place of the narration and on-screen text. */
+  body?: React.ReactNode;
+  /** F3.6: "what will change" before a save. */
+  confirm?: React.ReactNode;
+}) {
+  const { card, timeline, playing, onPlay, actions, body, confirm } = props;
   const one = useMemo(() => sceneTimeline(timeline, card.index), [timeline, card.index]);
   const still = useMemo(() => stillFrame(one.scenes[0]), [one]);
   const box = useRef<HTMLDivElement>(null);
@@ -175,6 +241,7 @@ function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; t
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="flex flex-wrap items-center gap-2 font-mono text-xs">
           {/* Read once, as the sentence below (QA: the visible parts were read too). */}
           <span aria-hidden className="font-semibold text-cyan">{card.label}</span>
@@ -182,12 +249,19 @@ function SceneCardView({ card, timeline, playing, onPlay }: { card: SceneCard; t
           <span aria-hidden className="text-muted">{card.length}</span>
           <span className="sr-only">{`Scene ${number}, ${card.role}, ${card.type}, about ${card.length.replace("~", "")}`}</span>
         </h3>
-        <p className="text-[15px] leading-relaxed">{card.narration}</p>
-        {card.onScreen ? (
-          <p className="rounded-lg border border-line bg-surface px-3 py-1.5 font-mono text-xs text-muted">
-            <span className="font-semibold text-cyan">{"// on screen:"}</span> {card.onScreen}
-          </p>
-        ) : null}
+        {actions}
+        </div>
+        {confirm}
+        {body ?? (
+          <>
+            <p className="text-[15px] leading-relaxed">{card.narration}</p>
+            {card.onScreen ? (
+              <p className="rounded-lg border border-line bg-surface px-3 py-1.5 font-mono text-xs text-muted">
+                <span className="font-semibold text-cyan">{"// on screen:"}</span> {card.onScreen}
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
     </Card>
   );

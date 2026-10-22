@@ -17,6 +17,7 @@ import { mockStoryboard } from "@videozilla/ai";
 import { validateStoryboard } from "@videozilla/pipeline";
 import { RawStoryboard } from "@videozilla/schema";
 import { ProjectView } from "./project-view";
+import { SceneEditForm } from "./scene-edit";
 import { SettingsPanel } from "./settings-panel";
 import { StoryboardReview } from "./storyboard-review";
 
@@ -145,7 +146,7 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain("revise with ai");
     expect(html).toContain("Arrives in M5");
     // Later features are left out, not shown disabled.
-    expect(html).not.toMatch(/check fact|Re-order|Delete scene/i);
+    expect(html).not.toMatch(/check fact/i); // F3.7
   });
 
   it("F3.3 QA: chips are a list with spoken sentences, card headings read once, the M3 note under Approve, no empty slot", () => {
@@ -219,6 +220,39 @@ describe("Idea Studio layout (Stitch 09)", () => {
     expect(html).toContain("These settings belong to the current storyboard (version 2)");
     expect(html).toMatch(/<fieldset[^>]*disabled=""/);
     expect(html.match(/<select[^>]*disabled=""/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("F3.6: each scene card on the current version has Edit, Delete and a reorder handle; none while viewing an old version", () => {
+    const html = renderWith(READY, { storyboard: VERSION });
+    for (const label of ["Edit scene 1", "Delete scene 1", "Reorder scene 1", "Edit scene 8"]) expect(html).toContain(`aria-label="${label}"`);
+    expect(html).toContain("Press Space to pick the scene up");
+    const old = renderToString(
+      createElement(StoryboardReview, {
+        project: { ...project, ...READY },
+        version: VERSION,
+        viewing: { ...VERSION, version: 1, isCurrent: false },
+        storyboard: { run: null, error: null, starting: false, start: async () => {}, dismiss: () => {} },
+        onBackToIdea: () => {},
+        onSaved: () => {},
+        onStale: () => {},
+        onActivity: () => {},
+        onView: () => {},
+      } as never),
+    );
+    expect(old).not.toContain("Edit scene 1");
+    expect(old).not.toContain("Reorder scene 1");
+  });
+
+  it("F3.6: the edit form: narration with a word count, headlines, the type menu with all 9 types, the type's own fields", () => {
+    const scene = { ...VERSION.storyboard.scenes[1], type: "Comparison", props: { left: { title: "Myth", points: ["a"] }, right: { title: "Fact", points: ["b"] } } };
+    const html = renderToString(createElement(SceneEditForm, { scene, position: 2, busy: false, error: null, onCancel: () => {}, onSubmit: () => {} } as never));
+    expect(html).toMatch(/aria-label="Edit scene 2"/);
+    expect(html).toMatch(/\d+<!-- --> words · ~<!-- -->\d+<!-- -->s/);
+    expect(html.match(/<option value="(TitleHook|KeywordReveal|BulletSteps|Flowchart|Comparison|StatCounter|RecapOutro|Illustration|UnitGrid)"/g)).toHaveLength(9);
+    expect(html).toContain("left title");
+    expect(html).toContain("right points<!-- --> (<!-- -->1<!-- -->–<!-- -->3<!-- -->)");
+    expect(html).toContain("+ add <!-- -->point");
+    expect(html).toMatch(/>Save</);
   });
 
   it("F3.3: the duration guard turns the chip orange and offers a regenerate when the estimate is outside the window", () => {
