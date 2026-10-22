@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Drag-and-drop of scene cards (F3.6, your answer), with no extra library: a ⋮⋮ handle on each card that
- * - a mouse or a finger drags (pointer events with capture; the page scrolls near the top and bottom edges);
+ * - a mouse or a finger drags (the pointer is followed on the window while dragging, since moving the card in the page
+ *   drops pointer capture; the page scrolls near the top and bottom edges; Escape cancels);
  * - the keyboard moves: Space or Enter picks the scene up, ↑ / ↓ move it, Space or Enter drops it, Escape cancels;
  * each step is described in `announce` for a live region. The new order shows while dragging; `onDrop` gets the scene
  * and the scene it now follows (null: first), and the order stays until the ids change (saved) or `reset()` (cancelled).
@@ -19,6 +20,8 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
   // Moving a card moves its focused handle in the page, which can blur it: refocus it, and don't treat that blur as
   // leaving (which cancels a keyboard move).
   const refocusing = useRef(false);
+  // The scene just dropped, until it's saved or the move is called off (reset): what "cancelled" talks about.
+  const dropped = useRef<string | null>(null);
   // A new order from the server (saved, or another version shown): drop the local one.
   const [seen, setSeen] = useState(ids.join(","));
   if (seen !== ids.join(",")) {
@@ -51,15 +54,43 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     }
     const at = final.indexOf(id);
     setAnnounce(`${label(id)} dropped at position ${at + 1} of ${final.length}.`);
+    dropped.current = id;
     onDrop(id, at > 0 ? final[at - 1] : null);
   };
   const moveTo = (id: string, index: number) => {
-    const current = (order ?? ids).filter((x) => x !== id);
-    const clamped = Math.max(0, Math.min(current.length, index));
-    const next = [...current.slice(0, clamped), id, ...current.slice(clamped)];
+    const next = moveInOrder(order ?? ids, id, index);
     setOrder(next);
     return next;
   };
+
+  // A pointer drag is followed on the window (QA, F3.6): moving the dragged card in the page drops its pointer capture,
+  // so the handle stops getting the moves and the final pointerup (a drag downwards then stayed "picked up" for good).
+  const live = useRef({ drop, cancel, moveTo, order: shown, dragging });
+  useEffect(() => {
+    live.current = { drop, cancel, moveTo, order: shown, dragging };
+  });
+  const pointerDrag = dragging?.by === "pointer" ? dragging.id : null;
+  useEffect(() => {
+    if (!pointerDrag) return;
+    const id = pointerDrag;
+    return followPointer(window, {
+      move: (y) => {
+        const { order: now, moveTo: move } = live.current;
+        const centres = now
+          .filter((x) => x !== id)
+          .map((other) => {
+            const box = items.current.get(other)?.getBoundingClientRect();
+            return box ? box.top + box.height / 2 : Number.POSITIVE_INFINITY;
+          });
+        const index = pointerIndex(centres, y);
+        if (now.indexOf(id) !== index) move(id, index);
+        if (y < 80) window.scrollBy(0, -14);
+        else if (y > window.innerHeight - 80) window.scrollBy(0, 14);
+      },
+      up: () => live.current.drop(),
+      cancel: () => live.current.cancel(),
+    });
+  }, [pointerDrag]);
 
   /** Props for a card's handle button. */
   const handle = (id: string) => ({
@@ -107,26 +138,6 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
       }
       start(id, "pointer");
     },
-    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
-      if (dragging?.id !== id || dragging.by !== "pointer") return;
-      const y = e.clientY;
-      // Where it lands: after every other card whose middle is above the pointer.
-      const others = (order ?? ids).filter((x) => x !== id);
-      let index = 0;
-      for (const other of others) {
-        const box = items.current.get(other)?.getBoundingClientRect();
-        if (box && box.top + box.height / 2 < y) index++;
-      }
-      if ((order ?? ids).indexOf(id) !== index) moveTo(id, index);
-      if (y < 80) window.scrollBy(0, -14);
-      else if (y > window.innerHeight - 80) window.scrollBy(0, 14);
-    },
-    onPointerUp: () => {
-      if (dragging?.id === id && dragging.by === "pointer") drop();
-    },
-    onPointerCancel: () => {
-      if (dragging?.id === id) cancel();
-    },
   });
 
   /** Registers a card's element (for the pointer's position). */
@@ -135,5 +146,51 @@ export function useReorder(opts: { ids: string[]; label: (id: string) => string;
     else items.current.delete(id);
   };
 
-  return { order: shown, dragging: dragging?.id ?? null, announce, handle, itemRef, reset: () => setOrder(null) };
+  /** The move didn't happen (cancelled in the confirm, refused or failed): back to the saved order, and say so. */
+  const reset = () => {
+    setOrder(null);
+    const id = dropped.current;
+    dropped.current = null;
+    if (id) setAnnounce(`Move cancelled. ${label(id)} stays where it was.`);
+  };
+
+  return { order: shown, dragging: dragging?.id ?? null, announce, handle, itemRef, reset };
+}
+
+/** Where a dragged card lands: after every other card whose middle is above the pointer (`centres` in order). */
+export function pointerIndex(centres: number[], y: number): number {
+  return centres.filter((c) => c < y).length;
+}
+
+/** `order` with `id` moved to `index` (clamped). */
+export function moveInOrder(order: string[], id: string, index: number): string[] {
+  const rest = order.filter((x) => x !== id);
+  const at = Math.max(0, Math.min(rest.length, index));
+  return [...rest.slice(0, at), id, ...rest.slice(at)];
+}
+
+/**
+ * Follows a pointer drag on `target` (the window): every move (its y), the release, a cancelled pointer, and Escape
+ * (which cancels too). Returns the cleanup. On the window, not the handle: the handle loses pointer capture when its card
+ * moves in the page (QA, F3.6).
+ */
+export function followPointer(target: EventTarget, on: { move: (y: number) => void; up: () => void; cancel: () => void }): () => void {
+  const move = (e: Event) => on.move((e as PointerEvent).clientY);
+  const up = () => on.up();
+  const cancel = () => on.cancel();
+  const key = (e: Event) => {
+    if ((e as KeyboardEvent).key !== "Escape") return;
+    e.preventDefault();
+    on.cancel();
+  };
+  target.addEventListener("pointermove", move);
+  target.addEventListener("pointerup", up);
+  target.addEventListener("pointercancel", cancel);
+  target.addEventListener("keydown", key);
+  return () => {
+    target.removeEventListener("pointermove", move);
+    target.removeEventListener("pointerup", up);
+    target.removeEventListener("pointercancel", cancel);
+    target.removeEventListener("keydown", key);
+  };
 }
